@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>راهنمای ضبط ویس</title>
+<style>
+  @font-face { font-family: "Vazirmatn"; src: url("fonts/Vazirmatn.woff2") format("woff2"), url("app/voice2excel/web/fonts/Vazirmatn.woff2") format("woff2"); font-weight: 100 900; }
+  :root { --text:#1b2236; --muted:#5d6680; --border:#dfe4ee; --primary:#3355d6; --soft:#edf1fd; --ok:#138a52; --ok-soft:#e6f6ee; --bad:#cc2b3b; --bad-soft:#fdecee; --bg:#f4f6fb; --card:#fff; }
+  @media screen and (prefers-color-scheme: dark) { :root { --text:#e8ebf4; --muted:#a3abc2; --border:#2a3249; --primary:#8aa1ff; --soft:#222c4f; --ok:#3fcb85; --ok-soft:#14301f; --bad:#ff6b7a; --bad-soft:#3a1820; --bg:#0f1320; --card:#171c2c; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Vazirmatn", Tahoma, sans-serif; line-height: 1.85; font-size: 15px; }
+  .page { max-width: 780px; margin: 24px auto; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 28px 32px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid var(--primary); padding-bottom: 12px; margin-bottom: 16px; }
+  h1 { margin: 0; font-size: 24px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .print { border: 1px solid var(--primary); color: var(--primary); background: transparent; border-radius: 10px; padding: 6px 16px; font: inherit; cursor: pointer; }
+  ol.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; counter-reset: s; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: start; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; }
+  ol.steps li::before { content: counter(s, persian); width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--primary); display: grid; place-items: center; font-weight: 800; }
+  ol.steps b { font-size: 15.5px; }
+  .say { color: var(--muted); font-size: 14px; }
+  .say q { color: var(--text); font-weight: 600; quotes: "«" "»"; }
+  h2 { font-size: 17px; margin: 18px 0 8px; }
+  .example { background: var(--soft); border-radius: 14px; padding: 14px 18px; font-size: 15.5px; line-height: 2.1; }
+  .example .k { color: var(--primary); font-weight: 800; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .do, .dont { border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+  .do { background: var(--ok-soft); } .dont { background: var(--bad-soft); }
+  .do h3, .dont h3 { margin: 0 0 4px; font-size: 15px; } .do h3 { color: var(--ok); } .dont h3 { color: var(--bad); }
+  ul { margin: 0; padding-inline-start: 18px; } li { margin: 2px 0; }
+  footer { margin-top: 14px; color: var(--muted); font-size: 13px; text-align: center; }
+  @media (max-width: 640px) { .page { margin: 0; border-radius: 0; padding: 18px 16px; } .two { grid-template-columns: 1fr; } }
+  @media print {
+    body { background: #fff; font-size: 13px; line-height: 1.7; }
+    .page { margin: 0; border: none; padding: 0; max-width: none; }
+    .print { display: none; }
+    ol.steps li { padding: 5px 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div><h1>راهنمای ضبط ویس بازدید</h1><div class="sub">با رعایت این ترتیب، اطلاعات شما بدون خطا و خودکار در اکسل ثبت می‌شود</div></div>
+    <button class="print" onclick="window.print()">چاپ</button>
+  </header>
+
+  <ol class="steps">
+    <li><div><b>نام</b> — با عنوان بگویید.<div class="say"><q>مهندس رجبی</q> یا <q>آقای احمدی</q></div></div></li>
+    <li><div><b>شماره</b> — اول کلمه «شماره» را بگویید، بعد عددها را <b>آهسته و با مکث</b>.<div class="say"><q>شماره: صفر نهصد و پانزده … صد و بیست و سه … چهل و پنج … شصت و هفت</q></div></div></li>
+    <li><div><b>آدرس</b> — اول کلمه «آدرس»، بعد خیابان، عدد و پلاک.<div class="say"><q>آدرس: سجادیه پنجاه و هشت، پلاک دوازده</q> یا <q>… قطعه دوم سمت راست</q></div></div></li>
+    <li><div><b>مشخصات ساختمان</b> — نوع سازه، تعداد سقف، مرحله.<div class="say"><q>سازه فلز، تعداد هفت سقف، سه سقف اجرا شده</q> یا <q>تازه استارت خورده</q></div></div></li>
+    <li><div><b>توضیحات</b> — هر نکته دیگری.<div class="say"><q>توضیحات: شماره رو نگهبان داد</q></div></div></li>
+    <li><div><b>پیگیری</b> — اگر قرار تماسی هست، روز را بگویید.<div class="say"><q>قرار شد دوشنبه هفته بعد زنگ بزنیم</q></div></div></li>
+  </ol>
+
+  <h2>نمونه یک ویس کامل (حدود ۲۰ ثانیه)</h2>
+  <div class="example">
+    <span class="k">مهندس</span> رجبی. <span class="k">شماره</span>: صفر نهصد و سی و هفت، سیصد و چهل و پنج، دوازده، پنجاه و پنج.
+    <span class="k">آدرس</span>: سجادیه پنجاه و هشت، قطعه دوم. <span class="k">سازه</span> بتن، <span class="k">تعداد</span> هفت سقف، سه سقف اجرا شده.
+    <span class="k">قرار شد</span> دوشنبه هفته بعد زنگ بزنیم.
+  </div>
+
+  <h2>نکته‌های مهم</h2>
+  <div class="two">
+    <div class="do"><h3>✓ این کارها را بکنید</h3><ul>
+      <li>برای هر ساختمان <b>یک ویس جدا</b> بفرستید.</li>
+      <li>اگر در یک ویس دو ساختمان می‌گویید، با <q>پروژه دوم</q> شروع کنید.</li>
+      <li>نام‌های کم‌شنیده را <b>شمرده</b> بگویید.</li>
+      <li>گوشی را نزدیک دهان بگیرید، در جای کم‌سروصدا.</li>
+      <li>واژه‌های <b>«شماره»</b> و <b>«آدرس»</b> را حتماً بگویید.</li>
+    </ul></div>
+    <div class="dont"><h3>✗ از این‌ها پرهیز کنید</h3><ul>
+      <li>ضبط در ماشینِ با پنجره باز یا کنار دستگاه پرسروصدا.</li>
+      <li>تند گفتن شماره بدون مکث.</li>
+      <li>گفتن شماره دو نفر پشت سر هم بدون توضیح؛ بگویید <q>شماره دوم مال نگهبانه</q>.</li>
+      <li>ویس‌های خیلی طولانی (بیش از ۲ دقیقه).</li>
+    </ul></div>
+  </div>
+  <footer>برنامه هیچ اطلاعاتی را حدس نمی‌زند؛ هرچه واضح‌تر بگویید، کمتر نیاز به اصلاح دستی است.</footer>
+</div>
+</body>
+</html>

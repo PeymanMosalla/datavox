@@ -1,0 +1,16 @@
+# نسخه‌های آزموده‌شده روی Windows 11 و Python 3.12 (2026-10-21)
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+av==19.0.1
+numpy==2.5.4
+fastapi==0.154.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+pydantic==2.14.1
+openpyxl==3.1.5
+jdatetime==6.1.1
+psutil==7.2.2
+
+# فقط برای آزمون‌های خودکار
+pytest==9.1.1
+httpx==0.28.1

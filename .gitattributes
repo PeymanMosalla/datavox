@@ -1,0 +1,10 @@
+* text=auto eol=lf
+# فایل‌های اجرایی ویندوز باید CRLF بمانند
+*.bat text eol=crlf
+*.cs text eol=crlf
+# فایل‌های دودویی
+*.mp3 binary
+*.woff2 binary
+*.ico binary
+*.png binary
+*.xlsx binary
