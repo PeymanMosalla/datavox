@@ -81,6 +81,8 @@ class Settings:
     learn_auto_threshold: int = 2
     # املای هم‌آوای نام مهندس و خیابان («فلاهی»، «کازمی») به املای واژه‌نامه برگردد (فقط اگر یک گزینه باشد)
     kb_auto_spelling: bool = True
+    # داده پایه نشانی‌های شهر در کنار واژه‌نامه (در رابط کاربری نمایش داده نمی‌شود)
+    kb_base_pack: bool = True
 
     # --- اکسل ---
     active_profile: str = "default"

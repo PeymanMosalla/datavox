@@ -1,20 +1,24 @@
 """واژگان شناخته‌شده (خیابان‌ها و نام مهندس‌ها) برای موتور استخراج و یکسان‌سازی املا.
 
-از واژه‌نامه ساخته می‌شود (که از فایل‌های اکسل شرکت و تأییدهای کاربر پر شده) و دو کار می‌کند:
+از واژه‌نامه کاربر (فایل‌های اکسل و تأییدها) و داده پایه نشانی‌های شهر (geo) ساخته می‌شود و دو کار می‌کند:
 1. ترتیب: وقتی «سجادیه 58» در متن آمد، آدرس از همان‌جا آغاز می‌شود، حتی اگر واژه «آدرس» گفته
    نشده یا آدرس جای دیگری از ویس آمده باشد؛ نام شناخته‌شده بدون «مهندس» هم نام شناخته می‌شود.
 2. املا: نامی که با املای دیگری از یک نام شناخته‌شده هم‌آواست («فلاهی»، «سجا دیه») به املای
    واژه‌نامه («فلاحی»، «سجادیه») برمی‌گردد. فقط هم‌آوای دقیق و یکتا؛ شباهت تقریبی فقط پیشنهاد است.
 
-نامی که هم خیابان است و هم نام شخص («مطهری») یا واژه عمومی است، برای تشخیص ترتیب به کار نمی‌رود.
+قواعد احتیاط:
+- نامی که هم خیابان است و هم نام شخص («مطهری») یا واژه عمومی است، فقط با «عدد» پشتش خیابان شمرده می‌شود.
+- واژه‌نامه کاربر بر داده پایه مقدم است: املای کاربر برنده است و خیابان‌های داده پایه نام‌های
+  مهندس کاربر را مبهم نمی‌کنند.
 """
 from __future__ import annotations
 
 import re
 import threading
 from dataclasses import dataclass, field
+from functools import lru_cache
 
-from .normalizer import match_key, strip_title
+from .normalizer import match_key, sound_key, strip_title
 
 MAX_WORDS = 3
 _L = "ء-غف-يٱ-ۓ‌"  # حروف و نیم‌فاصله (بدون ویرگول و نشانه‌های عربی که در همان بازه یونیکدند)
@@ -27,16 +31,25 @@ _LEAD_WORDS = {"آدرس", "آدرسش", "آدرسشون", "نشانی", "خیا
 _AFTER_STREET = {"پلاک", "قطعه", "نبش", "کوچه", "بن‌بست", "انتهای", "ابتدای", "جنب", "روبروی", "روبه‌روی"}
 # عددی که پس از این واژه‌ها بیاید، جزو مشخصات فنی است نه آدرس
 _TECH_BEFORE_NUMBER = {"تعداد", "تا", "سقف", "طبقه", "واحد", "متر", "متری", "سازه", "شماره"}
+# «رضایی 2 تا پروژه»: عددی که واحد شمارش پشتش آمده، شماره خیابان نیست
+_UNIT_AFTER_NUMBER = {"تا", "سقف", "طبقه", "واحد", "متر", "متری", "روز", "ماه", "سال", "ساعت", "بار", "نفر",
+                      "تومن", "تومان", "میلیون", "دقیقه", "هفته", "پروژه", "ساختمان"}
 
 
-def _common_keys() -> set[str]:
+@lru_cache(maxsize=1)
+def _common_keys() -> frozenset[str]:
     from . import extractor as x
     from .numbers_fa import NUMBER_WORDS
 
     words = (x.NAME_STOP | x._FILLER | set(x.TECH_WORDS) | set(x.STREET_WORDS) | set(x.TITLES) | set(x.ADDRESS_CUES)
              | set(x.NAME_CUES) | set(x.CITIES) | set(x.BUILDING_TYPES) | set(NUMBER_WORDS) | x._ORDINALS
-             | _LEAD_WORDS | _AFTER_STREET | _TECH_BEFORE_NUMBER | {"سمت", "راست", "چپ", "صفر", "سفر", "سد", "صف"})
-    return {match_key(w) for w in words}
+             | _LEAD_WORDS | _AFTER_STREET | _TECH_BEFORE_NUMBER | _UNIT_AFTER_NUMBER
+             | {"سمت", "راست", "چپ", "صفر", "سفر", "سد", "صف"})
+    return frozenset(sound_key(w) for w in words)
+
+
+def _phrase(words: list[str]) -> str | None:
+    return " ".join(words) if words and all(_is_word(w) for w in words) else None
 
 
 @dataclass
@@ -47,40 +60,61 @@ class Lexicon:
     # همه املاهای ثبت‌شده (استاندارد و شکل‌های دیگر)؛ املای ثبت‌شده هرگز تغییر داده نمی‌شود
     street_names: set[str] = field(default_factory=set)
     engineer_names: set[str] = field(default_factory=set)
-    # کلیدهای قابل‌اتکا برای تشخیص ترتیب (نه واژه عمومی، نه مشترک میان خیابان و نام شخص)
+    # خیابان‌ها جز واژه‌های عمومی (با عدد پشتشان خیابان‌اند، حتی اگر نام شخص هم باشند)
+    shared_keys: set[str] = field(default_factory=set)
+    # کلیدهای قابل‌اتکا بدون عدد (نه واژه عمومی، نه مشترک میان خیابان و نام شخص)
     street_keys: set[str] = field(default_factory=set)
     engineer_keys: set[str] = field(default_factory=set)
-    _shared: set[str] | None = field(default=None, repr=False)
 
     @classmethod
-    def build(cls, entries) -> "Lexicon":
-        """entries: [(نوع، املای استاندارد، املای ثبت‌شده)]."""
+    def build(cls, entries, base=()) -> "Lexicon":
+        """entries: [(نوع، املای استاندارد، املای ثبت‌شده)] از واژه‌نامه کاربر؛ base: [(خیابان، شکل‌های دیگر)]."""
         lex = cls()
         for etype, canonical, alias in entries:
-            spell, names = ((lex.street_spell, lex.street_names) if etype == "street" else
-                            (lex.engineer_spell, lex.engineer_names) if etype == "engineer" else (None, None))
-            if spell is None:
+            if etype not in ("street", "engineer"):
                 continue
+            street = etype == "street"
+            spell, names, key = ((lex.street_spell, lex.street_names, sound_key) if street else
+                                 (lex.engineer_spell, lex.engineer_names, match_key))
             for n in (canonical, alias):
                 if n:
                     names.add(n)
-                    spell.setdefault(match_key(n), set()).add(canonical)
+                    spell.setdefault(key(n), set()).add(canonical)
+        user_streets = set(lex.street_spell)
+        for canonical, aliases in base:
+            for n in (canonical, *aliases):
+                k = sound_key(n)
+                if k in user_streets:
+                    continue  # املای واژه‌نامه کاربر مقدم است
+                lex.street_names.add(n)
+                lex.street_spell.setdefault(k, set()).add(canonical)
         common = _common_keys()
         good = {k for k in set(lex.street_spell) | set(lex.engineer_spell) if len(k) >= 3 and k not in common}
-        lex.street_keys = {k for k in lex.street_spell if k in good and k not in lex.engineer_spell}
-        lex.engineer_keys = {k for k in lex.engineer_spell if k in good and k not in lex.street_spell}
+        lex.shared_keys = {k for k in lex.street_spell if k in good}
+        lex.street_keys = {k for k in lex.shared_keys if k not in lex.engineer_spell}
+        lex.engineer_keys = {k for k in lex.engineer_spell if k in good and k not in user_streets}
         return lex
 
     def __bool__(self) -> bool:
         return bool(self.street_spell or self.engineer_spell)
 
     # ---------- تشخیص ترتیب ----------
-    def _street_len(self, words: list[str], i: int) -> int:
-        """تعداد واژه‌های نام خیابان شناخته‌شده‌ای که از words[i] آغاز می‌شود (۰ یعنی هیچ)."""
+    @staticmethod
+    def _len_at(words: list[str], i: int, keys: set[str]) -> int:
+        """تعداد واژه‌های نامی از keys که از words[i] آغاز می‌شود (بلندترین؛ ۰ یعنی هیچ)."""
         for n in range(min(MAX_WORDS, len(words) - i), 0, -1):
-            if all(_is_word(w) for w in words[i:i + n]) and match_key(" ".join(words[i:i + n])) in self.street_keys:
+            p = _phrase(words[i:i + n])
+            if p and sound_key(p) in keys:
                 return n
         return 0
+
+    def _street_then_number(self, words: list[str], i: int) -> int:
+        """«سجادیه 58»: خیابان + عدد کوتاه (نه «رضایی 2 تا»)."""
+        n = self._len_at(words, i, self.shared_keys)
+        if not n or i + n >= len(words) or not _SHORT_NUMBER.fullmatch(words[i + n]):
+            return 0
+        after = words[i + n + 1] if i + n + 1 < len(words) else ""
+        return 0 if after in _UNIT_AFTER_NUMBER else n
 
     def _ends_with_street(self, words: list[str], j: int) -> bool:
         """آیا واژه‌های پیش از words[j] به نام خیابانی (حتی هم‌نام با شخص) ختم می‌شوند؟
@@ -88,32 +122,12 @@ class Lexicon:
         from .extractor import TITLES
 
         for n in range(1, min(MAX_WORDS, j) + 1):
-            span = words[j - n:j]
             if j - n > 0 and words[j - n - 1] in TITLES:
                 break
-            if all(_is_word(w) for w in span) and match_key(" ".join(span)) in self.street_spell:
+            p = _phrase(words[j - n:j])
+            if p and sound_key(p) in self.street_spell:
                 return True
         return False
-
-    def _street_len_shared(self, words: list[str], i: int) -> int:
-        """مانند _street_len، ولی خیابان‌های هم‌نام با شخص («فلاحی») را هم می‌پذیرد."""
-        for n in range(min(MAX_WORDS, len(words) - i), 0, -1):
-            if all(_is_word(w) for w in words[i:i + n]) and match_key(" ".join(words[i:i + n])) in self.shared_keys:
-                return n
-        return 0
-
-    @property
-    def shared_keys(self) -> set[str]:
-        """همه خیابان‌ها جز واژه‌های عمومی. نام شخص پشت سرش «عدد کوتاه» نمی‌آید، خیابان می‌آید؛
-        پس خیابانِ هم‌نام با شخص فقط وقتی عدد پشتش آمده باشد خیابان شمرده می‌شود."""
-        if self._shared is None:
-            common = _common_keys()
-            self._shared = {k for k in self.street_spell if len(k) >= 3 and k not in common}
-        return self._shared
-
-    def _street_then_number(self, words: list[str], i: int) -> int:
-        n = self._street_len_shared(words, i)
-        return n if n and i + n < len(words) and _SHORT_NUMBER.fullmatch(words[i + n]) else 0
 
     def starts_with_street(self, text: str) -> bool:
         """«سجادیه 58، قطعه دوم» یا «امامت پلاک 8»: بند با خیابان شناخته‌شده آغاز می‌شود."""
@@ -121,7 +135,7 @@ class Lexicon:
         i = 1 if words[:1] == ["و"] else 0
         if self._street_then_number(words, i):
             return True
-        n = self._street_len(words, i)
+        n = self._len_at(words, i, self.street_keys)
         return bool(n) and i + n < len(words) and words[i + n] in _AFTER_STREET
 
     def is_engineer(self, text: str) -> bool:
@@ -135,11 +149,11 @@ class Lexicon:
         مرز گذاشته نمی‌شود اگر نام خیابان پس از عنوان آمده باشد («مهندس مطهری») یا ادامه آدرس قبلی باشد
         («فلاحی 34 فاطمیه 5»).
         """
+        from .extractor import TITLES
+
         toks = list(_TOKEN.finditer(text))
         words = [m.group(0) for m in toks]
         cuts: list[int] = []
-        from .extractor import TITLES
-
         for i in range(len(words)):
             if not self._street_then_number(words, i):
                 continue
@@ -151,8 +165,8 @@ class Lexicon:
             prev = words[j - 1] if j > 0 else ""
             if prev in TITLES:
                 continue
-            if prev and prev[0].isdigit() and j > 1 and _is_word(words[j - 2]) and words[j - 2] not in _TECH_BEFORE_NUMBER:
-                continue  # ادامه آدرس: «فلاحی 34 فاطمیه 5»
+            if prev and prev[0].isdigit() and not (j > 1 and words[j - 2] in _TECH_BEFORE_NUMBER):
+                continue  # ادامه آدرس («فلاحی 34 فاطمیه 5») یا شمارش («2 واحدی 110 متری»)؛ ولی «تعداد 7 سجادیه 58» مرز دارد
             if self._ends_with_street(words, j):
                 continue  # ادامه آدرس: «بلوار جانباز مهدی 32»
             if j > 0:
@@ -161,17 +175,21 @@ class Lexicon:
 
     # ---------- یکسان‌سازی املا ----------
     @staticmethod
-    def _canonical(name: str, spell: dict[str, set[str]], known: set[str]) -> str | None:
+    def _canonical(name: str, spell: dict[str, set[str]], known: set[str], key) -> str | None:
         if not name or name in known:
             return None
-        cands = spell.get(match_key(name), set())
+        k = key(name)
+        cands = spell.get(k, set())
+        if len(cands) > 1:
+            # «فلاحی» و «شهید فلاحی» (شکل کوتاهش «فلاحی»): نامی که خودش همان صدا را دارد مقدم است
+            cands = {c for c in cands if key(c) == k} or cands
         if len(cands) != 1:
             return None  # ناشناخته یا مبهم (دو نام هم‌آوا)
         canon = next(iter(cands))
         return canon if canon != name else None
 
     def canonical_engineer(self, bare: str) -> str | None:
-        return self._canonical(bare, self.engineer_spell, self.engineer_names)
+        return self._canonical(bare, self.engineer_spell, self.engineer_names, match_key)
 
     def fix_streets(self, text: str) -> tuple[str, list[tuple[str, str]]]:
         """نام خیابان‌های پیش از هر عدد را به املای واژه‌نامه برمی‌گرداند. خروجی: (متن، [(قبلی، جدید)])."""
@@ -182,14 +200,13 @@ class Lexicon:
             if not w[0].isdigit():
                 continue
             for n in range(min(MAX_WORDS, k), 0, -1):
-                span = words[k - n:k]
-                if not all(_is_word(x) for x in span):
+                if not _phrase(words[k - n:k]):
                     continue
                 a, b = toks[k - n].start(), toks[k - 1].end()
                 phrase = text[a:b]
                 if phrase in self.street_names:
                     break
-                canon = self._canonical(phrase, self.street_spell, self.street_names)
+                canon = self._canonical(phrase, self.street_spell, self.street_names, sound_key)
                 if canon:
                     repl.append((a, b, phrase, canon))
                     break
@@ -232,15 +249,21 @@ _cache: dict = {"sig": None, "lex": None}
 _cache_lock = threading.Lock()
 
 
-def get_lexicon(db) -> Lexicon:
-    """واژگان فعلی واژه‌نامه؛ فقط وقتی واژه‌نامه تغییر کرده باشد دوباره ساخته می‌شود."""
-    sig = (str(db.path), tuple(db.one(
+def get_lexicon(db, base: bool = True) -> Lexicon:
+    """واژگان فعلی؛ فقط وقتی واژه‌نامه تغییر کرده باشد دوباره ساخته می‌شود.
+
+    base: داده پایه نشانی‌های شهر هم در کنار واژه‌نامه کاربر به کار رود.
+    """
+    from .geo import base_streets
+
+    sig = (str(db.path), base, tuple(db.one(
         "SELECT (SELECT COUNT(*) FROM aliases) a, (SELECT COALESCE(MAX(id), 0) FROM aliases) b, "
         "(SELECT COUNT(*) FROM entities) c, (SELECT COALESCE(MAX(id), 0) FROM entity_changes) d").values()))
     with _cache_lock:
         if _cache["sig"] != sig:
             rows = db.q("SELECT e.type, e.canonical, a.alias FROM entities e JOIN aliases a ON a.entity_id=e.id "
                         "WHERE e.type IN ('street', 'engineer')")
-            _cache["lex"] = Lexicon.build((r["type"], r["canonical"], r["alias"]) for r in rows)
+            _cache["lex"] = Lexicon.build(((r["type"], r["canonical"], r["alias"]) for r in rows),
+                                          base_streets() if base else ())
             _cache["sig"] = sig
         return _cache["lex"]

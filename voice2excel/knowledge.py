@@ -22,7 +22,7 @@ import openpyxl
 from .database import Database, now
 from .excel_reader import detect_header_row, header_map
 from .extractor import NAME_STOP, PROJECT_CUES, TECH_WORDS, TITLES
-from .normalizer import match_key, normalize_text, strip_title
+from .normalizer import match_key, normalize_text, sound_key, strip_title
 
 ROLES = {"engineer": "نام مهندس / شخص", "address": "آدرس", "project": "نام پروژه", "": "نادیده"}
 MAX_ROWS = 20000
@@ -65,6 +65,7 @@ def names_from_cell(value) -> list[tuple[str, str]]:
 _STREET_PREFIX = {
     "نبش", "انتهای", "ابتدای", "روبروی", "روبه‌روی", "روبه", "روی", "جنب", "بین", "حاشیه", "خیابان", "خیابون",
     "بلوار", "بولوار", "میدان", "میدون", "کوی", "شهرک", "محله", "منطقه", "کوچه", "بن‌بست", "سمت", "داخل", "پشت",
+    "بزرگراه", "اتوبان", "زیرگذر", "روگذر", "پل", "کندرو", "تقاطع", "چهارراه", "فلکه",
 }
 # اگر در میان واژه‌های پیش از عدد بیایند، نام خیابان پس از آن‌ها آغاز می‌شود
 _NOT_STREET = {
@@ -73,7 +74,7 @@ _NOT_STREET = {
     "شمالی", "جنوبی", "شرقی", "غربی", "مهندس", "آقای", "خانم", "جنب", "بعد", "قبل", "از", "به", "سر", "رو",
     "تعداد", *TECH_WORDS,
 }
-_KEYWORD_STREET = {"بلوار", "بولوار", "خیابان", "خیابون", "میدان", "میدون", "کوی", "شهرک"}
+_KEYWORD_STREET = {"بلوار", "بولوار", "خیابان", "خیابون", "میدان", "میدون", "کوی", "شهرک", "بزرگراه", "اتوبان"}
 _TOKEN = re.compile(r"\d[\d/]*|[ء-غف-يٱ-ۓ‌]+")  # بدون ویرگول عربی که در بازه حروف است
 _DIRECTION = {"شمالی", "جنوبی", "شرقی", "غربی"}
 
@@ -107,7 +108,8 @@ def streets_from_address(value) -> list[StreetName]:
     """«ساجدی 7 ، فتح 8 ، پلاک 146» ← ساجدی، فتح؛ «بلوار جانباز ، مهدی 32» ← جانباز، مهدی."""
     out: list[StreetName] = []
     text = normalize_text(str(value or "")).replace("روبه روی", "روبه‌روی")
-    for part in re.split(r"[،,؛\n]|\s[-–]\s", text):
+    # «امامت 18-بیهقی 24» و «حر 80 + نبی اکرم»: دو خیابان؛ خط تیره میان دو عدد («14-2») جداکننده نیست
+    for part in re.split(r"[،,؛\n+]|[-–](?=\s*[ء-غف-يٱ-ۓ])", text):
         tokens = _TOKEN.findall(part)
         letters: list[str] = []
         for i, tok in enumerate(tokens):
@@ -161,7 +163,8 @@ class Harvest:
     groups: dict[str, dict[str, Group]] = field(default_factory=lambda: {"engineer": {}, "street": {}, "project": {}})
 
     def add(self, etype: str, name: str, aliases=()) -> None:
-        g = self.groups[etype].setdefault(match_key(name), Group())
+        key = match_key(name) if etype == "engineer" else sound_key(name)  # «حاجی آبادی» نام خیابان است، نه «آبادی»
+        g = self.groups[etype].setdefault(key, Group())
         g.spellings[name] += 1
         g.aliases.update(a for a in aliases if a != name)
 

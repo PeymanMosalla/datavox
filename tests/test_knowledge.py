@@ -5,7 +5,7 @@ import openpyxl
 import pytest
 from fastapi.testclient import TestClient
 
-from voice2excel import dictionary, knowledge, lexicon, server
+from voice2excel import dictionary, geo, knowledge, lexicon, server
 from voice2excel.extractor import extract
 from voice2excel.lexicon import Lexicon, unify_spelling
 from voice2excel.pipeline import build_records
@@ -170,9 +170,45 @@ def test_pipeline_uses_dictionary_lexicon(db, settings):
 
 
 def test_lexicon_cache_refreshes_on_change(db):
-    assert not lexicon.get_lexicon(db)
+    assert not lexicon.get_lexicon(db, base=False)
     dictionary.add_entity(db, "امامت", "street")
-    assert "امامت" in lexicon.get_lexicon(db).street_names
+    assert "امامت" in lexicon.get_lexicon(db, base=False).street_names
+
+
+# ---------- داده پایه شهر ----------
+def test_geo_roundtrip_and_tamper():
+    blob = geo.encode({"v": 1, "s": [["سجادیه", [], 5]]})
+    assert "سجادیه".encode() not in blob  # محتوا خوانا نیست
+    assert geo.decode(blob)["s"][0][0] == "سجادیه"
+    with pytest.raises(ValueError):
+        geo.decode(blob[:-1] + bytes([blob[-1] ^ 1]))
+
+
+def test_bundled_city_data_loads():
+    streets = dict(geo.base_streets())
+    assert len(streets) > 500 and "سجادیه" in streets and "امامت" in streets
+
+
+def test_base_streets_work_with_empty_dictionary(db, settings):
+    _, _, recs = build_records(db, settings, "مهندس رجبی سجادیه 58 قطعه دوم شماره 09151234567 سازه فلز", "1405/07/28")
+    assert recs[0]["values"]["engineer_name"] == "مهندس رجبی"
+    assert recs[0]["values"]["address"] == "سجادیه 58 قطعه دوم"
+    settings.kb_base_pack = False
+    _, _, recs = build_records(db, settings, "مهندس رجبی سجادیه 58 قطعه دوم", "1405/07/28")
+    assert recs[0]["values"]["engineer_name"] == "مهندس رجبی سجادیه"
+
+
+def test_user_dictionary_overrides_base_data():
+    base = [("فلاحی", ()), ("رضایی", ())]
+    # کاربر املای دیگری دارد: املای کاربر برنده است
+    lex = Lexicon.build([("street", "فلاهی", "فلاهی")], base)
+    assert lex.fix_streets("فلاهی 34")[0] == "فلاهی 34"
+    # خیابان داده پایه نام مهندس کاربر را مبهم نمی‌کند
+    lex = Lexicon.build([("engineer", "رضایی", "رضایی")], base)
+    assert lex.is_engineer("رضایی")
+    # «رضایی 2 تا پروژه» آدرس نیست
+    assert lex.street_cuts("مهندس محمد رضایی 2 تا پروژه دارن") == []
+    assert lex.street_cuts("مهندس رجبی فلاحی 34") != []
 
 
 # ---------- API ----------
@@ -222,3 +258,12 @@ def test_knowledge_api_flow(db, settings):
         assert c.delete(f"/api/knowledge/sources/{srcs[0]['id']}").json()["removed"] == 4
         assert db.one("SELECT COUNT(*) n FROM entities")["n"] == 0
         assert c.delete(f"/api/knowledge/sources/{srcs[0]['id']}").status_code == 404
+
+
+def test_counts_and_quantities_are_not_streets():
+    lex = Lexicon.build([], [("واحدی", ()), ("سجادیه", ())])
+    # «دو واحدی 110 متری» شمارش است، نه خیابان «واحدی»
+    r = extract("سازه فلز، تعداد 6 سقف، دو واحدی 110 و 113 متری، سقف و دیوار اجرا شده", None, lexicon=lex).records[0]
+    assert not r.get("address")
+    # ولی پس از «تعداد 7»، خیابان بعدی آدرس است
+    assert lex.street_cuts("تعداد 7 سجادیه 58") != []

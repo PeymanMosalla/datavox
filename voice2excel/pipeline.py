@@ -56,7 +56,7 @@ def build_records(db: Database, settings: Settings, text: str, visit_date: str, 
 
     words: واژه‌های زمان‌دار ویس؛ برای یافتن زمان هر فیلد (پخش همان تکه) و واژه‌های کم‌اطمینان.
     """
-    lex = get_lexicon(db)
+    lex = get_lexicon(db, base=settings.kb_base_pack)
     result = extract(text, parse_jalali(visit_date), lexicon=lex)
     out = []
     for rec in result.records:

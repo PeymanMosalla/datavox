@@ -1,0 +1,36 @@
+Voice2Excel — Third-party notices
+==================================
+
+This product includes the following third-party software, models and data.
+Each remains under its own license.
+
+Speech recognition
+------------------
+- Whisper large-v3-turbo model weights — (c) OpenAI — MIT License
+- faster-whisper — (c) SYSTRAN — MIT License
+- CTranslate2 — (c) OpenNMT / SYSTRAN — MIT License
+- tokenizers — (c) Hugging Face — Apache License 2.0
+- onnxruntime — (c) Microsoft Corporation — MIT License
+- PyAV — BSD 3-Clause License; includes FFmpeg libraries licensed under
+  the GNU Lesser General Public License (LGPL) v2.1 or later.
+  FFmpeg source: https://ffmpeg.org/download.html
+
+Application
+-----------
+- Python — Python Software Foundation License
+- FastAPI, Starlette, Pydantic, Uvicorn — MIT / BSD 3-Clause Licenses
+- python-multipart — Apache License 2.0
+- openpyxl — MIT License
+- NumPy — BSD 3-Clause License
+- psutil — BSD 3-Clause License
+- jdatetime — Python Software Foundation License
+
+Font
+----
+- Vazirmatn — (c) Saber Rastikerdar — SIL Open Font License 1.1
+
+Map data
+--------
+- Contains information from OpenStreetMap, which is made available under
+  the Open Database License (ODbL) 1.0.
+  (c) OpenStreetMap contributors — https://www.openstreetmap.org/copyright

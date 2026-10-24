@@ -91,7 +91,12 @@ def strip_title(name: str) -> tuple[str, str]:
     return title, name[m.end():].strip()
 
 
+def sound_key(text: str) -> str:
+    """کلید آوایی کل متن (بدون حذف عنوان)؛ برای نام خیابان‌ها («حاجی آبادی» ≠ «عبادی»)."""
+    return normalize_chars(normalize_text(text)).translate(_PHONETIC).strip()
+
+
 def match_key(text: str) -> str:
-    """کلید مقایسه آوایی برای تشخیص املاهای محتمل یک نام."""
+    """کلید مقایسه آوایی برای تشخیص املاهای محتمل نام شخص (عنوان «مهندس/آقای» حذف می‌شود)."""
     _, bare = strip_title(text)
     return normalize_chars(bare).translate(_PHONETIC).strip()
