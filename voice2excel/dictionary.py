@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 import difflib
-import re
 from dataclasses import dataclass
 
 from .database import Database, now
@@ -168,43 +167,3 @@ def touch_by_name(db: Database, name: str, etype: str) -> None:
         touch(db, row["entity_id"])
 
 
-def _set_use_count_at_least(db: Database, etype: str, canonical: str, count: int) -> None:
-    with db.tx() as c:
-        c.execute("UPDATE entities SET use_count=MAX(use_count, ?) WHERE type=? AND canonical=?", (count, etype, canonical))
-
-
-_STREET_FROM_ADDRESS = re.compile(r"^(?:بلوار|خیابان|خیابون)?\s*([؀-ۿ‌ ]{2,25}?)\s*\d")
-
-
-def seed_from_rows(db: Database, names: list[str], addresses: list[str], source: str) -> dict[str, int]:
-    """پرکردن واژه‌نامه از ستون‌های فایل اکسل شرکت.
-
-    تعداد تکرار هر نام در فایل به‌عنوان «تعداد استفاده» ثبت می‌شود تا پرتکرارترها در اولویت
-    پیشنهاد و راهنمایی مدل گفتار باشند.
-    """
-    from collections import Counter
-
-    engineers: Counter = Counter()
-    for n in names:
-        title, bare = strip_title(str(n or ""))
-        if not title or not bare or len(bare) < 2 or re.search(r"\d", bare) or len(bare.split()) > 3:
-            continue  # فقط ردیف‌هایی که به‌روشنی نام شخص‌اند
-        engineers[bare] += 1
-    streets: Counter = Counter()
-    for a in addresses:
-        for part in re.split(r"[،,]", normalize_text(str(a or ""))):
-            m = _STREET_FROM_ADDRESS.match(part.strip())
-            if not m:
-                continue
-            street = m.group(1).strip()
-            if len(street) < 3 or street.startswith(("پلاک", "قطعه", "کوچه", "نبش")):
-                continue
-            streets[street] += 1
-    added = {"engineer": 0, "street": 0}
-    for etype, counter in (("engineer", engineers), ("street", streets)):
-        for name, count in counter.items():
-            before = db.one("SELECT id FROM entities WHERE type=? AND canonical=?", (etype, name))
-            add_entity(db, name, etype, source=source)
-            _set_use_count_at_least(db, etype, name, count)
-            added[etype] += 0 if before else 1
-    return added

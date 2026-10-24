@@ -79,6 +79,8 @@ class Settings:
     similarity_suggest: float = 0.78
     # اصلاحی که کاربر دست‌کم این تعداد بار تکرار کرده، در ویس‌های بعدی خودکار اعمال می‌شود (کمتر: فقط پیشنهاد)
     learn_auto_threshold: int = 2
+    # املای هم‌آوای نام مهندس و خیابان («فلاهی»، «کازمی») به املای واژه‌نامه برگردد (فقط اگر یک گزینه باشد)
+    kb_auto_spelling: bool = True
 
     # --- اکسل ---
     active_profile: str = "default"

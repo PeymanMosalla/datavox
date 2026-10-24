@@ -93,6 +93,16 @@ CREATE TABLE IF NOT EXISTS corrections(
     count INTEGER NOT NULL DEFAULT 1, enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT, last_at TEXT,
     UNIQUE(field_group, wrong, right)
 );
+CREATE TABLE IF NOT EXISTS knowledge_sources(
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, label TEXT, sha256 TEXT, sheet TEXT, columns_json TEXT,
+    rows INTEGER, engineers INTEGER, streets INTEGER, projects INTEGER, new_entities INTEGER, imported_at TEXT
+);
+CREATE TABLE IF NOT EXISTS entity_sources(
+    entity_id INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    source_id INTEGER NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+    count INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(entity_id, source_id)
+);
 """
 
 

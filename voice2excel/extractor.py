@@ -20,7 +20,7 @@ from .numbers_fa import NumberRun, convert_number_words
 from .schema import ExtractedRecord, ExtractionResult, FieldValue, PhoneInfo, Segment
 
 # با هر تغییر در قواعد استخراج افزایش می‌یابد؛ برنامه پس از به‌روزرسانی، رکوردهای دست‌نخورده را دوباره استخراج می‌کند
-EXTRACTOR_VERSION = "3"
+EXTRACTOR_VERSION = "4"
 
 W = r"[\w‌]"  # نویسه‌ی واژه (شامل نیم‌فاصله)
 B_START = rf"(?<!{W})"
@@ -173,6 +173,15 @@ def _starts_like_street(text: str) -> bool:
     return re.match(r"^[؀-ۿ‌ ]{2,30}\s\d{1,4}(?:[\s،,.]|$)", text) is not None
 
 
+_GREETING = {"سلام", "الو", "درود", "خب", "خوب", "ببخشید", "عرض", "کنم", "بله", "آره", "وقت", "بخیر", "و"}
+_GREETING_RE = re.compile(rf"^(?:(?:{_alt(_GREETING)})[\s،,.:]*)+(?=\S)")
+
+
+def _strip_greeting(text: str) -> str:
+    """«سلام، کاظمی» ← «کاظمی»: واژه‌های احوال‌پرسی آغاز بند جزو نام نیستند."""
+    return _GREETING_RE.sub("", text)
+
+
 def _looks_like_bare_name(text: str) -> bool:
     """«رجبی» یا «علی میرزایی» بدون عنوان: ۱ تا ۳ واژه، بدون عدد، بدون واژه کلیدی."""
     words = [w.strip("،,.:") for w in text.split() if w.strip("،,.:")]
@@ -182,9 +191,9 @@ def _looks_like_bare_name(text: str) -> bool:
                    for w in words)
 
 
-def classify(clauses: list[Clause]) -> None:
-    """دسته‌بندی بندها. اولویت با واژه‌های کلیدی است؛ اگر نبودند، ترتیب قالب ضبط
-    (نام ← شماره ← آدرس ← مشخصات فنی) و الگوی متن تصمیم می‌گیرد."""
+def classify(clauses: list[Clause], lexicon=None) -> None:
+    """دسته‌بندی بندها. اولویت با واژه‌های کلیدی است؛ سپس خیابان‌ها و نام‌های شناخته‌شده واژه‌نامه
+    (lexicon، در هر جای ویس)؛ اگر نبودند، ترتیب قالب ضبط (نام ← شماره ← آدرس ← مشخصات فنی) و الگوی متن."""
     prev = None
     for idx, c in enumerate(clauses):
         t = c.text
@@ -204,7 +213,11 @@ def classify(clauses: list[Clause]) -> None:
             cat = "project"
         elif _digit_count(t) >= 7 and len(re.sub(r"[\d\s\-+،,]", "", t)) <= 3:
             cat = "phone"
-        elif prev in (None, "note") and idx <= 1 and _looks_like_bare_name(t) and _is_phone_like(nxt):
+        elif lexicon and lexicon.starts_with_street(t):
+            cat = "address"  # خیابان شناخته‌شده + عدد یا پلاک: «سجادیه 58» پس از مشخصات فنی هم آدرس است
+        elif lexicon and _looks_like_bare_name(_strip_greeting(t)) and lexicon.is_engineer(_strip_greeting(t)):
+            cat = "name"  # نام شناخته‌شده بدون «مهندس»
+        elif prev in (None, "note") and idx <= 1 and _looks_like_bare_name(_strip_greeting(t)) and _is_phone_like(nxt):
             cat = "name"  # «رجبی، صفر نهصد…»: نام بدون «مهندس» درست پیش از شماره
         elif prev in ("name", "phone", "phone_cue") and _starts_like_street(t):
             cat = "address"  # آدرس بدون واژه «آدرس»، پس از نام یا شماره (حتی اگر مشخصات فنی هم پشتش آمده باشد)
@@ -303,7 +316,7 @@ def extract_name(clauses: list[Clause]) -> tuple[str, str, Clause, list[str]] | 
                     continue
                 title, rest = tm.group(1), t[tm.end():]
             elif c.category == "name":
-                rest = t  # نام بدون عنوان که از روی جایگاهش (درست پیش از شماره) تشخیص داده شد
+                rest = _strip_greeting(t)  # نام بدون عنوان که از جایگاهش یا از واژه‌نامه تشخیص داده شد
             else:
                 continue
         tokens = _name_tokens(rest)
@@ -528,15 +541,21 @@ class _Ctx:
     base_date: jdatetime.date | None
 
 
-def extract(raw_or_normalized: str, base_date: jdatetime.date | None = None) -> ExtractionResult:
-    """استخراج همه رکوردهای یک ویس از متن آن."""
+def extract(raw_or_normalized: str, base_date: jdatetime.date | None = None, lexicon=None) -> ExtractionResult:
+    """استخراج همه رکوردهای یک ویس از متن آن.
+
+    lexicon: خیابان‌ها و نام‌های شناخته‌شده (lexicon.Lexicon)؛ بدون آن فقط قواعد عمومی به کار می‌روند.
+    """
     normalized = fix_asr_text(normalize_text(raw_or_normalized))
     text, runs = convert_number_words(normalized)
     all_phones = phone_mod.phones_from_runs(text, runs)
     # شماره تلفن، بند مستقل است؛ مرزهایش حتی بدون واژه «شماره» یا «آدرس» نام و آدرس را جدا می‌کنند
     cuts = [x for p in all_phones if len(p.normalized) >= 10 for x in (p.start, p.end)]
+    if lexicon:
+        # «مهندس رجبی سجادیه 58»: آدرس از خیابان شناخته‌شده آغاز می‌شود
+        cuts += lexicon.street_cuts(text, [(p.start, p.end) for p in all_phones])
     clauses = split_clauses(text, cuts)
-    classify(clauses)
+    classify(clauses, lexicon)
     nblocks = assign_blocks(clauses) if clauses else 1
 
     records: list[ExtractedRecord] = []

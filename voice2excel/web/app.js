@@ -333,7 +333,7 @@ function onboardingCard(s) {
   const guideSeen = localStorage.getItem("v2x.guide.opened") === "1";
   const steps = [
     { done: st.excel_ready, title: "فایل اکسل شرکت", text: st.excel_ready ? `متصل: ${esc(st.excel_name)}` : "فایل اکسل را انتخاب و نگاشت ستون‌ها را ذخیره کنید.", btn: `<a class="btn sm" href="#/excel">ثبت در اکسل</a>` },
-    { done: st.dictionary > 0, title: "واژه‌نامه", text: st.dictionary > 0 ? `${fa(st.dictionary)} نام و خیابان؛ برای پیشنهاد املای درست.` : "با ذخیره نگاشت اکسل، خودکار از همان فایل پر می‌شود.", btn: `<a class="btn sm" href="#/dictionary">واژه‌نامه</a>` },
+    { done: st.dictionary > 0, title: "واژه‌نامه", text: st.dictionary > 0 ? `${fa(st.dictionary)} نام و خیابان؛ برای تشخیص نام و آدرس و املای درست. فایل‌های اکسل قدیمی بیشتر = تشخیص بهتر.` : "با ذخیره نگاشت اکسل خودکار پر می‌شود؛ فایل‌های اکسل قدیمی را هم می‌توانید یاد بدهید.", btn: `<a class="btn sm" href="#/dictionary?kb">آموزش از اکسل</a>` },
     { done: guideSeen, title: "راهنمای ضبط ویس", text: "یک صفحه قابل چاپ برای بازاریاب‌ها تا ویس‌ها دقیق‌تر خوانده شوند.", btn: `<a class="btn sm" href="/static/recording-guide.html" target="_blank" id="ob-guide">مشاهده و چاپ</a>` },
     { done: s.files.total > 0, title: "اولین ویس", text: "ویس‌ها را اضافه کنید؛ پردازش خودکار شروع می‌شود.", btn: `<a class="btn sm" href="#/voices">افزودن ویس</a>${state.meta?.samples?.voices && !s.files.total ? ` <button class="btn sm ghost" id="ob-samples">ویس نمونه</button>` : ""}` },
   ];
@@ -1469,23 +1469,28 @@ async function renderExcel(el) {
 
 // ================= واژه‌نامه =================
 async function renderDictionary(el) {
-  let type = "engineer";
+  let type = location.hash.includes("?kb") ? "__kb" : "engineer";
+  const kb = { pending: [], roles: {} };  // فایل‌های بارگذاری‌شده‌ای که هنوز یاد گرفته نشده‌اند
   el.innerHTML = `<div class="card"><div class="card-h"><div class="tabs" id="dc-tabs"></div>
       <div class="row"><input class="input" id="dc-q" placeholder="جست‌وجو..." style="width:200px">
       <button class="btn" id="dc-seed">${I.table} پرکردن از اکسل شرکت</button><button class="btn primary" id="dc-add">${I.plus} نام جدید</button></div></div>
-    <div class="card-b" style="padding:12px 20px; border-bottom:1px solid var(--border)"><div class="muted small">نام‌های این فهرست به‌عنوان «املای تأییدشده» شناخته می‌شوند. نام‌های مشابه هرگز خودکار ادغام نمی‌شوند؛ فقط به‌عنوان پیشنهاد در بازبینی نمایش داده می‌شوند. تغییر املا با ثبت سابقه انجام می‌شود و املای قبلی به‌عنوان «شکل دیگر» حفظ می‌شود.</div></div>
+    <div class="card-b" id="dc-note" style="padding:12px 20px; border-bottom:1px solid var(--border)"><div class="muted small">نام‌های این فهرست به‌عنوان «املای تأییدشده» شناخته می‌شوند. نام‌های مشابه هرگز خودکار ادغام نمی‌شوند؛ فقط به‌عنوان پیشنهاد در بازبینی نمایش داده می‌شوند. تغییر املا با ثبت سابقه انجام می‌شود و املای قبلی به‌عنوان «شکل دیگر» حفظ می‌شود.</div></div>
     <div class="table-wrap" id="dc-table"></div></div>`;
   const load = async () => {
     const q = $("#dc-q").value.trim();
-    const isCorr = type === "__corrections";
-    const d = await api(`/api/dictionary?type=${isCorr ? "engineer" : type}&q=${encodeURIComponent(q)}`);
-    const corr = await api("/api/corrections");
+    const isCorr = type === "__corrections", isKb = type === "__kb";
+    const [d, corr, ks] = await Promise.all([
+      api(`/api/dictionary?type=${isCorr || isKb ? "engineer" : type}&q=${encodeURIComponent(q)}`),
+      api("/api/corrections"), api("/api/knowledge/sources")]);
     const types = state.meta.entity_types;
     $("#dc-tabs").innerHTML = Object.entries(types).map(([k, l]) => `<button class="${k === type ? "active" : ""}" data-t="${k}">${esc(l)}<span class="count">${fa(d.counts[k] || 0)}</span></button>`).join("")
-      + `<button class="${isCorr ? "active" : ""}" data-t="__corrections">اصلاحات یادگرفته‌شده<span class="count">${fa(corr.corrections.length)}</span></button>`;
+      + `<button class="${isCorr ? "active" : ""}" data-t="__corrections">اصلاحات یادگرفته‌شده<span class="count">${fa(corr.corrections.length)}</span></button>`
+      + `<button class="${isKb ? "active" : ""}" data-t="__kb">آموزش از اکسل<span class="count">${fa(ks.sources.length)}</span></button>`;
     $$("[data-t]").forEach((b) => b.onclick = () => { type = b.dataset.t; load(); });
     const box = $("#dc-table");
+    $("#dc-note").hidden = isCorr || isKb;
     if (isCorr) return drawCorrections(box, corr, q, load);
+    if (isKb) return drawKnowledge(box, kb, ks.sources, load);
     if (!d.entities.length) { box.innerHTML = `<div class="empty">${I.book}<div>موردی ثبت نشده است.</div></div>`; return; }
     box.innerHTML = `<table class="table"><thead><tr><th>نام استاندارد</th><th>شکل‌های دیگر</th><th>منبع</th><th>آخرین تأیید</th><th>دفعات استفاده</th><th></th></tr></thead><tbody>
       ${d.entities.map((e) => `<tr><td><b>${esc(e.canonical)}</b></td><td class="small">${esc(e.aliases || "")}</td><td class="small muted">${esc(e.source || "")}</td>
@@ -1537,6 +1542,101 @@ async function renderDictionary(el) {
     } catch (e) { toastErr(e); }
   };
   await load();
+}
+
+/** آموزش از فایل اکسل: بارگذاری، تعیین نقش ستون‌ها، پیش‌نمایش آنچه یاد گرفته می‌شود و فهرست منابع یادگرفته‌شده. */
+function drawKnowledge(box, kb, sources, reload) {
+  const LBL = { engineer: "نام مهندس", street: "خیابان", project: "پروژه" };
+  const choiceOf = (f) => ({ token: f.token, name: f.name, sheet: f.choice.sheet, header_row: f.choice.header_row, columns: f.choice.columns });
+  const stats = (p) => !p || p.rows === undefined ? "" : `<div class="kb-stats">
+      <div><b>${fa(p.rows)}</b><span>ردیف داده</span></div>
+      ${["engineer", "street", "project"].map((k) => p[k] && p[k].total ? `<div><b>${fa(p[k].new)}</b><span>${LBL[k]} تازه از ${fa(p[k].total)}</span></div>` : "").join("")}
+      ${(p.engineer?.variants || 0) + (p.street?.variants || 0) ? `<div><b>${fa((p.engineer?.variants || 0) + (p.street?.variants || 0))}</b><span>نام با چند املا (یکی می‌شوند)</span></div>` : ""}</div>
+    ${["engineer", "street"].map((k) => p[k] && p[k].new_samples.length ? `<div class="kb-samples"><span class="small muted">${LBL[k]}‌های تازه:</span> ${p[k].new_samples.map((n) => `<span class="chip plain">${esc(n)}</span>`).join(" ")}${p[k].new > p[k].new_samples.length ? ` <span class="small muted">و ${fa(p[k].new - p[k].new_samples.length)} مورد دیگر</span>` : ""}</div>` : "").join("")}`;
+  const card = (f, i) => {
+    if (f.error) return `<div class="kb-file bad"><div class="row" style="justify-content:space-between"><b>${esc(f.name)}</b><button class="btn sm ghost" data-kbdrop="${i}">${I.x}</button></div><div class="small">${esc(f.error)}</div></div>`;
+    const sh = f.sheets.find((s) => s.name === f.choice.sheet) || { headers: {} };
+    const roles = Object.entries(kb.roles);
+    return `<div class="kb-file" data-kbi="${i}">
+      <div class="row" style="justify-content:space-between"><div><b>${esc(f.name)}</b>
+        ${f.sheets.length > 1 ? `<select class="select sm" data-kbsheet="${i}">${f.sheets.map((s) => `<option ${s.name === f.choice.sheet ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>` : `<span class="muted small"> — شیت ${esc(f.choice.sheet)}</span>`}</div>
+        <button class="btn sm ghost" data-kbdrop="${i}" title="کنار گذاشتن">${I.trash}</button></div>
+      ${f.already ? `<div class="small" style="color:var(--warn)">این فایل قبلاً (${fa((f.already.imported_at || "").replace("T", " "))}) یاد گرفته شده است.</div>` : ""}
+      <div class="kb-cols">${Object.entries(sh.headers).map(([c, h]) => `<label class="field"><span class="small">${esc(c)} — ${esc(h.replace(/\s+/g, " "))}</span>
+        <select class="select sm" data-kbcol="${i}" data-col="${c}">${roles.map(([k, l]) => `<option value="${k}" ${(f.choice.columns[c] || "") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`).join("")}</div>
+      ${stats(f.preview)}
+      <div class="row"><button class="btn primary" data-kblearn="${i}" ${f.already || !Object.keys(f.choice.columns).length ? "disabled" : ""}>${I.check} یادگیری از این فایل</button></div>
+    </div>`;
+  };
+  box.innerHTML = `<div class="card-b stack">
+      <div class="muted small">فایل‌های اکسل قدیمی بازدیدها (با هر ساختاری) را بدهید تا برنامه نام مهندس‌ها و خیابان‌ها را یاد بگیرد. با آن، آدرس و نام در هر جای ویس و حتی بدون گفتن «آدرس» یا «مهندس» تشخیص داده می‌شوند و املای هم‌آوا («کازمی»، «فلاهی») به املای درست برمی‌گردد. فایل‌ها فقط خوانده می‌شوند و هر فایل را می‌توانید بعداً حذف کنید.</div>
+      <div class="row"><input type="file" id="kb-file" accept=".xlsx,.xlsm" multiple hidden>
+        <button class="btn primary" id="kb-pick">${I.upload} انتخاب فایل اکسل</button><span class="small muted">چند فایل را می‌توانید با هم انتخاب کنید.</span></div>
+      ${kb.pending.map(card).join("")}
+    </div>
+    ${sources.length ? `<table class="table"><thead><tr><th>فایل یادگرفته‌شده</th><th>زمان</th><th>ردیف</th><th>نام مهندس</th><th>خیابان</th><th>تازه</th><th></th></tr></thead><tbody>
+      ${sources.map((s) => `<tr><td><b>${esc(s.name)}</b> <span class="small muted">${esc(s.sheet || "")}</span></td><td class="small muted">${fa((s.imported_at || "").replace("T", " "))}</td>
+        <td>${fa(s.rows || 0)}</td><td>${fa(s.engineers || 0)}</td><td>${fa(s.streets || 0)}</td><td>${fa(s.new_entities || 0)}</td>
+        <td class="actions"><button class="btn sm ghost" data-kbdel="${s.id}" data-name="${esc(s.name)}" title="حذف آموخته‌های این فایل">${I.trash}</button></td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">${I.table}<div>هنوز فایلی یاد گرفته نشده است.</div></div>`}`;
+
+  const redraw = () => drawKnowledge(box, kb, sources, reload);
+  const refreshPreview = async (f) => {
+    if (!Object.keys(f.choice.columns).length) { f.preview = null; return redraw(); }
+    try { f.preview = (await api("/api/knowledge/preview", { method: "POST", body: choiceOf(f) })).preview; } catch (e) { toastErr(e); }
+    redraw();
+  };
+  $("#kb-pick").onclick = () => $("#kb-file").click();
+  $("#kb-file").onchange = async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f, f.name));
+    $("#kb-pick").disabled = true;
+    try {
+      const r = await api("/api/knowledge/analyze", { method: "POST", form: fd });
+      kb.roles = r.roles;
+      for (const f of r.files) {
+        if (f.sha256 && kb.pending.some((p) => p.sha256 === f.sha256)) continue;  // همان فایل دوباره انتخاب شده
+        if (!f.error) {
+          const sh = f.sheets.find((s) => s.name === f.sheet) || f.sheets[0];
+          f.choice = { sheet: sh.name, header_row: sh.header_row, columns: { ...sh.roles } };
+        }
+        kb.pending.push(f);
+      }
+    } catch (er) { toastErr(er); }
+    e.target.value = "";
+    redraw();
+  };
+  $$("[data-kbdrop]", box).forEach((b) => b.onclick = () => { kb.pending.splice(+b.dataset.kbdrop, 1); redraw(); });
+  $$("[data-kbsheet]", box).forEach((s) => s.onchange = () => {
+    const f = kb.pending[+s.dataset.kbsheet], sh = f.sheets.find((x) => x.name === s.value);
+    f.choice = { sheet: sh.name, header_row: sh.header_row, columns: { ...sh.roles } };
+    refreshPreview(f);
+  });
+  $$("[data-kbcol]", box).forEach((s) => s.onchange = () => {
+    const f = kb.pending[+s.dataset.kbcol];
+    // هر نقش فقط یک ستون: نقش انتخاب‌شده از ستون دیگر برداشته می‌شود
+    for (const [c, r] of Object.entries(f.choice.columns)) if (r === s.value) delete f.choice.columns[c];
+    if (s.value) f.choice.columns[s.dataset.col] = s.value; else delete f.choice.columns[s.dataset.col];
+    refreshPreview(f);
+  });
+  $$("[data-kblearn]", box).forEach((b) => b.onclick = async () => {
+    const i = +b.dataset.kblearn, f = kb.pending[i];
+    b.disabled = true;
+    try {
+      const r = await api("/api/knowledge/import", { method: "POST", body: choiceOf(f) });
+      kb.pending = kb.pending.filter((p, k) => k !== i && p.sha256 !== f.sha256);
+      toast(`از «${f.name}» ${fa(r.added.engineer)} نام مهندس و ${fa(r.added.street)} خیابان تازه یاد گرفته شد`
+        + (r.reextracted ? `؛ ${fa(r.reextracted)} ویس با واژه‌نامه تازه دوباره استخراج شد.` : "."), "ok");
+      refreshStatus();
+      reload();
+    } catch (e) { b.disabled = false; toastErr(e); }
+  });
+  $$("[data-kbdel]", box).forEach((b) => b.onclick = async () => {
+    if (!(await confirmBox("حذف آموخته‌های فایل", `نام‌ها و خیابان‌هایی که فقط از «${esc(b.dataset.name)}» آمده‌اند و هیچ رکوردی تأییدشان نکرده، از واژه‌نامه حذف می‌شوند. فایل اکسل و رکوردهای ثبت‌شده تغییر نمی‌کنند.`, "حذف", "danger"))) return;
+    try { const r = await api(`/api/knowledge/sources/${b.dataset.kbdel}`, { method: "DELETE" }); toast(`${fa(r.removed)} نام از واژه‌نامه حذف شد.`, "ok"); refreshStatus(); reload(); } catch (e) { toastErr(e); }
+  });
 }
 
 /** فهرست اصلاحاتی که برنامه از ویرایش‌های کاربر یاد گرفته؛ با امکان غیرفعال‌کردن و حذف. */
@@ -1603,6 +1703,7 @@ async function renderSettings(el) {
             <div class="row">${[["engineer_name", "نام مهندس"], ["phone", "شماره تماس"], ["address", "آدرس"], ["project_name", "نام پروژه"]].map(([k, l]) => `<label class="check"><input type="checkbox" data-req="${k}" ${s.required_fields.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>
             <span class="hint">رکوردی که همه فیلدهای الزامی‌اش معتبر باشد، خودکار «آماده ثبت» می‌شود؛ بقیه به بازبینی می‌روند.</span></div>
           <label class="check"><input type="checkbox" id="s-revphone" ${s.review_spoken_phones ? "checked" : ""}> هر شماره تلفن با شنیدن ویس تأیید شود (پیشنهادی تا سنجش دقت روی ویس‌های واقعی)</label>
+          <label class="check"><input type="checkbox" id="s-kbspell" ${s.kb_auto_spelling ? "checked" : ""}> املای هم‌آوای نام و خیابان مطابق واژه‌نامه یکسان شود (مثلاً «کازمی» ← «کاظمی»؛ فقط وقتی یک گزینه باشد)</label>
           <div class="grid grid-2" style="gap:12px">
             <div class="field"><label>پیش‌شماره شهر برای تلفن ثابت</label><input class="input ltr" id="s-area" value="${esc(s.default_area_code)}" placeholder="مثلاً 051" style="text-align:right"><span class="hint">فقط به‌عنوان پیشنهاد نمایش داده می‌شود.</span></div>
             <div class="field"><label>کمینه شباهت برای پیشنهاد املا</label><input class="input" type="number" step="0.01" min="0.5" max="0.99" id="s-sim" value="${s.similarity_suggest}"></div>
@@ -1655,6 +1756,7 @@ async function renderSettings(el) {
         learn_auto_threshold: Math.max(1, +$("#s-learn").value || 2),
         model_idle_minutes: Math.max(0, +$("#s-idle").value || 0),
         review_spoken_phones: $("#s-revphone").checked,
+        kb_auto_spelling: $("#s-kbspell").checked,
         required_fields: $$("[data-req]").filter((c) => c.checked).map((c) => c.dataset.req),
       };
       if (!body.required_fields.length) return toast("دست‌کم یک فیلد باید الزامی باشد.", "err");

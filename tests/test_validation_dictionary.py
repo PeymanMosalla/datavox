@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from voice2excel import dictionary
+from voice2excel import dictionary, knowledge
 from voice2excel.deduplicator import file_sha256, find_similar
 from voice2excel.pipeline import build_records
 from voice2excel.validator import validate
@@ -130,8 +130,8 @@ def test_spoken_phone_reviewed_until_calibrated(db, settings):
 def test_seed_counts_usage_and_hotwords_prefer_frequent(db):
     names = ["مهندس رجبی", "مهندس رجبی", "مهندس رجبی", "مهندس عبدی", "آقای نصیری", "شماره نگهبان"]
     addrs = ["سجادیه 58 ، قطعه دوم", "سجادیه 61", "امامت 60 ، پلاک 8"]
-    added = dictionary.seed_from_rows(db, names, addrs, "اکسل")
-    assert added == {"engineer": 3, "street": 2}
+    added = knowledge.import_harvest(db, knowledge.harvest(names, addrs), "اکسل")["added"]
+    assert added == {"engineer": 3, "street": 2, "project": 0}
     hw = dictionary.hotwords(db, limit=2)
     assert hw.split("، ") == ["رجبی", "سجادیه"]  # پرتکرارترین مهندس و خیابان
     dictionary.touch_by_name(db, "مهندس عبدی", "engineer")

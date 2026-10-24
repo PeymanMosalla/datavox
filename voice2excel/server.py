@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import shutil
 import string
 import threading
@@ -20,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, backup, dictionary, excel_mapping, lan, learning, pipeline, updater
+from . import __version__, backup, dictionary, excel_mapping, knowledge, lan, learning, pipeline, updater
 from .audio_processor import is_supported
 from .config import (AVAILABLE_MODELS, DATA_DIR, MODELS_DIR, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS, WEB_DIR,
                      ensure_dirs, load_settings, save_settings)
@@ -839,23 +840,154 @@ def corrections_delete(cid: int):
     return {"ok": True}
 
 
-@app.post("/api/dictionary/seed-from-excel")
-def dict_seed():
-    prof = excel_mapping.load_profile(load_settings().active_profile)
-    if not prof:
-        err(400, "ابتدا در بخش «خروجی اکسل» فایل شرکت و نگاشت ستون‌ها را مشخص کنید.")
-    cols = {c: f for c, f in prof["columns"].items() if f in ("engineer_name", "address")}
-    if not cols:
-        err(400, "ستون نام یا آدرس در نگاشت مشخص نشده است.")
-    rows = read_rows(Path(prof["excel_path"]), prof["sheet"], prof["header_row"], cols)
-    added = dictionary.seed_from_rows(db(), [r.get("engineer_name", "") for r in rows],
-                                      [r.get("address", "") for r in rows], source=f"اکسل: {Path(prof['excel_path']).name}")
-    # رکوردهای منتظر بازبینی دوباره سنجیده می‌شوند تا پیشنهاد املایی نام‌ها و خیابان‌ها را بگیرند
+def _after_knowledge_change() -> dict:
+    """پس از تغییر واژه‌نامه از فایل اکسل: ویس‌ها با واژگان تازه دوباره استخراج (اگر صف در جریان نباشد)
+    و رکوردهای منتظر بازبینی دوباره سنجیده می‌شوند. رکوردهای اصلاح یا تأییدشده دستی دست نمی‌خورند."""
+    res = {"reextracted": 0, "protected": 0}
+    if not worker().running:
+        res = pipeline.reextract_all(db(), load_settings())
     pending = [r["id"] for r in db().q("SELECT id FROM records WHERE review_state='pending' AND exported_at IS NULL")]
     for rid in pending:
         pipeline.revalidate(db(), load_settings(), rid)
-    total = db().one("SELECT COUNT(*) n FROM entities")["n"]
-    return {"added": added, "rows": len(rows), "revalidated": len(pending), "total": total}
+    return {**res, "revalidated": len(pending), "total": db().one("SELECT COUNT(*) n FROM entities")["n"]}
+
+
+_PROFILE_ROLES = {"engineer_name": "engineer", "address": "address", "project_name": "project"}
+
+
+@app.post("/api/dictionary/seed-from-excel")
+def dict_seed():
+    """یادگیری از فایل اکسل شرکتِ نگاشت‌شده (همان «آموزش از اکسل» با ستون‌های نگاشت)."""
+    prof = excel_mapping.load_profile(load_settings().active_profile)
+    if not prof:
+        err(400, "ابتدا در بخش «خروجی اکسل» فایل شرکت و نگاشت ستون‌ها را مشخص کنید.")
+    roles = {c: _PROFILE_ROLES[f] for c, f in prof["columns"].items() if f in _PROFILE_ROLES}
+    if not roles:
+        err(400, "ستون نام یا آدرس در نگاشت مشخص نشده است.")
+    p = Path(prof["excel_path"])
+    if not p.exists():
+        err(404, "فایل اکسل شرکت پیدا نشد.")
+    sha = file_sha256(p)
+    zero = {"engineer": 0, "street": 0, "project": 0}
+    src = knowledge.find_source_by_sha(db(), sha)
+    if src:
+        return {"added": zero, "rows": src["rows"], "already": True, "revalidated": 0,
+                "total": db().one("SELECT COUNT(*) n FROM entities")["n"]}
+    h = knowledge.harvest_file(p, prof["sheet"], prof["header_row"], roles)
+    res = knowledge.import_harvest(db(), h, p.name, sha, prof["sheet"], roles)
+    return {**_after_knowledge_change(), "added": res["added"], "rows": h.rows, "already": False}
+
+
+# ---------- آموزش از فایل اکسل ----------
+KB_DIR = DATA_DIR / "tmp" / "knowledge"
+KB_MAX_BYTES = 50 * 1024 * 1024
+_KB_TOKEN = re.compile(r"^[0-9a-f]{32}\.xls[xm]$")
+
+
+def _kb_path(token: str) -> Path:
+    if not _KB_TOKEN.match(token or ""):
+        err(400, "شناسه فایل نامعتبر است.")
+    p = KB_DIR / token
+    if not p.exists():
+        err(404, "فایل بارگذاری‌شده پیدا نشد؛ دوباره انتخابش کنید.")
+    return p
+
+
+def _kb_roles(columns: dict[str, str]) -> dict[str, str]:
+    roles = {c: r for c, r in (columns or {}).items() if r in knowledge.ROLES and r}
+    if len(set(roles.values())) != len(roles):
+        err(400, "هر نقش (نام، آدرس، پروژه) فقط به یک ستون داده می‌شود.")
+    if not roles:
+        err(400, "دست‌کم ستون نام یا آدرس را مشخص کنید.")
+    return roles
+
+
+def _kb_preview(p: Path, sheet: str, header_row: int, roles: dict[str, str]) -> dict:
+    return knowledge.preview(db(), knowledge.harvest_file(p, sheet, header_row, roles)) if roles else {}
+
+
+@app.post("/api/knowledge/analyze")
+async def knowledge_analyze(files: list[UploadFile] = File(...)):
+    """بارگذاری فایل‌های اکسل و پیشنهاد نقش ستون‌ها با پیش‌نمایش آنچه یاد گرفته می‌شود (هنوز چیزی ثبت نمی‌شود)."""
+    KB_DIR.mkdir(parents=True, exist_ok=True)
+    for old in KB_DIR.iterdir():
+        if time.time() - old.stat().st_mtime > 86400:
+            old.unlink(missing_ok=True)
+    out = []
+    for f in files:
+        name = Path(f.filename or "file.xlsx").name
+        ext = Path(name).suffix.lower()
+        if ext not in (".xlsx", ".xlsm"):
+            out.append({"name": name, "error": "فقط فایل XLSX یا XLSM (فایل XLS قدیمی را در Excel با قالب XLSX ذخیره کنید)."})
+            continue
+        token = f"{uuid.uuid4().hex}{ext}"
+        path = KB_DIR / token
+        size = 0
+        with open(path, "wb") as fh:
+            while chunk := await f.read(1 << 20):
+                size += len(chunk)
+                if size > KB_MAX_BYTES:
+                    break
+                fh.write(chunk)
+        if size > KB_MAX_BYTES:
+            path.unlink(missing_ok=True)
+            out.append({"name": name, "error": "حجم فایل بیش از ۵۰ مگابایت است."})
+            continue
+        try:
+            info = knowledge.analyze_workbook(path)
+        except Exception:
+            log.exception("knowledge analyze failed")
+            path.unlink(missing_ok=True)
+            out.append({"name": name, "error": "فایل اکسل باز نشد (خراب یا رمزدار است)."})
+            continue
+        sha = file_sha256(path)
+        item = {"name": name, "token": token, "sha256": sha, "already": knowledge.find_source_by_sha(db(), sha), **info}
+        main = next((s for s in info["sheets"] if s["name"] == info["sheet"]), None)
+        item["preview"] = _kb_preview(path, main["name"], main["header_row"], main["roles"]) if main else {}
+        out.append(item)
+    return {"files": out, "roles": knowledge.ROLES}
+
+
+class KbChoice(BaseModel):
+    token: str
+    sheet: str
+    header_row: int
+    columns: dict[str, str]
+    name: str = ""
+
+
+@app.post("/api/knowledge/preview")
+def knowledge_preview(body: KbChoice):
+    p = _kb_path(body.token)
+    return {"preview": _kb_preview(p, body.sheet, body.header_row, _kb_roles(body.columns))}
+
+
+@app.post("/api/knowledge/import")
+def knowledge_import(body: KbChoice):
+    p = _kb_path(body.token)
+    roles = _kb_roles(body.columns)
+    sha = file_sha256(p)
+    if knowledge.find_source_by_sha(db(), sha):
+        err(409, "این فایل قبلاً یاد گرفته شده است.")
+    h = knowledge.harvest_file(p, body.sheet, body.header_row, roles)
+    res = knowledge.import_harvest(db(), h, Path(body.name or body.token).name, sha, body.sheet, roles)
+    p.unlink(missing_ok=True)
+    db().log_event(f"آموزش از اکسل «{body.name}»: {sum(res['added'].values())} نام و خیابان تازه از {h.rows} ردیف.")
+    return {**_after_knowledge_change(), **res, "rows": h.rows}
+
+
+@app.get("/api/knowledge/sources")
+def knowledge_sources():
+    return {"sources": knowledge.list_sources(db())}
+
+
+@app.delete("/api/knowledge/sources/{sid}")
+def knowledge_remove(sid: int):
+    try:
+        res = knowledge.remove_source(db(), sid)
+    except KeyError:
+        err(404, "این منبع پیدا نشد.")
+    return {**_after_knowledge_change(), **res}
 
 
 # ---------- اکسل ----------
@@ -1198,7 +1330,7 @@ def get_settings():
 @app.put("/api/settings")
 def put_settings(updates: dict):
     allowed = {"model_name", "compute_type", "cpu_threads", "beam_size", "vad_filter", "initial_prompt",
-               "use_dictionary_hotwords", "hotwords_limit", "review_spoken_phones", "learn_auto_threshold", "model_idle_minutes", "required_fields", "default_area_code", "default_city",
+               "use_dictionary_hotwords", "hotwords_limit", "review_spoken_phones", "learn_auto_threshold", "kb_auto_spelling","model_idle_minutes", "required_fields", "default_area_code", "default_city",
                "similarity_suggest", "min_duration_sec", "open_browser"}
     clean = {k: v for k, v in updates.items() if k in allowed}
     if "model_name" in clean and clean["model_name"] not in AVAILABLE_MODELS:

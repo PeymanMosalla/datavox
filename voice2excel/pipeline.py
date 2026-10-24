@@ -7,6 +7,7 @@ from .dates_fa import parse_jalali
 from .deduplicator import db_candidates, find_similar
 from .extractor import extract
 from .learning import apply_learned
+from .lexicon import get_lexicon, unify_spelling
 from .normalizer import normalize_text
 from .schema import ExtractedRecord
 from .timing import field_times
@@ -55,12 +56,15 @@ def build_records(db: Database, settings: Settings, text: str, visit_date: str, 
 
     words: واژه‌های زمان‌دار ویس؛ برای یافتن زمان هر فیلد (پخش همان تکه) و واژه‌های کم‌اطمینان.
     """
-    result = extract(text, parse_jalali(visit_date))
+    lex = get_lexicon(db)
+    result = extract(text, parse_jalali(visit_date), lexicon=lex)
     out = []
     for rec in result.records:
         values = {k: fv.value for k, fv in rec.fields.items() if fv.value}
         values["visit_date"] = visit_date
         values = apply_learned(db, settings, values, rec)
+        if lex and settings.kb_auto_spelling:
+            values = unify_spelling(values, lex, rec)
         meta = record_meta(rec)
         if words:
             spans = {k: fv.span for k, fv in rec.fields.items() if fv.span and fv.value}
