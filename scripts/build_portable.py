@@ -245,7 +245,7 @@ def main() -> int:
     icon.parent.mkdir(parents=True, exist_ok=True)
     make_icon(icon)
     build_launcher(out / "Voice2Excel.exe", icon)
-    shutil.copy2(PKG / "Guide.html", out / "Guide.html")
+    shutil.copy2(ROOT / "voice2excel" / "web" / "guide.html", out / "Guide.html")
     shutil.copy2(PKG / "THIRD-PARTY-NOTICES.txt", out / "THIRD-PARTY-NOTICES.txt")
     shutil.copy2(ROOT / "voice2excel" / "web" / "recording-guide.html", out / "Recording-Guide.html")
     step("آزمون دود (بدون Python سیستم)")

@@ -34,16 +34,18 @@ def main() -> int:
     ap.add_argument("--version", default=__version__, help="نسخه (برای آزمون)")
     a = ap.parse_args()
     out = ROOT / "dist" / f"Voice2Excel-update-{a.version}.zip"
-    extras = [ROOT / "packaging" / "Guide.html"]
-    guide = ROOT / "voice2excel" / "web" / "recording-guide.html"
-    # راهنمای ضبط کنار exe با نام Recording-Guide.html قرار دارد
-    tmp_guide = ROOT / "dist" / "Recording-Guide.html"
-    tmp_guide.parent.mkdir(parents=True, exist_ok=True)
-    tmp_guide.write_bytes(guide.read_bytes())
-    extras.append(tmp_guide)
+    # راهنماها کنار exe با نام‌های Guide.html و Recording-Guide.html قرار دارند (منبع: صفحه‌های داخل برنامه)
+    web = ROOT / "voice2excel" / "web"
+    extras = []
+    for src, name in ((web / "guide.html", "Guide.html"), (web / "recording-guide.html", "Recording-Guide.html")):
+        tmp = ROOT / "dist" / name
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_bytes(src.read_bytes())
+        extras.append(tmp)
     m = build_update_zip(Path(a.src), out, compute_runtime_id(PY_VERSION, runtime_requirements()), a.version,
                          extras, a.notes)
-    tmp_guide.unlink(missing_ok=True)
+    for tmp in extras:
+        tmp.unlink(missing_ok=True)
     print(f"بسته به‌روزرسانی ساخته شد: {out} ({out.stat().st_size / 1e6:.1f} مگابایت، {len(m['files'])} فایل)")
     return 0
 

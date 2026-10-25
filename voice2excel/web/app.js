@@ -2188,6 +2188,7 @@ async function renderSettings(el) {
           <a class="btn" href="#/dictionary?kb">${I.upload} آموزش از اکسل</a>
           <a class="btn" href="#/voices">${I.music} همه ویس‌ها</a>
           <a class="btn" href="#/review?filter=all">${I.eye} همه رکوردها</a>
+          <a class="btn ghost" href="/static/guide.html" target="_blank">${I.info} راهنمای استفاده</a>
           <a class="btn ghost" href="/static/recording-guide.html" target="_blank">${I.info} راهنمای ضبط ویس</a>
         </div>
         <div class="card-b stack" style="border-top:1px solid var(--border)"><b>پوشه ورودی خودکار</b>

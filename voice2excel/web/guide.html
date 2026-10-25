@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>راهنمای ثبت ویس</title>
+<style>
+  @font-face { font-family: "Vazirmatn"; src: url("fonts/Vazirmatn.woff2") format("woff2"), url("app/voice2excel/web/fonts/Vazirmatn.woff2") format("woff2"); font-weight: 100 900; }
+  :root { --text:#1b2236; --muted:#5d6680; --border:#dfe4ee; --primary:#3355d6; --soft:#edf1fd; --ok:#138a52; --ok-soft:#e6f6ee; --warn:#b26a00; --warn-soft:#fff3dc; --bg:#f4f6fb; --card:#fff; }
+  @media screen and (prefers-color-scheme: dark) { :root { --text:#e8ebf4; --muted:#a3abc2; --border:#2a3249; --primary:#8aa1ff; --soft:#222c4f; --ok:#3fcb85; --ok-soft:#14301f; --warn:#f0b35a; --warn-soft:#3a2c14; --bg:#0f1320; --card:#171c2c; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: "Vazirmatn", Tahoma, sans-serif; line-height: 1.9; font-size: 15px; }
+  .page { max-width: 820px; margin: 24px auto; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 28px 34px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 2px solid var(--primary); padding-bottom: 12px; margin-bottom: 8px; }
+  h1 { margin: 0; font-size: 24px; } .sub { color: var(--muted); font-size: 14px; }
+  .print { border: 1px solid var(--primary); color: var(--primary); background: transparent; border-radius: 10px; padding: 6px 16px; font: inherit; cursor: pointer; }
+  h2 { font-size: 18px; margin: 26px 0 8px; display: flex; align-items: center; gap: 10px; }
+  h2 .n { width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--primary); display: inline-grid; place-items: center; font-size: 15px; flex: none; }
+  ol, ul { margin: 0; padding-inline-start: 22px; } li { margin: 4px 0; }
+  .k { background: var(--soft); color: var(--primary); border-radius: 6px; padding: 0 7px; font-weight: 700; white-space: nowrap; }
+  .note { background: var(--soft); border-radius: 12px; padding: 10px 16px; margin: 10px 0; font-size: 14px; }
+  .warn { background: var(--warn-soft); }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+  td, th { border: 1px solid var(--border); padding: 6px 10px; text-align: right; vertical-align: top; }
+  th { background: var(--soft); }
+  .ltr { direction: ltr; unicode-bidi: isolate; }
+  footer { margin-top: 22px; color: var(--muted); font-size: 13px; text-align: center; }
+  @media (max-width: 640px) { .page { margin: 0; border-radius: 0; padding: 18px 16px; } }
+  @media print { body { background: #fff; font-size: 13px; } .page { margin: 0; border: none; padding: 0; max-width: none; } .print { display: none; } h2 { break-after: avoid; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div><h1>راهنمای ثبت ویس</h1><div class="sub">از ویس بازاریاب تا ردیف اکسل — کاملاً آفلاین، روی همین رایانه</div></div>
+    <button class="print" onclick="window.print()">چاپ</button>
+  </header>
+
+  <p>بازاریاب پس از هر بازدید یک ویس کوتاه می‌فرستد. برنامه ویس را به متن تبدیل می‌کند، نام، شماره، آدرس و مشخصات ساختمان را جدا می‌کند، موارد مشکوک را به شما نشان می‌دهد و پس از تأیید شما در اکسل ثبت می‌کند. چیزی حدس زده نمی‌شود و هیچ اطلاعاتی از رایانه بیرون نمی‌رود.</p>
+
+  <h2><span class="n">۱</span>نصب و اجرا</h2>
+  <ol>
+    <li>فایل zip را در یک پوشه باز (Extract) کنید و روی <b>Voice2Excel.exe</b> دوبار کلیک کنید. از دفعه بعد، میان‌بر <b>«ثبت ویس»</b> روی دسکتاپ را باز کنید.</li>
+    <li>برنامه در مرورگر باز می‌شود (اگر نشد: <span class="ltr">http://127.0.0.1:8765</span>).</li>
+    <li>برای بستن، <span class="k">خروج از برنامه</span> را پایین منو بزنید.</li>
+  </ol>
+
+  <h2><span class="n">۲</span>راه‌اندازی (فقط یک بار)</h2>
+  <ol>
+    <li><b>فایل اکسل:</b> یکی از دو راه:
+      <ul>
+        <li><b>افزودن به فایل شرکت:</b> <span class="k">تنظیمات ← اتصال و نگاشت فایل اکسل</span>، فایل را انتخاب کنید، مشخص کنید هر ستون چه باشد و <span class="k">ذخیره نگاشت</span> را بزنید. ردیف‌های قبلی فایل هرگز تغییر نمی‌کند.</li>
+        <li><b>فایل تازه با ظاهر دلخواه:</b> منوی <span class="k">قالب اکسل ← قالب جدید</span> (بخش ۴).</li>
+      </ul></li>
+    <li><b>آموزش از اکسل (پیشنهادی):</b> در <span class="k">تنظیمات ← آموزش از اکسل</span> فایل‌های اکسل قدیمی بازدیدها را بدهید تا برنامه نام مهندس‌ها و خیابان‌ها را یاد بگیرد و دقیق‌تر شود.</li>
+    <li><b>راهنمای ضبط:</b> <span class="k">تنظیمات ← راهنمای ضبط ویس</span> را چاپ کنید و به بازاریاب‌ها بدهید.</li>
+    <li><b>رسیدن ویس‌ها (اختیاری):</b>
+      <ul>
+        <li><span class="k">تنظیمات ← پوشه ورودی خودکار</span>: پوشه دانلود تلگرام یا واتساپ را بدهید تا ویس‌های تازه خودکار برداشته شوند.</li>
+        <li><span class="k">تنظیمات ← ارسال ویس از گوشی</span>: بازاریاب در دفتر، با گوشیِ وصل به همان وای‌فای و با رمز، ویس می‌فرستد.</li>
+      </ul></li>
+  </ol>
+  <div class="note">برای امتحان، در کارت «شروع به کار» دکمه <b>ویس نمونه</b> را بزنید (اطلاعات ساختگی).</div>
+
+  <h2><span class="n">۳</span>کار هر روز: صفحه «کار امروز»</h2>
+  <ol>
+    <li><b>ویس‌ها:</b> ویس‌ها را روی کادر بکشید یا <span class="k">انتخاب فایل</span> را بزنید. پردازش خودکار است (هر ویس حدود ۲۰ ثانیه). اگر نام فایل تاریخ داشته باشد (مثل ویس‌های واتساپ)، همان تاریخ بازدید ثبت می‌شود.</li>
+    <li><b>نیاز به نگاه شما:</b> فقط موارد مشکوک نشان داده می‌شوند، با دلیلش.
+      <ul>
+        <li><span class="k">▶ بشنوید ۰:۰۲–۰:۱۱</span> فقط همان بخش ویس را پخش می‌کند؛ عدد، زمان آن بخش در ویس است.</li>
+        <li>واژه‌ای که برنامه مطمئن نبوده، دکمه است (مثل <span class="k">▶ «بتن» ۰:۱۵</span>) و فقط همان واژه را پخش می‌کند.</li>
+        <li><span class="k">درست است</span> تأیید · <span class="k">اصلاح</span> ویرایش اطلاعات و قبول پیشنهادها · <span class="k">✕</span> رد.</li>
+      </ul></li>
+    <li><b>ثبت در اکسل:</b> <span class="k">ثبت N ردیف در اکسل</span> را بزنید. پیش از ثبت، فایل اکسل را در Excel <b>ببندید</b>. برنامه خودش پشتیبان می‌گیرد و پس از ثبت فایل را بررسی می‌کند.</li>
+  </ol>
+  <div class="note"><b>اشتباه شد؟</b> دکمه <span class="k">بازگشت</span> هر تأیید، اصلاح یا ثبت را برمی‌گرداند؛ «بازگشت» ثبت، فایل اکسل را به حالت پیش از ثبت برمی‌گرداند.</div>
+  <p><b>بازبینی سریع</b> (وقتی موارد زیاد است): موارد را یکی‌یکی و تمام‌صفحه نشان می‌دهد و بخش شماره خودکار پخش می‌شود.</p>
+  <table>
+    <tr><th>کلید</th><th>کار</th><th>کلید</th><th>کار</th></tr>
+    <tr><td class="ltr">Ctrl+Enter</td><td>تأیید و بعدی</td><td class="ltr">Alt+1…4</td><td>پخش نام / شماره / آدرس / مشخصات</td></tr>
+    <tr><td class="ltr">Ctrl+Delete</td><td>رد</td><td class="ltr">Ctrl+Space</td><td>پخش یا توقف کل ویس</td></tr>
+    <tr><td class="ltr">PgUp / PgDn</td><td>قبلی / بعدی</td><td class="ltr">Ctrl+Z · Esc</td><td>بازگشت · خروج</td></tr>
+  </table>
+  <p>برنامه از اصلاحات شما یاد می‌گیرد: اصلاحی که دو بار انجام دهید (مثلاً «گلزی ← گلزاری»)، بعد از آن خودکار انجام می‌شود.</p>
+
+  <h2><span class="n">۴</span>شخصی‌سازی فایل خروجی: منوی «قالب اکسل»</h2>
+  <ul>
+    <li><b>ستون‌ها:</b> چه چیزی در هر ستون باشد، ترتیب، عنوان و عرض؛ «شماره ردیف» و «مقدار ثابت» (مثل نام بازاریاب).</li>
+    <li><b>قالب مقادیر:</b> شکل تاریخ (مثلاً «۲۸ مهر ۱۴۰۵»)، شماره با یا بدون صفر و گروه‌بندی‌شده، نام با یا بدون «مهندس»، رقم فارسی یا انگلیسی.</li>
+    <li><b>رنگ‌گذاری:</b> رنگ جدا برای پیگیری نزدیک، ردیف ناقص و بازدید امروز.</li>
+    <li><b>ظاهر:</b> قالب‌های رنگی آماده، فونت، اندازه، رنگ سرستون و ردیف‌ها، راه‌راه، فیلتر.</li>
+    <li><b>مقصد:</b> پوشه و نام فایل؛ یک فایل یا فایل جدا برای هر ماه یا روز.</li>
+  </ul>
+  <p>هر تغییر را در <b>پیش‌نمایش</b> می‌بینید. <span class="k">مثل این فایل…</span> ظاهر یک فایل اکسل دیگر را برمی‌دارد؛ <span class="k">خروجی قالب</span> / <span class="k">ورود قالب</span> برای بردن قالب به رایانه دیگر است. در پایان <span class="k">ذخیره قالب</span> و <span class="k">استفاده برای ثبت</span> را بزنید. برای فایل شرکت فقط قالب مقادیر و رنگ‌گذاری قابل تغییر است.</p>
+
+  <h2><span class="n">۵</span>تنظیمات مهم</h2>
+  <ul>
+    <li><b>به‌روزرسانی:</b> <span class="k">تنظیمات ← به‌روزرسانی برنامه</span>، فایل به‌روزرسانی را انتخاب و برنامه را دوباره باز کنید. اطلاعات شما حفظ می‌شود.</li>
+    <li><b>پشتیبان:</b> هر روز خودکار گرفته می‌شود؛ از همان بخش قابل بازگردانی است.</li>
+    <li><b>واژه‌نامه:</b> نام‌ها و خیابان‌هایی که برنامه می‌شناسد؛ افزودن، اصلاح املا یا حذف.</li>
+    <li><b>صفحه‌های بیشتر:</b> با تیک <span class="k">نمایش همه صفحه‌ها در منو</span> (فهرست همه ویس‌ها، جدول همه رکوردها، داشبورد).</li>
+  </ul>
+
+  <h2><span class="n">۶</span>مشکلات رایج</h2>
+  <table>
+    <tr><td><b>«ارتباط با برنامه برقرار نشد»</b></td><td>برنامه بسته شده است؛ از میان‌بر «ثبت ویس» دوباره بازش کنید.</td></tr>
+    <tr><td><b>«فایل اکسل باز است»</b></td><td>فایل را در Excel ذخیره کنید و ببندید، بعد دوباره «ثبت» را بزنید.</td></tr>
+    <tr><td><b>شماره یا نام اشتباه است</b></td><td>«▶ بشنوید» را بزنید و در «اصلاح» درستش کنید؛ اگر پیشنهادی هست، با یک کلیک قبولش کنید.</td></tr>
+    <tr><td><b>اولین ویس کند است</b></td><td>طبیعی است؛ مدل گفتار بار اول بارگذاری می‌شود.</td></tr>
+  </table>
+  <div class="note warn"><b>برای دقت بیشتر:</b> بازاریاب به ترتیب <b>نام ← «شماره» ← «آدرس» ← مشخصات</b> بگوید، شماره را شمرده بگوید، برای هر ساختمان ویس جدا بفرستد و در جای کم‌صدا ضبط کند.</div>
+
+  <footer>اطلاعات برنامه در پوشه <b>data</b> کنار برنامه است. برای انتقال به رایانه دیگر، از «تنظیمات ← پشتیبان‌گیری» استفاده کنید.</footer>
+</div>
+</body>
+</html>

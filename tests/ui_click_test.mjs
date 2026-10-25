@@ -89,7 +89,7 @@ try {
   check("لایه‌ای روی صفحه نیست", !/backdrop/.test(overlay), "عنصر بالایی وسط صفحه: " + overlay);
 
   // منوی ساده: فقط «کار امروز» و «تنظیمات»؛ بقیه صفحه‌ها از کارت «ابزارها» در تنظیمات
-  const navShown = await evaluate(`[...document.querySelectorAll("#nav a")].filter((a) => a.offsetParent).map((a) => a.dataset.page).join(",")`);
+  const navShown = await evaluate(`[...document.querySelectorAll("#nav a")].filter((a) => a.offsetParent && a.dataset.page).map((a) => a.dataset.page).join(",")`);
   check("منوی ساده فقط «کار امروز»، «قالب اکسل» و «تنظیمات» دارد", navShown === "today,templates,settings", navShown);
   check("صفحه پیش‌فرض «کار امروز»", (await evaluate("document.querySelector('#page-title').textContent")) === "کار امروز");
   await click(`#nav a[data-page="settings"]`);
