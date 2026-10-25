@@ -1602,7 +1602,7 @@ def open_folder(body: OpenIn):
     prof = _write_profile()
     if prof:
         allowed.append(Path(prof["excel_path"]).resolve().parent)
-    if not any(str(target.resolve()).startswith(str(a)) for a in allowed):
+    if not target.is_dir() or not any(target.resolve().is_relative_to(a) for a in allowed):  # نه «data-دیگر»
         err(403, "باز کردن این مسیر مجاز نیست.")
     if hasattr(os, "startfile"):
         os.startfile(str(target))  # noqa: S606 - فقط پوشه‌های برنامه

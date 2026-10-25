@@ -189,3 +189,18 @@ def test_full_wipe_needs_phrase_and_removes_everything(db, monkeypatch, wav_fact
         assert db.one(f"SELECT COUNT(*) n FROM {t}")["n"] == 0, t
     assert db.get_meta("inbox_since") == "123"  # پوشه ورودی، ویس‌های قدیمی را دوباره اضافه نکند
     assert not list((server.DATA_DIR / "uploads").iterdir()) and not backup.list_backups()
+
+
+# ---------- ۹. یافته‌های بررسی ایستا ----------
+def test_open_folder_only_inside_allowed_dirs(db, monkeypatch):
+    opened = []
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(server.os, "startfile", lambda p: opened.append(p), raising=False)
+    monkeypatch.setattr(server, "_write_profile", lambda *a, **k: None)
+    sibling = server.DATA_DIR.parent / (server.DATA_DIR.name + "-other")  # پیش‌تر با مقایسه پیشوندی پذیرفته می‌شد
+    sibling.mkdir(exist_ok=True)
+    with _client(**server.auth_headers()) as c:
+        assert c.post("/api/open-folder", json={"path": str(sibling)}).status_code == 403
+        assert c.post("/api/open-folder", json={"path": str(server.DATA_DIR / ".." / "..")}).status_code == 403
+        assert c.post("/api/open-folder", json={"path": str(server.DATA_DIR / "uploads")}).status_code == 200
+    assert len(opened) == 1
