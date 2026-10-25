@@ -281,6 +281,8 @@ async function renderToday(el) {
           <div><b>ویس‌ها را اینجا رها کنید</b> یا <button class="btn sm" id="t-pick">انتخاب فایل</button>
             <div class="muted small">پردازش خودکار شروع می‌شود. اگر نام فایل تاریخ داشته باشد، همان تاریخ ثبت می‌شود.</div></div>
           <input type="file" id="t-files" multiple accept="${esc(exts)},audio/*" hidden></div>
+        <div class="small muted">${s0.setup.inbox ? `${I.folder} ویس‌های تازه پوشه «${esc(s0.setup.inbox.split(/[\\/]/).filter(Boolean).pop())}» هم خودکار برداشته می‌شوند.`
+          : `<a href="#/settings">${I.folder} تنظیم پوشه ورودی خودکار</a> — مثلاً پوشه دانلود تلگرام، تا ویس‌ها بدون دانلود و انتخاب دستی برسند.`}</div>
         <div id="t-progress"></div></div></section>
     <section class="card"><div class="card-h"><h2><span class="t-n">${fa(2)}</span> نیاز به نگاه شما</h2><div class="row" id="t-rv-actions"></div></div>
       <div id="t-review"></div></section>
@@ -353,7 +355,7 @@ async function renderToday(el) {
       const play = r.audio_available && r.times?.phone ? `<button class="btn sm ghost" data-tplay="${r.id}" title="پخش بخش شماره از ویس">${I.play} شماره</button>` : "";
       return `<div class="t-rec" data-trec="${r.id}">
         <div class="t-rec-main"><div><b>${esc(v.engineer_name || "نام پیدا نشد")}</b>
-            <span class="ltr t-phone">${esc((v.phone || "").replace(/\n/g, " ، ")) || "—"}</span></div>
+            <span class="ltr t-phone">${esc((v.phone || "").split("\n").filter(Boolean).map(fmtPhone).join(" ، ")) || "—"}</span></div>
           <div class="small">${esc(v.address || "آدرس پیدا نشد")}${techSummary(v) ? ` <span class="muted">· ${esc(techSummary(v))}</span>` : ""}</div>
           <ul class="t-problems small">${problems.join("")}</ul></div>
         <div class="t-rec-act">${play}
@@ -1863,7 +1865,12 @@ async function renderSettings(el) {
           <a class="btn" href="#/voices">${I.music} همه ویس‌ها</a>
           <a class="btn" href="#/review?filter=all">${I.eye} همه رکوردها</a>
           <a class="btn ghost" href="/static/recording-guide.html" target="_blank">${I.info} راهنمای ضبط ویس</a>
-        </div></div>
+        </div>
+        <div class="card-b stack" style="border-top:1px solid var(--border)"><b>پوشه ورودی خودکار</b>
+          <div class="row" style="flex-wrap:nowrap"><input class="input ltr" id="s-inbox" value="${esc(s.inbox_dir)}" placeholder="مثلاً ...\\Downloads\\Telegram Desktop" style="flex:1; text-align:right">
+            <button class="btn" id="s-inbox-pick">${I.folder} انتخاب پوشه</button><button class="btn primary" id="s-inbox-save">${I.check} ذخیره</button></div>
+          <span class="hint">ویس‌هایی که از این به بعد در این پوشه ذخیره شوند (مثلاً پوشه دانلود تلگرام یا واتساپ دسکتاپ)، خودکار برداشته و پردازش می‌شوند. ویس‌های قدیمی پوشه دست نمی‌خورند. خالی = خاموش.</span></div></div>
+      <details class="tech-box"><summary>تنظیمات فنی <span class="muted small">— مدل گفتار، قواعد اعتبارسنجی، کارایی</span></summary>
       <div class="grid grid-2">
         <div class="card"><div class="card-h"><h2>${I.mic} مدل تبدیل گفتار</h2></div><div class="card-b stack">
           <div class="table-wrap" style="border:1px solid var(--border); border-radius:12px"><table class="table"><tbody>
@@ -1875,7 +1882,7 @@ async function renderSettings(el) {
           ${d.download.status !== "idle" ? `<div class="alert ${d.download.status === "error" ? "err" : d.download.status === "done" ? "ok" : "info"}">${d.download.status === "running" ? '<span class="spinner"></span>' : I.info}<div class="alert-body"><b class="ltr">${esc(d.download.name || "")}</b> ${esc(d.download.message)}</div></div>` : ""}
           <div class="muted small">دریافت مدل تنها کاری است که به اینترنت نیاز دارد و فقط با دکمه بالا انجام می‌شود. پس از دریافت، همه پردازش‌ها آفلاین است. مدل نهایی را پس از مقایسه روی ویس‌های واقعی انتخاب کنید.</div>
           <div class="grid grid-2" style="gap:12px">
-            <div class="field"><label>Beam size</label><input class="input" type="number" min="1" max="10" id="s-beam" value="${s.beam_size}"><span class="hint">بیشتر = دقیق‌تر و کندتر</span></div>
+            <div class="field"><label>Beam size</label><input class="input" type="number" min="1" max="10" id="s-beam" value="${s.beam_size}"><span class="hint">پیشنهادی ۲؛ بیشتر کندتر می‌شود بی‌آنکه در آزمون دقیق‌تر شده باشد، ۱ دقت شماره را کم می‌کند</span></div>
             <div class="field"><label>تعداد هسته CPU</label><input class="input" type="number" min="0" max="32" id="s-threads" value="${s.cpu_threads}"><span class="hint">۰ = خودکار</span></div>
           </div>
           <label class="check"><input type="checkbox" id="s-vad" ${s.vad_filter ? "checked" : ""}> حذف بخش‌های بی‌صدا (VAD)</label>
@@ -1909,7 +1916,7 @@ async function renderSettings(el) {
             <dt>پوشه داده‌ها</dt><dd><span class="path">${esc(d.system.data_dir)}</span></dd>
             <dt>پوشه مدل‌ها</dt><dd><span class="path">${esc(d.system.models_dir)}</span></dd></dl>
         </div></div></div>
-      </div>
+      </div></details>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.down} به‌روزرسانی برنامه</h2></div>
         <div class="card-b" id="s-update"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.mic} ارسال ویس از گوشی (شبکه محلی)</h2></div>
@@ -1933,6 +1940,12 @@ async function renderSettings(el) {
       if (!(await confirmBox("دریافت مدل", `مدل <b class="ltr">${esc(b.dataset.dl)}</b> از اینترنت (Hugging Face) دریافت می‌شود. این تنها ارتباط اینترنتی برنامه است و هیچ ویس یا اطلاعاتی ارسال نمی‌شود. ادامه می‌دهید؟`, "دریافت"))) return;
       try { await api("/api/models/download", { method: "POST", body: { name: b.dataset.dl } }); toast("دریافت شروع شد."); poll(); } catch (e) { toastErr(e); }
     });
+    $("#s-inbox-pick").onclick = async () => { const p = await pickPath("audio", $("#s-inbox").value.trim()); if (p) $("#s-inbox").value = p; };
+    $("#s-inbox-save").onclick = async () => {
+      const v = $("#s-inbox").value.trim();
+      try { await api("/api/settings", { method: "PUT", body: { inbox_dir: v } }); toast(v ? "پوشه ورودی فعال شد." : "پوشه ورودی خاموش شد.", "ok"); refreshStatus(); }
+      catch (e) { toastErr(e); }
+    };
     $("#s-fullnav").onchange = (e) => {
       try { localStorage.setItem("v2x.nav", e.target.checked ? "full" : "simple"); } catch { }
       document.documentElement.classList.toggle("full-nav", e.target.checked);
@@ -1940,7 +1953,7 @@ async function renderSettings(el) {
     $("#s-save").onclick = async () => {
       const body = {
         model_name: ($("input[name=model]:checked") || {}).value || s.model_name,
-        beam_size: +$("#s-beam").value || 5, cpu_threads: +$("#s-threads").value || 0,
+        beam_size: +$("#s-beam").value || 2,cpu_threads: +$("#s-threads").value || 0,
         vad_filter: $("#s-vad").checked, use_dictionary_hotwords: $("#s-hot").checked,
         initial_prompt: $("#s-prompt").value, default_area_code: $("#s-area").value.trim(),
         similarity_suggest: +$("#s-sim").value || 0.78,

@@ -26,10 +26,11 @@ from .audio_processor import is_supported
 from .config import (AVAILABLE_MODELS, DATA_DIR, MODELS_DIR, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS, WEB_DIR,
                      ensure_dirs, load_settings, save_settings)
 from .database import Database, get_db, now
-from .dates_fa import date_from_filename, format_jalali, parse_jalali, today_jalali
+from .dates_fa import date_from_filename, format_jalali, from_gregorian, parse_jalali, today_jalali
 from .deduplicator import file_sha256
 from .excel_reader import inspect_workbook, lock_status, read_rows
 from .excel_writer import ExcelWriteError, preview, replace_original, write_export
+from .inbox import Inbox
 from .logger import get_logger
 from .schema import COMPUTED_FIELDS, FIELD_DEFS, FIELD_LABELS
 from .text_style import infer_style
@@ -140,6 +141,41 @@ def _startup() -> None:
     if os.environ.get("V2X_AUTO_EXIT") == "1":
         threading.Thread(target=_idle_watchdog, name="idle-watchdog", daemon=True).start()
     threading.Thread(target=_daily_backup_loop, name="daily-backup", daemon=True).start()
+    threading.Thread(target=_inbox_loop, name="inbox", daemon=True).start()
+
+
+def inbox_poll_once(box: Inbox) -> int:
+    """یک دور بررسی پوشه ورودی: ثبت ویس‌های تازه و شروع پردازش. خروجی: تعداد ویس‌های افزوده."""
+    s = load_settings()
+    if not s.inbox_dir:
+        return 0
+    files = box.poll(s.inbox_dir, float(db().get_meta("inbox_since") or 0))
+    if not files:
+        return 0
+    batch = db().create_batch("پوشه ورودی", format_jalali(today_jalali()))
+    added = 0
+    for f in files:
+        try:
+            visit = format_jalali(from_gregorian(datetime.fromtimestamp(f.stat().st_mtime).date()))
+            with open(f, "rb") as fh:
+                added += _register_file(fh, f.name, batch, visit, True)["result"] == "added"
+        except OSError:
+            log.exception("inbox file failed: %s", f)
+    if added:
+        db().log_event(f"{added} ویس از پوشه ورودی اضافه شد.")
+        if model_available(s.model_name):
+            worker().start()
+    return added
+
+
+def _inbox_loop() -> None:
+    box = Inbox()
+    while True:
+        try:
+            inbox_poll_once(box)
+        except Exception:
+            log.exception("inbox poll failed")
+        time.sleep(4)
 
 
 def _daily_backup_loop() -> None:
@@ -210,6 +246,7 @@ def _setup_state() -> dict:
         "excel_name": Path(prof["excel_path"]).name if prof and prof.get("excel_path") else "",
         "dictionary": db().one("SELECT COUNT(*) n FROM entities")["n"],
         "corrections": db().one("SELECT COUNT(*) n FROM corrections")["n"],
+        "inbox": load_settings().inbox_dir,
     }
 
 
@@ -1382,10 +1419,16 @@ def get_settings():
 def put_settings(updates: dict):
     allowed = {"model_name", "compute_type", "cpu_threads", "beam_size", "vad_filter", "initial_prompt",
                "use_dictionary_hotwords", "hotwords_limit", "review_spoken_phones", "learn_auto_threshold", "kb_auto_spelling","model_idle_minutes", "required_fields", "default_area_code", "default_city",
-               "similarity_suggest", "min_duration_sec", "open_browser"}
+               "similarity_suggest", "min_duration_sec", "open_browser", "inbox_dir"}
     clean = {k: v for k, v in updates.items() if k in allowed}
     if "model_name" in clean and clean["model_name"] not in AVAILABLE_MODELS:
         err(400, "مدل نامعتبر است.")
+    if "inbox_dir" in clean:
+        clean["inbox_dir"] = str(clean["inbox_dir"] or "").strip().strip('"')
+        if clean["inbox_dir"] and not Path(clean["inbox_dir"]).is_dir():
+            err(400, "پوشه ورودی پیدا نشد.")
+        if clean["inbox_dir"] != load_settings().inbox_dir:
+            db().set_meta("inbox_since", str(time.time()))  # ویس‌های قدیمی پوشه برداشته نمی‌شوند
     if worker().running and ("model_name" in clean or "compute_type" in clean):
         err(409, "در حین پردازش نمی‌توان مدل را تغییر داد.")
     s = save_settings(clean)

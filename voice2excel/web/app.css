@@ -526,3 +526,6 @@ body.no-scroll .toasts { bottom: 86px; }
 .t-problems li { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .t-rec-act { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; flex: none; }
 @media (max-width: 760px) { .t-rec { flex-direction: column; } .t-rec-act { justify-content: flex-start; } }
+.tech-box { margin-bottom: 18px; }
+.tech-box > summary { cursor: pointer; font-weight: 700; padding: 12px 4px; }
+.tech-box[open] > summary { margin-bottom: 8px; }

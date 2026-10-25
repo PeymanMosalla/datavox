@@ -38,7 +38,8 @@ class Settings:
     model_name: str = "large-v3-turbo"
     compute_type: str = "int8"
     cpu_threads: int = 0  # 0 = خودکار
-    beam_size: int = 5
+    # روی ۹ ویس واقعی: ۲ همان دقت ۵ را داشت با حدود نصف زمان (۱۷ ثانیه به‌جای ۳۲)؛ ۱ دقت شماره را کم کرد
+    beam_size: int = 2
     language: str = "fa"
     vad_filter: bool = True
     # متن راهنمای سبک برای Whisper. آزمون نشان داد:
@@ -93,6 +94,9 @@ class Settings:
     lan_enabled: bool = False
     lan_pin: str = ""
     lan_auto_start: bool = True  # پردازش ویس‌های رسیده از گوشی خودکار شروع شود
+
+    # --- پوشه ورودی خودکار (خالی = خاموش) ---
+    inbox_dir: str = ""
 
     # --- سرور ---
     host: str = "127.0.0.1"
