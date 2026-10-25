@@ -535,3 +535,4 @@ body.no-scroll .toasts { bottom: 86px; }
 .tech-box { margin-bottom: 18px; }
 .tech-box > summary { cursor: pointer; font-weight: 700; padding: 12px 4px; }
 .tech-box[open] > summary { margin-bottom: 8px; }
+.seg-time { font-size: 11.5px; opacity: .75; font-feature-settings: "tnum"; unicode-bidi: isolate; }

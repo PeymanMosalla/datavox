@@ -353,7 +353,7 @@ async function renderToday(el) {
       // هر مورد مشکوک: دلیل، دکمه پخش همان بخش از ویس، و واژه‌هایی که با اطمینان کم شنیده شده‌اند
       const item = (k, why) => {
         const seg = SEG_OF[k] || k, t = r.audio_available && fieldTime(r, seg), words = lowWords(r, k);
-        return `<li>${t ? `<button class="btn sm ghost" data-tseg="${seg}" title="پخش همین بخش از ویس">${I.play} بشنوید</button>` : ""}
+        return `<li>${t ? `<button class="btn sm ghost" data-tseg="${seg}" title="پخش همین بخش از ویس">${I.play} بشنوید ${segTime(t)}</button>` : ""}
           <span class="t-why"><b>${esc(LABEL[k] || k)}:</b> ${esc(why)}</span>${words.length ? `<span class="t-words">${words.join(" ")}</span>` : ""}</li>`;
       };
       const bad = Object.entries(vf).filter(([, f]) => f.status !== "valid");
@@ -931,7 +931,7 @@ async function renderReview(el) {
             const st = vf[k]?.status || (v[k] ? "valid" : "missing");
             const tag = k === "phone" ? "textarea" : "input";
             const val = v[k] || "";
-            const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm icon ghost cell-play" data-tseg="${k}" data-r="${r.id}" title="پخش همین بخش از ویس">${I.play}</button>` : "";
+            const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm icon ghost cell-play" data-tseg="${k}" data-r="${r.id}" title="پخش همین بخش از ویس (${segText(r.times[k])})">${I.play}</button>` : "";
             return `<td style="min-width:${k === "address" ? 230 : 160}px"><div class="cell-wrap">${tag === "textarea"
               ? `<textarea class="cell-input st-${st} ltr" rows="${Math.max(1, val.split("\n").length)}" data-edit="${k}" data-r="${r.id}" ${locked ? "disabled" : ""} title="${esc((vf[k]?.reasons || []).join(" | "))}" placeholder="—">${esc(val)}</textarea>`
               : `<input class="cell-input st-${st}" value="${esc(val)}" data-edit="${k}" data-r="${r.id}" ${locked ? "disabled" : ""} title="${esc((vf[k]?.reasons || []).join(" | "))}" placeholder="—">`}${seg}</div>${k === "phone" ? phoneView(val) : ""}</td>`;
@@ -1044,6 +1044,11 @@ const SEG_KEYS = [["engineer_name", "نام"], ["phone", "شماره"], ["addres
 const TECH_KEYS = ["floors", "structure_type", "executed", "stage", "units"];
 const UNDOABLE = new Set(["edit", "accept", "approve", "reject", "reopen", "duplicate"]);
 
+/** «۱:۰۵» از ثانیه؛ مثل نمایش زمان در پخش‌کننده‌ها، تا همان بخش در دستگاه دیگری هم پیدا شود. */
+const fmtClock = (s) => fa(`${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`);
+const segText = (span) => (span ? `${fmtClock(span[0])}–${fmtClock(Math.ceil(span[1]))}` : "");
+const segTime = (span) => (span ? `<span class="seg-time" dir="ltr">${segText(span)}</span>` : "");
+
 function fieldTime(r, k) {
   if (!r) return null;
   if (k === "tech") return TECH_KEYS.map((x) => r.times?.[x]).find(Boolean) || null;
@@ -1092,7 +1097,7 @@ function lowWords(r, k) {
   return keys.flatMap((x) => (r.low_confidence?.[x] || []).map((w, i) => [w, r.low_times?.[x]?.[i]]))
     .filter(([w, t]) => !seen.has(w + t) && seen.add(w + t))
     .map(([w, t]) => r.audio_available && t
-      ? `<button class="lc-word" data-lt="${t.join(",")}" title="پخش همین واژه از ویس">${I.play}«${esc(w)}»</button>` : `«${esc(w)}»`);
+      ? `<button class="lc-word" data-lt="${t.join(",")}" title="پخش همین واژه از ویس">${I.play}«${esc(w)}» <span class="seg-time" dir="ltr">${fmtClock(t[0])}</span></button>` : `«${esc(w)}»`);
 }
 function lowConfView(r, k) {
   const w = lowWords(r, k);
@@ -1146,7 +1151,7 @@ async function openRecord(id) {
       ? `<textarea class="input ${ltr ? "ltr" : ""}" rows="${Math.min(4, Math.max(1, Math.ceil(val.length / 48), val.split("\n").length))}" data-f="${k}" ${locked ? "disabled" : ""} placeholder="گفته نشده">${esc(val)}</textarea>`
       : `<input class="input ${ltr ? "ltr" : ""}" value="${esc(val)}" data-f="${k}" ${locked ? "disabled" : ""} placeholder="گفته نشده" ${ltr ? 'style="text-align:right"' : ""}>`;
     const ev = r.evidence[k] && r.evidence[k] !== val ? `<div class="evidence">از متن: «${esc(r.evidence[k])}»</div>` : "";
-    const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm icon ghost" data-seg="${k}" title="پخش همین بخش از ویس">${I.play}</button>` : "";
+    const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm ghost" data-seg="${k}" title="پخش همین بخش از ویس">${I.play} ${segTime(r.times[k])}</button>` : "";
     return `<div class="frow"><label>${esc(labels[k] || k)}</label><div class="fval">
       <div class="row">${input}${seg}${fc ? chip(fc.status, FIELD_STATUS[fc.status]) : ""}
         ${DICT_FIELDS.has(k) && val && !locked ? `<button class="btn sm icon ghost" data-dict="${k}" title="افزودن به واژه‌نامه">${I.book}</button>` : ""}</div>
@@ -1170,7 +1175,7 @@ async function openRecord(id) {
     </div>
     <div class="drawer-b">
       ${r.audio_available ? `<audio id="dr-audio" controls preload="metadata" src="/api/files/${r.audio_id}/audio"></audio>
-        <div class="seg-buttons">${SEG_KEYS.filter(([k]) => fieldTime(r, k)).map(([k, l]) => `<button class="btn sm" data-segk="${k}">${I.play} ${l}</button>`).join("")}</div>`
+        <div class="seg-buttons">${SEG_KEYS.filter(([k]) => fieldTime(r, k)).map(([k, l]) => `<button class="btn sm" data-segk="${k}">${I.play} ${l} ${segTime(fieldTime(r, k))}</button>`).join("")}</div>`
         : '<div class="muted small">فایل صوتی پاک شده است.</div>'}
       ${(r.validation.reasons || []).length ? `<div class="alert ${r.status === "ready" ? "ok" : r.status === "invalid" ? "err" : "warn"}">${r.status === "ready" ? I.ok : I.alert}<div class="alert-body"><b>${REC_STATUS[r.status] || ""}</b>
         <ul class="reasons">${r.validation.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` : ""}
@@ -1312,7 +1317,7 @@ async function renderFocus(autoplay = false) {
     return `<div class="fm-field">
       <div class="row between"><label>${esc(label)}</label>
         <span class="row" style="gap:6px">${fc ? chip(fc.status, FIELD_STATUS[fc.status]) : ""}
-        ${r.audio_available && fieldTime(r, k) ? `<button class="btn sm" data-fseg="${k}">${I.play} پخش${key >= 0 ? ` <span class="kbd">Alt+${fa(key + 1)}</span>` : ""}</button>` : ""}</span></div>
+        ${r.audio_available && fieldTime(r, k) ? `<button class="btn sm" data-fseg="${k}">${I.play} پخش ${segTime(fieldTime(r, k))}${key >= 0 ? ` <span class="kbd">Alt+${fa(key + 1)}</span>` : ""}</button>` : ""}</span></div>
       ${big
         ? `<textarea class="input big ${ltr ? "ltr" : ""}" rows="${Math.max(1, val.split("\n").length)}" data-ff="${k}" data-orig="${esc(val)}" ${locked ? "disabled" : ""} placeholder="گفته نشده">${esc(val)}</textarea>`
         : `<input class="input big" value="${esc(val)}" data-ff="${k}" data-orig="${esc(val)}" ${locked ? "disabled" : ""} placeholder="گفته نشده">`}
@@ -1334,7 +1339,7 @@ async function renderFocus(autoplay = false) {
     <div class="fm-body">
       <div class="fm-side">
         ${r.audio_available ? `<audio id="fm-audio" controls preload="auto" src="/api/files/${r.audio_id}/audio"></audio>
-          <div class="seg-buttons">${SEG_KEYS.filter(([k]) => fieldTime(r, k)).map(([k, l]) => `<button class="btn sm" data-fsegk="${k}">${I.play} ${l}</button>`).join("")}
+          <div class="seg-buttons">${SEG_KEYS.filter(([k]) => fieldTime(r, k)).map(([k, l]) => `<button class="btn sm" data-fsegk="${k}">${I.play} ${l} ${segTime(fieldTime(r, k))}</button>`).join("")}
             <button class="btn sm ghost" id="fm-whole">${I.wave} کل ویس <span class="kbd">Ctrl+Space</span></button></div>`
           : '<div class="muted small">فایل صوتی پاک شده است.</div>'}
         <div class="transcript">${t.processed_text ? highlightTranscript(t.processed_text, t.clauses, r.building_index, r.building_count > 1) : '<span class="muted">متنی موجود نیست.</span>'}</div>
