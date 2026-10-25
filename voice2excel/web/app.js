@@ -10,8 +10,10 @@ const fmtSize = (b) => (b == null ? "" : b < 1024 * 1024 ? fa((b / 1024).toFixed
 const fmtSec = (s) => (s == null ? "" : s < 60 ? fa(Math.round(s)) + " ثانیه" : fa(Math.floor(s / 60)) + ":" + fa(String(Math.round(s % 60)).padStart(2, "0")));
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
+// کلید محرمانه همین اجرای برنامه (در صفحه گذاشته می‌شود)؛ بدون آن، فرمان‌های تغییردهنده پذیرفته نمی‌شوند
+const TOKEN = document.querySelector('meta[name="v2x-token"]')?.content || "";
 async function api(path, { method = "GET", body, form } = {}) {
-  const opt = { method, headers: {} };
+  const opt = { method, headers: { "X-V2X-Token": TOKEN } };
   if (form) opt.body = form;
   else if (body !== undefined) { opt.body = JSON.stringify(body); opt.headers["Content-Type"] = "application/json"; }
   let res;
@@ -594,6 +596,7 @@ async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () =>
     const r = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/upload");
+      xhr.setRequestHeader("X-V2X-Token", TOKEN);
       xhr.upload.onprogress = (e) => onProgress(Math.min(100, Math.round(100 * (sent + e.loaded) / totalBytes)));
       xhr.onload = () => {
         let d = {}; try { d = JSON.parse(xhr.responseText); } catch { }
@@ -1955,7 +1958,7 @@ async function renderTemplates(el) {
   });
   $("#tp-sample")?.addEventListener("click", async () => {
     try {
-      const res = await fetch("/api/templates/sample", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(template) });
+      const res = await fetch("/api/templates/sample", { method: "POST", headers: { "Content-Type": "application/json", "X-V2X-Token": TOKEN }, body: JSON.stringify(template) });
       if (!res.ok) throw new Error((await res.json()).detail || "ساخت فایل نمونه ناموفق بود.");
       const a = document.createElement("a");
       a.href = URL.createObjectURL(await res.blob());

@@ -228,7 +228,7 @@ def test_knowledge_api_flow(db, settings):
                   ["1405/07/01", "سجادیه 58 ، قطعه دوم", "مهندس رجبی", "09151234567"],
                   ["1405/07/02", "امامت 60 ، پلاک 8", "مهندس علی زاده", "09151234568"],
                   ["1405/07/03", "امامت 12", "مهندس علیزاده", ""]])
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         r = c.post("/api/knowledge/analyze", files=[
             ("files", ("co.xlsx", data, "application/octet-stream")), ("files", ("old.xls", b"x", "application/octet-stream"))]).json()
         f, bad = r["files"]

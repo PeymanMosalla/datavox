@@ -7,7 +7,7 @@ PHONE = ("192.168.1.50", 50000)
 
 
 def phone_client(ip="192.168.1.50"):
-    return TestClient(server.app, client=(ip, 50000))
+    return TestClient(server.app, client=(ip, 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers())
 
 
 def test_local_detection():
@@ -40,7 +40,7 @@ def test_remote_only_upload_page_with_pin(db, settings, wav_factory, monkeypatch
         assert r["results"][0]["result"] == "added" and "id" not in r["results"][0]
         recent = c.get("/api/m/recent?sender=صالحی", headers={"X-PIN": "482913"}).json()["files"]
         assert recent[0]["original_name"] == "phone.wav"
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as local:  # از خود رایانه همه چیز در دسترس است
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as local:  # از خود رایانه همه چیز در دسترس است
         assert local.get("/api/status").status_code == 200
 
 

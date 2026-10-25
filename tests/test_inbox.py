@@ -31,7 +31,7 @@ def test_inbox_registers_and_dates_from_filename(db, settings, tmp_path, wav_fac
     inbox.mkdir()
     monkeypatch.setattr(server, "model_available", lambda n: False)
     monkeypatch.setattr(server, "_inbox_loop", lambda: None)  # بررسی پوشه فقط به دست خود آزمون
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         assert c.put("/api/settings", json={"inbox_dir": str(tmp_path / "nope")}).status_code == 400
         old = wav_factory("old.wav", 0.5)
         os.replace(old, inbox / "old.wav")

@@ -7,6 +7,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import secrets
 import shutil
 import string
 import threading
@@ -17,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -54,6 +55,60 @@ IDLE_EXIT_SECONDS = 15 * 60
 _pin_limiter = lan.FailureLimiter()
 
 
+# کلید محرمانه هر بار اجرا: فقط در صفحه خود برنامه گذاشته می‌شود. هر فرمانی که چیزی را تغییر می‌دهد باید آن را
+# همراه داشته باشد، پس صفحه‌های سایت‌های دیگر (حتی در همین مرورگر) نمی‌توانند به برنامه فرمان بدهند.
+API_TOKEN = secrets.token_urlsafe(32)
+TOKEN_HEADER = "x-v2x-token"
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+_LOOPBACK_NAMES = {"127.0.0.1", "localhost", "::1", "[::1]"}
+
+
+def auth_headers() -> dict[str, str]:
+    """برای آزمون‌ها و ابزارهای داخلی."""
+    return {TOKEN_HEADER: API_TOKEN}
+
+
+def _host_name(value: str | None) -> str:
+    v = (value or "").strip().lower()
+    if v.startswith("["):  # «[::1]:8765»
+        return v[: v.find("]") + 1] if "]" in v else v
+    return v.rsplit(":", 1)[0] if v.count(":") == 1 else v
+
+
+_lan_ips = {"at": 0.0, "ips": set()}
+
+
+def _allowed_host(host: str) -> bool:
+    if host in _LOOPBACK_NAMES:
+        return True
+    s = load_settings()
+    if not (s.lan_enabled and s.lan_pin):
+        return False
+    if time.time() - _lan_ips["at"] > 30:  # نشانی شبکه این رایانه (با حافظه کوتاه، نه در هر درخواست)
+        _lan_ips.update(at=time.time(), ips=set(lan.lan_addresses()))
+    return host in _lan_ips["ips"]
+
+
+@app.middleware("http")
+async def _security_guard(request, call_next):
+    """سه لایه در برابر صفحه‌های سایت‌های دیگر:
+    ۱) نام میزبان باید همین رایانه باشد (جلوگیری از خواندن داده با دامنه‌ای که به 127.0.0.1 اشاره می‌کند)؛
+    ۲) درخواست از صفحه یک مبدأ دیگر پذیرفته نمی‌شود؛
+    ۳) فرمان‌های تغییردهنده کلید محرمانه این اجرا را لازم دارند (صفحه ارسال گوشی با رمز خودش محافظت می‌شود).
+    """
+    host = _host_name(request.headers.get("host"))
+    if not _allowed_host(host):
+        return JSONResponse(status_code=403, content={"detail": "درخواست نامعتبر."})
+    origin = request.headers.get("origin")
+    if origin and origin != "null" and _host_name(origin.split("://", 1)[-1]) != host:
+        return JSONResponse(status_code=403, content={"detail": "درخواست از صفحه دیگری پذیرفته نمی‌شود."})
+    path = request.url.path
+    if (request.method not in _SAFE_METHODS and path.startswith("/api/") and not path.startswith("/api/m/")
+            and not secrets.compare_digest(request.headers.get(TOKEN_HEADER, ""), API_TOKEN)):
+        return JSONResponse(status_code=403, content={"detail": "نشست برنامه منقضی شده است؛ صفحه را دوباره باز کنید (F5)."})
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _lan_guard(request, call_next):
     """دستگاه‌های دیگر شبکه فقط به صفحه آپلود گوشی (با رمز) دسترسی دارند؛ بقیه فقط از خود رایانه."""
@@ -79,7 +134,8 @@ async def _no_cache(request, call_next):
     """پس از به‌روزرسانی برنامه، مرورگر نسخه قدیمی رابط را از حافظه نهان نخواند."""
     _last_request["t"] = time.time()
     response = await call_next(request)
-    if not request.url.path.startswith("/api/files/") and not request.url.path.startswith("/static/fonts"):
+    if (not request.url.path.startswith("/api/files/") and not request.url.path.startswith("/static/fonts")
+            and "no-store" not in response.headers.get("Cache-Control", "")):  # صفحه دارای کلید هرگز ذخیره نشود
         response.headers["Cache-Control"] = "no-cache"
     return response
 
@@ -1793,7 +1849,11 @@ def events():
 # ---------- فایل‌های رابط ----------
 @app.get("/")
 def index():
-    return FileResponse(WEB_DIR / "index.html")
+    """صفحه اصلی با کلید محرمانه همین اجرا (فقط این صفحه آن را دارد)."""
+    html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
+    meta = f'<meta name="v2x-token" content="{API_TOKEN}">'
+    return HTMLResponse(html.replace("</head>", f"  {meta}\n</head>", 1),
+                        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")

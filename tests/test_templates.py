@@ -43,7 +43,7 @@ def test_clean_rejects_bad_input():
 
 
 def test_template_flow_new_file(db, settings, tmp_path):
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         meta = c.get("/api/templates").json()
         assert "row_number" in [f["key"] for f in meta["fields"]] and meta["presets"]["green"]["fill"]
         name = c.post("/api/templates", json={"title": "گزارش مدیر"}).json()["name"]
@@ -102,7 +102,7 @@ def test_template_flow_new_file(db, settings, tmp_path):
 
 def test_company_mapping_page_ignores_active_template(db, settings, tmp_path):
     """صفحه نگاشت فایل شرکت هرگز قالب «فایل جدید» فعال را بازنویسی نمی‌کند."""
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         name = c.post("/api/templates", json={"title": "x"}).json()["name"]
         c.post(f"/api/templates/{name}/activate")
         assert c.get("/api/excel/profile").json()["profile"] is None or \
@@ -179,7 +179,7 @@ def test_like_this_file_and_template_transfer(db, settings, tmp_path):
     s = got["style"]
     assert s["header"]["fill"] == "#138A52" and s["header"]["font"] == "B Nazanin" and s["header"]["size"] == 13
     assert s["zebra"] == "#E8F6EF" and s["rtl"] and s["freeze"] and s["filter"]
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         r = c.post("/api/templates/from-file", files=[("file", ("s.xlsx", sample.read_bytes(), "application/octet-stream"))])
         assert r.json()["style"]["header"]["fill"] == "#138A52"
         assert c.post("/api/templates/from-file", files=[("file", ("s.txt", b"x", "text/plain"))]).status_code == 400
@@ -195,7 +195,7 @@ def test_like_this_file_and_template_transfer(db, settings, tmp_path):
 
 
 def test_commit_split_writes_and_undoes_each_file(db, settings, tmp_path):
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         name = c.post("/api/templates", json={"title": "ماهانه"}).json()["name"]
         tpl = c.get(f"/api/templates/{name}").json()["template"]
         tpl["output"] = {"folder": str(tmp_path), "file": "ماهانه", "split": "month_file"}

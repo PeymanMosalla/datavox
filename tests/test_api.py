@@ -24,7 +24,7 @@ def wait_idle(client, timeout=30):
 def test_end_to_end(db, settings, wav_factory, tmp_path, monkeypatch):
     monkeypatch.setattr(server, "model_available", lambda n: True)
     server.set_worker(Worker(db, FakeTranscriber()))
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         a = wav_factory("PTT-20261020-WA0001.wav", 1.0)
         b = wav_factory("v2.wav", 1.5, amp=0.25)
         files = [("files", (p.name, p.read_bytes(), "audio/wav")) for p in (a, b)]
@@ -115,7 +115,7 @@ def test_end_to_end(db, settings, wav_factory, tmp_path, monkeypatch):
 def test_undo_edit_approve_and_learning(db, settings, monkeypatch):
     from voice2excel import learning
     from voice2excel.pipeline import build_records
-    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
         batch = db.create_batch("t", "1405/07/29")
         aid = db.add_audio(batch, "x.ogg", None, "sha-undo", 1, "1405/07/29", "user")
         _, clauses, recs = build_records(db, settings, "مهندس گلزی، شماره 09121234567، آدرس شاهد 12", "1405/07/29")
