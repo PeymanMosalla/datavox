@@ -252,7 +252,42 @@ def test_path_traversal_in_names_rejected(db, monkeypatch):
     with _client(**server.auth_headers()) as c:
         for bad in ("..%5C..%5Csettings", "..%2F..%2Fsettings", "%2E%2E%5Cvoice2excel"):
             assert c.get(f"/api/templates/{bad}").status_code in (404, 400), bad
-            assert c.get(f"/api/backups/{bad}/download").status_code in (404, 400), bad
+            assert c.post(f"/api/backups/{bad}/export", json={"password": "password1"}).status_code in (404, 400), bad
         assert c.post("/api/knowledge/preview", json={"token": r"..\..\voice2excel.db", "sheet": "x", "header_row": 1,
                                                       "columns": {"A": "engineer"}}).status_code == 400
 
+
+
+# ---------- ۵. پشتیبان رمزدار ----------
+def test_backup_leaves_app_only_encrypted(db, monkeypatch):
+    from voice2excel import backup, vault
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    db.log_event("نام مشتری محرمانه")
+    made = backup.create_backup(db, "manual")
+    with _client(**server.auth_headers()) as c:
+        assert c.get(f"/api/backups/{made['name']}/download").status_code in (404, 405)  # دانلود بی‌رمز دیگر نیست
+        assert c.post(f"/api/backups/{made['name']}/export", json={"password": "short"}).status_code == 400
+        r = c.post(f"/api/backups/{made['name']}/export", json={"password": "رمز-خیلی-امن"})
+        assert r.status_code == 200 and vault.is_encrypted(r.content)
+        assert "محرمانه".encode() not in r.content and b"SQLite format" not in r.content
+        blob = r.content
+        bad = c.post("/api/backups/import", files={"file": ("b.v2xbak", blob, "application/octet-stream")},
+                     data={"password": "wrong-password"})
+        assert bad.status_code == 400 and "گذرواژه" in bad.json()["detail"]
+        tampered = blob[:100] + bytes([blob[100] ^ 1]) + blob[101:]
+        assert c.post("/api/backups/import", files={"file": ("b.v2xbak", tampered, "application/octet-stream")},
+                      data={"password": "رمز-خیلی-امن"}).status_code == 400
+        ok = c.post("/api/backups/import", files={"file": ("b.v2xbak", blob, "application/octet-stream")},
+                    data={"password": "رمز-خیلی-امن"})
+        assert ok.status_code == 200 and ok.json()["reason"] == "imported"
+        assert c.post(f"/api/backups/{ok.json()['name']}/restore").status_code == 200
+
+
+def test_vault_rejects_absurd_iteration_count():
+    import struct
+
+    from voice2excel import vault
+    blob = bytearray(vault.encrypt(b"x" * 100, "password1"))
+    blob[37:41] = struct.pack(">I", 4_000_000_000)
+    with pytest.raises(vault.VaultError, match="خراب"):
+        vault.decrypt(bytes(blob), "password1")

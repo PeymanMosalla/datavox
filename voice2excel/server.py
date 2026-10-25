@@ -1899,13 +1899,27 @@ def backups_restore(name: str):
     return res
 
 
-@app.get("/api/backups/{name}/download")
-def backups_download(name: str):
+class PasswordIn(BaseModel):
+    password: str
+
+
+@app.post("/api/backups/{name}/export")
+def backups_export(name: str, body: PasswordIn):
+    """دریافت پشتیبان فقط به‌صورت رمزدار (پیش‌تر فایل zip بی‌رمز با همه اطلاعات مشتریان دانلود می‌شد)."""
     try:
-        p = backup.backup_path(name)
+        data = backup.export_encrypted(name, body.password)
     except backup.BackupError as e:
-        err(404, str(e))
-    return FileResponse(p, filename=p.name)
+        err(400, str(e))
+    return StreamingResponse(io.BytesIO(data), media_type="application/octet-stream",
+                             headers={"Content-Disposition": f'attachment; filename="{Path(name).stem}.v2xbak"'})
+
+
+@app.post("/api/backups/import")
+async def backups_import(file: UploadFile = File(...), password: str = Form(...)):
+    try:
+        return backup.import_encrypted(await _read_upload(file, 1024 ** 3), password)
+    except backup.BackupError as e:
+        err(400, str(e))
 
 
 @app.get("/api/update")

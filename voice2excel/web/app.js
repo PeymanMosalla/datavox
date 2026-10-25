@@ -30,6 +30,17 @@ async function api(path, { method = "GET", body, form } = {}) {
   return data;
 }
 
+/** فایلی که سرور در پاسخ یک POST می‌سازد (نمونه اکسل، پشتیبان رمزدار) دانلود می‌شود. */
+async function downloadPost(path, body, filename) {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-V2X-Token": TOKEN }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "ساخت فایل ناموفق بود.");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await res.blob());
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
 const I = {
   play: '<svg viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></svg>',
   stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
@@ -1958,15 +1969,8 @@ async function renderTemplates(el) {
     } catch (er) { toastErr(er); }
   });
   $("#tp-sample")?.addEventListener("click", async () => {
-    try {
-      const res = await fetch("/api/templates/sample", { method: "POST", headers: { "Content-Type": "application/json", "X-V2X-Token": TOKEN }, body: JSON.stringify(template) });
-      if (!res.ok) throw new Error((await res.json()).detail || "ساخت فایل نمونه ناموفق بود.");
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(await res.blob());
-      a.download = `${template.output.file || "نمونه"} (نمونه).xlsx`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    } catch (e) { toastErr(e); }
+    try { await downloadPost("/api/templates/sample", template, `${template.output.file || "نمونه"} (نمونه).xlsx`); }
+    catch (e) { toastErr(e); }
   });
   state.tplMeta = meta;
   drawTab();
@@ -2253,8 +2257,8 @@ async function renderSettings(el) {
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.mic} ارسال ویس از گوشی (شبکه محلی)</h2></div>
         <div class="card-b" id="s-lan"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.shield} پشتیبان‌گیری</h2>
-        <div class="row"><button class="btn primary" id="s-backup-now">${I.plus} پشتیبان‌گیری الان</button></div></div>
-        <div class="card-b small muted" style="padding:10px 20px">هر روز یک پشتیبان خودکار از اطلاعات برنامه (رکوردها، متن ویس‌ها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل) گرفته و ۱۴ پشتیبان آخر نگه داشته می‌شود. فایل‌های صوتی به‌خاطر حجم در پشتیبان نیستند. پیش از هر بازگردانی، از وضعیت فعلی هم پشتیبان گرفته می‌شود تا قابل برگشت باشد.</div>
+        <div class="row"><button class="btn" id="s-backup-import">${I.folder} افزودن از فایل</button><button class="btn primary" id="s-backup-now">${I.plus} پشتیبان‌گیری الان</button></div></div>
+        <div class="card-b small muted" style="padding:10px 20px">هر روز یک پشتیبان خودکار از اطلاعات برنامه (رکوردها، متن ویس‌ها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل) گرفته و ۱۴ پشتیبان آخر نگه داشته می‌شود. فایل‌های صوتی به‌خاطر حجم در پشتیبان نیستند. پیش از هر بازگردانی، از وضعیت فعلی هم پشتیبان گرفته می‌شود تا قابل برگشت باشد. پشتیبانی که دریافت می‌کنید (برای فلش یا رایانه دیگر) با گذرواژه قفل می‌شود.</div>
         <div class="table-wrap" id="s-backups"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.trash} نگهداری، گزارش و حریم خصوصی</h2></div><div class="card-b stack">
         <div class="row">
@@ -2318,8 +2322,23 @@ async function renderSettings(el) {
       box.innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>نوع</th><th>محتوا</th><th>حجم</th><th></th></tr></thead><tbody>
         ${backups.map((b) => `<tr><td class="small">${fa((b.created_at || "").replace("T", " "))}</td><td>${esc(b.reason_label || b.reason)}${b.damaged ? " " + chip("err", "خراب") : ""}</td>
           <td class="small muted">${fa(b.counts?.audio_files ?? 0)} ویس، ${fa(b.counts?.records ?? 0)} رکورد، ${fa(b.counts?.entities ?? 0)} نام</td><td class="small">${fmtSize(b.size)}</td>
-          <td class="actions"><a class="btn sm ghost" href="/api/backups/${encodeURIComponent(b.name)}/download" title="دانلود">${I.down}</a>
+          <td class="actions"><button class="btn sm ghost" data-bexport="${esc(b.name)}" title="دریافت با گذرواژه">${I.down}</button>
             ${b.damaged ? "" : `<button class="btn sm" data-restore="${esc(b.name)}">بازگردانی</button>`}</td></tr>`).join("")}</tbody></table>`;
+      $$("[data-bexport]", box).forEach((btn) => btn.onclick = async () => {
+        const name = btn.dataset.bexport;
+        await openModal({
+          title: "دریافت پشتیبان رمزدار",
+          body: `<div class="stack"><div>این فایل همه اطلاعات مشتریان را دارد و با گذرواژه‌ای که اینجا می‌گذارید قفل می‌شود. بدون این گذرواژه، بازگردانی ممکن نیست؛ آن را جای امن یادداشت کنید.</div>
+            <label>گذرواژه (دست‌کم ۸ نویسه)<input class="input ltr" type="password" id="bx-p1" autocomplete="new-password"></label>
+            <label>تکرار گذرواژه<input class="input ltr" type="password" id="bx-p2" autocomplete="new-password"></label></div>`,
+          actions: [{ label: "دریافت", cls: "primary", onClick: async (m) => {
+            const p1 = $("#bx-p1", m).value, p2 = $("#bx-p2", m).value;
+            if (p1 !== p2) { toast("دو گذرواژه یکی نیستند.", "err"); return false; }
+            try { await downloadPost(`/api/backups/${encodeURIComponent(name)}/export`, { password: p1 }, name.replace(/\.zip$/, ".v2xbak")); return true; }
+            catch (e) { toastErr(e); return false; }
+          } }, { label: "انصراف", cls: "ghost", value: false }],
+        });
+      });
       $$("[data-restore]", box).forEach((btn) => btn.onclick = async () => {
         const ok = await confirmBox("بازگردانی اطلاعات", `<div class="stack"><div class="alert warn">${I.alert}<div class="alert-body">همه رکوردها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل به وضعیت این پشتیبان برمی‌گردند.</div></div>
           <div>پیش از آن، از وضعیت فعلی یک پشتیبان «پیش از بازگردانی» گرفته می‌شود تا در صورت نیاز برگردید. فایل اکسل شرکت تغییر نمی‌کند.</div></div>`, "بازگردانی", "danger");
@@ -2331,6 +2350,20 @@ async function renderSettings(el) {
         } catch (e) { toastErr(e); }
       });
     };
+    $("#s-backup-import").onclick = () => openModal({
+      title: "افزودن پشتیبان از فایل",
+      body: `<div class="stack"><label>فایل پشتیبان (.v2xbak)<input type="file" id="bi-file" accept=".v2xbak"></label>
+        <label>گذرواژه<input class="input ltr" type="password" id="bi-pw" autocomplete="off"></label></div>`,
+      actions: [{ label: "افزودن", cls: "primary", onClick: async (m) => {
+        const f = $("#bi-file", m).files[0];
+        if (!f) { toast("فایل پشتیبان را انتخاب کنید.", "err"); return false; }
+        const form = new FormData();
+        form.append("file", f);
+        form.append("password", $("#bi-pw", m).value);
+        try { await api("/api/backups/import", { method: "POST", form }); toast("پشتیبان به فهرست اضافه شد؛ برای برگرداندن اطلاعات، «بازگردانی» را بزنید.", "ok"); drawBackups(); return true; }
+        catch (e) { toastErr(e); return false; }
+      } }, { label: "انصراف", cls: "ghost", value: false }],
+    });
     $("#s-backup-now").onclick = async () => {
       try { const b = await api("/api/backups", { method: "POST" }); toast(`پشتیبان ساخته شد (${fmtSize(b.size)}).`, "ok"); drawBackups(); } catch (e) { toastErr(e); }
     };

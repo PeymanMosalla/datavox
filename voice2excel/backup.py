@@ -16,7 +16,7 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import __version__
+from . import __version__, vault
 from .config import DATA_DIR, reset_settings_cache, settings_path
 from .database import Database
 
@@ -24,8 +24,8 @@ KEEP_AUTO = 14
 KEEP_MANUAL = 20
 MAX_RESTORE_BYTES = 2 * 1024 ** 3
 _MEMBER_RE = re.compile(r"^(manifest\.json|voice2excel\.db|settings\.json|profiles/[\w.-]+\.json)$")
-_NAME_RE = re.compile(r"^backup-\d{8}-\d{6}-(auto|manual|before-restore)\.zip$")
-REASON_LABELS = {"auto": "خودکار روزانه", "manual": "دستی", "before-restore": "پیش از بازگردانی"}
+_NAME_RE = re.compile(r"^backup-\d{8}-\d{6}-(auto|manual|before-restore|imported)\.zip$")
+REASON_LABELS = {"auto": "خودکار روزانه", "manual": "دستی", "before-restore": "پیش از بازگردانی", "imported": "از فایل"}
 
 
 class BackupError(Exception):
@@ -80,15 +80,16 @@ def create_backup(db: Database, reason: str = "manual") -> dict:
 def list_backups() -> list[dict]:
     out = []
     for p in sorted(backup_dir().glob("backup-*.zip"), reverse=True):
-        if not _NAME_RE.match(p.name):
+        m = _NAME_RE.match(p.name)
+        if not m:
             continue
         try:
             with zipfile.ZipFile(p) as z:
                 manifest = json.loads(z.read("manifest.json"))
         except (zipfile.BadZipFile, KeyError, ValueError):
             manifest = {"reason": "?", "created_at": "", "counts": {}, "damaged": True}
-        out.append({"name": p.name, "size": p.stat().st_size, **manifest,
-                    "reason_label": REASON_LABELS.get(manifest.get("reason"), "")})
+        out.append({"name": p.name, "size": p.stat().st_size, **manifest, "reason": m.group(1),  # پشتیبانِ افزوده از فایل
+                    "reason_label": REASON_LABELS[m.group(1)]})
     return out
 
 
@@ -111,6 +112,31 @@ def backup_path(name: str) -> Path:
     if not p.exists():
         raise BackupError("فایل پشتیبان پیدا نشد.")
     return p
+
+
+def export_encrypted(name: str, password: str) -> bytes:
+    """پشتیبانی که از برنامه بیرون برده می‌شود (فلش، ایمیل) همیشه با گذرواژه رمزدار است."""
+    try:
+        return vault.encrypt(backup_path(name).read_bytes(), password)
+    except vault.VaultError as e:
+        raise BackupError(str(e)) from None
+
+
+def import_encrypted(blob: bytes, password: str) -> dict:
+    """پشتیبان رمزدار به فهرست پشتیبان‌ها افزوده می‌شود (بازگردانی جداگانه و با تأیید کاربر است)."""
+    import io
+    try:
+        data = vault.decrypt(blob, password)
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            if json.loads(z.read("manifest.json")).get("app") != "voice2excel":
+                raise BackupError("این فایل، پشتیبان برنامه ثبت ویس نیست.")
+    except vault.VaultError as e:
+        raise BackupError(str(e)) from None
+    except (zipfile.BadZipFile, KeyError, ValueError):
+        raise BackupError("فایل پشتیبان خراب است.") from None
+    target = backup_dir() / f"backup-{datetime.now():%Y%m%d-%H%M%S}-imported.zip"
+    target.write_bytes(data)
+    return next(b for b in list_backups() if b["name"] == target.name)
 
 
 def maybe_daily_backup(db: Database) -> dict | None:
