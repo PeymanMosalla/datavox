@@ -1696,7 +1696,7 @@ async function renderExcel(el) {
 /** شخصی‌سازی خروجی: قالب «فایل شرکت» (فقط قالب مقادیر) یا قالب «فایل جدید» (ستون‌ها، ظاهر، مقصد). */
 const tplState = { name: null, tpl: null, tab: "columns", dirty: false, rows: [], headers: [] };
 const VALUE_OPTS = {
-  date_format: [["", "1405/07/28"], ["persian", "۱۴۰۵/۰۷/۲۸"], ["long", "۲۸ مهر ۱۴۰۵"]],
+  date_format: [["auto", "مثل ردیف‌های قبلی همین فایل"], ["", "1405/07/28"], ["compact", "1405/7/28"], ["persian", "۱۴۰۵/۰۷/۲۸"], ["long", "۲۸ مهر ۱۴۰۵"]],
   phone_format: [["text_leading_zero", "با صفر اول (09151234567)"], ["as_number_like_existing", "بدون صفر اول (9151234567)"]],
   multi_phone_separator: [["\n", "هر شماره در یک خط همان خانه"], [" ، ", "پشت سر هم با « ، »"], [" / ", "پشت سر هم با « / »"]],
   name_title: [["keep", "با عنوان (مهندس رجبی)"], ["drop", "بدون عنوان (رجبی)"]],
@@ -1840,7 +1840,8 @@ async function renderTemplates(el) {
           ${[[" ، ", "سجادیه 58 ، قطعه دوم"], ["، ", "سجادیه 58، قطعه دوم"], [" - ", "سجادیه 58 - قطعه دوم"]].map(([v, l]) => `<option value="${esc(v)}" ${(ts.sep || " ، ") === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
         <div class="field" style="grid-column:1/-1"><label>چیدمان روزها</label><div class="row">
           <label class="check small"><input type="checkbox" data-pk="blank_row_between_dates" ${P.blank_row_between_dates ? "checked" : ""}> یک ردیف خالی میان روزهای بازدید</label>
-          <label class="check small"><input type="checkbox" data-pk="date_first_row_only" ${P.date_first_row_only ? "checked" : ""}> تاریخ فقط در اولین ردیف هر روز</label></div></div>
+          <label class="check small"><input type="checkbox" data-pk="date_first_row_only" ${P.date_first_row_only ? "checked" : ""}> تاریخ فقط در اولین ردیف هر روز</label>
+          <label class="check small"><input type="checkbox" data-pk="autofit" ${P.autofit !== false ? "checked" : ""}> عرض ستون‌ها و ارتفاع ردیف‌ها خودکار به اندازه محتوا</label></div></div>
         <div class="field" style="grid-column:1/-1"><label>اجزای ستون «توضیحات ترکیبی»</label><div class="row">
           ${NOTE_PARTS.map(([k, l]) => `<label class="check small"><input type="checkbox" data-np="${k}" ${(P.notes_parts || NOTE_PARTS.map((x) => x[0])).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div></div></div>`;
       $$("[data-pk]", box).forEach((x) => x.onchange = () => { P[x.dataset.pk] = x.type === "checkbox" ? x.checked : x.value; changed(true); });

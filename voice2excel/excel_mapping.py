@@ -20,6 +20,8 @@ DEFAULT_POLICY = {
     "date_first_row_only": True,
     "copy_style_from_last_row": True,
     "multi_phone_separator": "\n",
+    "date_format": "auto",  # مثل ردیف‌های موجود همان فایل
+    "autofit": True,  # عرض ستون و ارتفاع ردیف به اندازه محتوا
     "notes_parts": ["technical_summary", "project_name", "building_type", "permit_status",
                     "customer_need", "notes", "followup"],
 }
@@ -41,7 +43,8 @@ _PROTECT_RULES = r"پیگیری|تاریخ\s*تماس|نتیجه|وضعیت"
 COMPANY = "default"
 # تنظیمات «قالب مقادیر» که در صفحه «قالب اکسل» برای هر دو نوع قالب قابل تغییرند
 VALUE_FORMAT_KEYS = {"date_format", "phone_format", "phone_group", "multi_phone_separator", "name_title",
-                     "text_style", "notes_parts", "blank_row_between_dates", "date_first_row_only", "highlights"}
+                     "text_style", "notes_parts", "blank_row_between_dates", "date_first_row_only", "highlights",
+                     "autofit"}
 
 
 def profiles_dir() -> Path:
@@ -171,13 +174,15 @@ _MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرد
 
 
 def format_date(value: str, fmt: str | None) -> str:
-    """«1405/07/28»؛ persian ← «۱۴۰۵/۰۷/۲۸»؛ long ← «۲۸ مهر ۱۴۰۵». تاریخ ناخوانا دست نمی‌خورد."""
+    """«1405/07/28»؛ compact ← «1405/7/28»؛ persian ← «۱۴۰۵/۰۷/۲۸»؛ long ← «۲۸ مهر ۱۴۰۵». تاریخ ناخوانا دست نمی‌خورد."""
     from .dates_fa import parse_jalali
     from .normalizer import to_persian_digits
 
-    d = parse_jalali(value) if value and fmt in ("persian", "long") else None
+    d = parse_jalali(value) if value and fmt in ("persian", "long", "compact") else None
     if not d:
         return value
+    if fmt == "compact":
+        return f"{d.year}/{d.month}/{d.day}"
     if fmt == "long":
         return to_persian_digits(f"{d.day} {_MONTHS[d.month - 1]} {d.year}")
     return to_persian_digits(f"{d.year}/{d.month:02d}/{d.day:02d}")

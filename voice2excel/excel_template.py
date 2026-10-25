@@ -271,6 +271,80 @@ def paint_row(ws, row: int, ncols: int, color: str) -> None:
         ws.cell(row, i).fill = _fill(color)
 
 
+MAX_WIDTH = 60  # بیشتر از این، متن در چند خط شکسته می‌شود
+HEADER_MAX = 18  # سهم عنوان ستون در پهن کردن آن
+# عرض هر نویسه فارسی در واحد عرض ستون Excel، در اندازه ۱۱؛ سنجیده با AutoFit خود Excel روی متن فارسی
+_FONT_UNITS = {"b nazanin": 0.78, "b mitra": 0.78, "b lotus": 0.78, "b yekan": 0.82, "b titr": 0.95, "tahoma": 1.0,
+               "calibri": 0.73, "arial": 0.85, "segoe ui": 0.85, "vazirmatn": 0.85, "iransans": 0.85, "sahel": 0.85,
+               "times new roman": 0.75}
+_DIGIT_UNITS = 1.05  # رقم‌ها از حروف فارسی پهن‌ترند
+_PAD = 2.0
+
+
+def _text_units(value, size: float, font: str | None = None) -> float:
+    f = _FONT_UNITS.get((font or "").lower(), 0.9)
+    best = 0.0
+    for line in str(value).split("\n"):
+        digits = sum(ch.isdigit() or ch.isascii() and ch.isalpha() for ch in line)
+        best = max(best, (digits * _DIGIT_UNITS + (len(line) - digits) * f) * size / 11)
+    return best
+
+
+def autofit(ws, columns: list[str], rows: list[int], header_row: int) -> None:
+    """اندازه خودکار: ستون‌ها به اندازه محتوا پهن می‌شوند (هرگز باریک نمی‌شوند، تا سقف MAX_WIDTH)،
+    متن بلندتر از ستون در چند خط می‌شکند و ارتفاع هر ردیف تازه به اندازه خط‌هایش تنظیم می‌شود.
+    فقط ستون‌های نوشته‌شده و ردیف‌های تازه؛ داده‌ها و قالب ردیف‌های قبلی دست نمی‌خورد."""
+    import math
+
+    from openpyxl.utils import column_index_from_string
+
+    def units(cell) -> float:
+        # ۵٪ اضافه برای شکستن خط در مرز واژه‌ها
+        return _text_units(cell.value, cell.font.sz or 11, cell.font.name) * 1.05
+
+    def fit_row(r: int, cols) -> None:
+        """متن بلندتر از ستون چندخطی و ارتفاع ردیف به اندازه بیشترین خط‌ها (فقط بلندتر می‌شود)."""
+        lines, size = 1, 11.0
+        for col in cols:
+            cell = ws[f"{col}{r}"]
+            if cell.value in (None, ""):
+                continue
+            room = max(1.0, (ws.column_dimensions[col].width or 8.43) - _PAD)
+            sz, name = cell.font.sz or 11, cell.font.name
+            n = sum(max(1, math.ceil(_text_units(line, sz, name) * 1.05 / room)) for line in str(cell.value).split("\n"))
+            if n > 1 and not cell.alignment.wrap_text:
+                al = cell.alignment
+                cell.alignment = Alignment(horizontal=al.horizontal, vertical=al.vertical or "center", wrap_text=True,
+                                           readingOrder=al.readingOrder)
+            lines, size = max(lines, n), max(size, sz)
+        need_h = round(lines * size * 1.3 + 7, 1)  # ۱٫۲۵ برابر قلم در هر خط (سنجیده با AutoFit در Excel) + فاصله از کادر
+        cur = ws.row_dimensions[r].height
+        if not cur or need_h > cur:
+            ws.row_dimensions[r].height = need_h
+
+    idx = {c: column_index_from_string(c) for c in columns}
+    for col, ci in idx.items():
+        need = max((units(ws.cell(r, ci)) + _PAD for r in rows if ws.cell(r, ci).value not in (None, "")), default=0)
+        h = ws.cell(header_row, ci)
+        if h.value not in (None, ""):  # عنوان بلند ستون را بیش از اندازه پهن نمی‌کند (عنوان دو خط می‌شود)
+            need = max(need, min(HEADER_MAX, units(h) + _PAD))
+        cur = ws.column_dimensions[col].width or 8.43
+        if need > cur:
+            ws.column_dimensions[col].width = round(min(MAX_WIDTH, need), 1)
+    # عنوان ستون‌ها روی هم نیفتند: همه عنوان‌های ردیف سرستون (حتی ستون‌های محافظت‌شده) در صورت نیاز دو خط می‌شوند
+    fit_row(header_row, [get_column_letter(c.column) for c in ws[header_row] if c.value not in (None, "")])
+    for r in rows:
+        fit_row(r, idx)
+
+
+def extend_filter(ws, last_row: int) -> None:
+    """فیلتری که فقط ردیف‌های قبلی را می‌پوشاند، ردیف‌های تازه را هم بپوشاند."""
+    ref = ws.auto_filter.ref
+    m = re.fullmatch(r"([A-Z]+\d+):([A-Z]+)(\d+)", ref or "")
+    if m and int(m.group(3)) < last_row:
+        ws.auto_filter.ref = f"{m.group(1)}:{m.group(2)}{last_row}"
+
+
 def finish_sheet(ws, tpl: dict, last_row: int) -> None:
     """پس از نوشتن ردیف‌ها: محدوده فیلتر همه داده‌ها را بپوشاند."""
     if tpl["style"]["filter"]:

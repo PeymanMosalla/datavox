@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import os
+import re
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -103,6 +104,19 @@ def _same_date(a: str, b: str) -> bool:
     return normalize_text(a) == normalize_text(b)
 
 
+def _infer_date_format(ws, date_col: int | None, start: int, last: int) -> str:
+    """شکل غالب تاریخ در ۵۰ ردیف آخر: compact («1405/7/20»)، persian یا پیش‌فرض («1405/07/20»)."""
+    votes = {"": 0, "compact": 0, "persian": 0}
+    if date_col:
+        for r in range(last, max(start, last - 50) - 1, -1):
+            v = str(ws.cell(r, date_col).value or "").strip()
+            if re.search(r"[۰-۹]", v):
+                votes["persian"] += 1
+            elif m := re.fullmatch(r"\d{4}/(\d{1,2})/(\d{1,2})", v):
+                votes["compact" if len(m.group(1)) == 1 or len(m.group(2)) == 1 else ""] += 1
+    return max(votes, key=votes.get) if any(votes.values()) else ""
+
+
 def plan_rows(profile: dict, ws, records: list[dict]) -> dict:
     """محاسبه دقیق اینکه هر رکورد در کدام ردیف و با چه مقادیری نوشته می‌شود."""
     cols = [column_index_from_string(c) for c in list(profile["headers"].keys())]
@@ -112,6 +126,9 @@ def plan_rows(profile: dict, ws, records: list[dict]) -> dict:
     date_col_letter = next((c for c, f in profile["columns"].items() if f == "visit_date"), None)
     date_col = column_index_from_string(date_col_letter) if date_col_letter else None
     current_group = _group_date(ws, date_col, last, start)
+    if policy.get("date_format") == "auto":  # تاریخ به همان شکلی که در ردیف‌های قبلی همین فایل نوشته شده
+        policy = {**policy, "date_format": _infer_date_format(ws, date_col, start, last)}
+        profile = {**profile, "policy": policy}
     row = last + 1
     plan = []
     num_cols = [c for c, f in profile["columns"].items() if f == "row_number"]
@@ -236,8 +253,15 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
                                            wrap_text="\n" in str(value) or al.wrap_text,
                                            readingOrder=1 if is_phone else al.readingOrder)  # ۱ = چپ‌به‌راست
 
-    if templated and plan["rows"]:
-        excel_template.finish_sheet(ws, profile, plan["rows"][-1]["row"])
+    if plan["rows"]:
+        new_rows = [item["row"] for item in plan["rows"]]
+        if policy.get("autofit", True):
+            written = [c for c in profile["columns"] if column_index_from_string(c) not in protected]
+            excel_template.autofit(ws, written, new_rows, profile["header_row"])
+        if templated:
+            excel_template.finish_sheet(ws, profile, new_rows[-1])
+        else:
+            excel_template.extend_filter(ws, new_rows[-1])
 
     # ۴) ذخیره در فایل موقت و سپس انتقال اتمیک به مسیر خروجی
     output = out_dir / f"{target.stem}__ثبت_{stamp}{ext}"

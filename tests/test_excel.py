@@ -106,7 +106,8 @@ def test_export_writes_copy_and_preserves_original(tmp_path, monkeypatch):
     # ردیف خالی میان روزها: آخرین داده ردیف 5 است، تاریخ جدید ← ردیف 6 خالی، داده از 7
     assert rep["first_row"] == 7
     assert all(ws.cell(6, c).value is None for c in range(1, 9))
-    assert ws["A7"].value == "1405/07/28" and ws["A8"].value is None  # تاریخ فقط در اولین ردیف روز
+    # تاریخ فقط در اولین ردیف روز، به همان شکل ردیف‌های قبلی فایل («1405/7/20»)
+    assert ws["A7"].value == "1405/7/28" and ws["A8"].value is None
     assert ws["C7"].value == "مهندس رجبی"
     assert ws["D7"].value == "09373451255" and ws["D7"].data_type == "s"  # متن با صفر اول
     assert ws["D8"].value == "09151112233\n09357654321" and ws["D8"].alignment.wrap_text
@@ -118,9 +119,9 @@ def test_export_writes_copy_and_preserves_original(tmp_path, monkeypatch):
     # داده‌ها و قالب‌بندی قبلی
     assert ws["D2"].value == 9150000001 and ws["C5"].value == "مهندس آزمون‌سه"
     assert ws["C7"].font.name == "B Nazanin" and ws["C7"].border.top.style == "thin"
-    assert ws.row_dimensions[7].height == 39.95
+    assert ws.row_dimensions[7].height >= 39.95  # ارتفاع ردیف قبلی حفظ یا برای محتوای بیشتر بلندتر
     assert ws.sheet_view.rightToLeft
-    assert ws.auto_filter.ref == "A1:H3"  # بدون اجازه تغییر نکرده
+    assert ws.auto_filter.ref == "A1:H8"  # فیلتر قدیمی (A1:H3) ردیف‌های تازه را هم می‌پوشاند
     assert len(ws.data_validations.dataValidation) == 1 and len(ws.conditional_formatting) == 1
     assert ws.column_dimensions["B"].width == 54
     assert wb["خلاصه"]["B1"].value == "=COUNTA(Sheet1!C2:C1000)"  # فرمول حفظ شد
@@ -230,3 +231,40 @@ def test_export_uses_company_style(tmp_path):
     ws = openpyxl.load_workbook(rep["output_path"])["Sheet1"]
     assert ws.cell(rep["first_row"], 2).value == "سجادیه 58 ، قطعه دوم"
     assert ws.cell(rep["first_row"], 4).value == "09373451255"  # شماره دست نمی‌خورد
+
+
+def test_export_autofits_columns_rows_and_extends_filter(tmp_path):
+    """خروجی بدون ویرایش دستی مرتب است: ستون‌ها پهن، متن بلند چندخطی، ارتفاع ردیف به اندازه خط‌ها."""
+    src = make_company_like(tmp_path / "co.xlsx")
+    wb = openpyxl.load_workbook(src)
+    wb["Sheet1"].auto_filter.ref = "A1:H3"  # فیلتر قدیمی که ردیف‌های تازه را نمی‌پوشاند
+    wb.save(src)
+    long_note = {**V1, "notes": "توضیح بسیار بلندی درباره این ساختمان که از عرض معمول یک ستون خیلی بیشتر است و باید چند خط شود"}
+    prof = profile_for(src)
+    widths_before = {c: openpyxl.load_workbook(src)["Sheet1"].column_dimensions[c].width for c in "ABCDE"}
+    rep = write_export(prof, [rec(1, long_note)])
+    ws = openpyxl.load_workbook(rep["output_path"])["Sheet1"]
+    r = rep["first_row"]
+    notes_col = next(c for c, f in prof["columns"].items() if f == "notes_composed")
+    assert ws.column_dimensions[notes_col].width > (widths_before[notes_col] or 8.43)  # پهن‌تر شد
+    assert ws.column_dimensions[notes_col].width <= 60  # ولی نه بی‌نهایت
+    assert ws[f"{notes_col}{r}"].alignment.wrap_text  # متن بلند چند خط
+    assert ws.row_dimensions[r].height and ws.row_dimensions[r].height >= 30  # ارتفاع برای چند خط
+    assert all(ws.column_dimensions[c].width >= (widths_before[c] or 0) for c in "ABCDE")  # هرگز باریک‌تر نمی‌شود
+    assert ws.auto_filter.ref == f"A1:H{r}"
+    prof["policy"]["autofit"] = False
+    rep = write_export(prof, [rec(1, long_note)])
+    ws = openpyxl.load_workbook(rep["output_path"])["Sheet1"]
+    assert ws.column_dimensions[notes_col].width == widths_before[notes_col]
+
+
+def test_date_format_follows_existing_rows():
+    from voice2excel.excel_writer import _infer_date_format
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    for i, v in enumerate(["1405/7/20", "1405/7/21", "1405/07/22"], start=2):
+        ws.cell(i, 1, v)
+    assert _infer_date_format(ws, 1, 2, 4) == "compact"
+    ws.cell(5, 1, "1405/07/23"); ws.cell(6, 1, "1405/07/24")
+    assert _infer_date_format(ws, 1, 2, 6) == ""
+    assert _infer_date_format(ws, None, 2, 6) == "" and _infer_date_format(openpyxl.Workbook().active, 1, 2, 1) == ""
