@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import ipaddress
 import secrets
@@ -39,6 +40,16 @@ def remote_path_allowed(path: str) -> bool:
 
 def needs_pin(path: str) -> bool:
     return path.startswith("/api/m/")
+
+
+def new_device_token() -> str:
+    """کلید هر گوشی پس از یک بار ورود با رمز؛ خود رمز روی گوشی ذخیره نمی‌شود."""
+    return secrets.token_urlsafe(32)
+
+
+def token_hash(token: str) -> str:
+    """در پایگاه داده فقط هش کلید نگه داشته می‌شود."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def generate_pin() -> str:

@@ -94,6 +94,7 @@ class Settings:
     lan_enabled: bool = False
     lan_pin: str = ""
     lan_auto_start: bool = True  # پردازش ویس‌های رسیده از گوشی خودکار شروع شود
+    lan_idle_hours: int = 0  # خاموش شدن خودکار پس از این مدت بی‌استفاده (۰ = هرگز)
 
     # --- پوشه ورودی خودکار (خالی = خاموش) ---
     inbox_dir: str = ""

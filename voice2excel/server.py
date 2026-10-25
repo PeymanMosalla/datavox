@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -152,9 +152,17 @@ async def _lan_guard(request, call_next):
     if lan.needs_pin(path):
         if _pin_limiter.blocked(host):
             return JSONResponse(status_code=429, content={"detail": "تلاش ناموفق زیاد بود؛ چند دقیقه دیگر دوباره امتحان کنید."})
-        if not lan.pin_ok(request.headers.get("x-pin"), s.lan_pin):
+        if path == "/api/m/login":  # فقط ورود با رمز؛ پس از آن هر گوشی کلید خودش را دارد
+            ok = lan.pin_ok(request.headers.get("x-pin"), s.lan_pin)
+        else:
+            device = db().device_by_token(lan.token_hash(request.headers.get("x-device") or ""))
+            ok = device is not None
+            if ok:
+                request.state.device = device
+                db().touch_device(device["id"], host)
+        if not ok:
             _pin_limiter.fail(host)
-            return JSONResponse(status_code=401, content={"detail": "رمز نادرست است."})
+            return JSONResponse(status_code=401, content={"detail": "رمز نادرست است یا این گوشی از فهرست برداشته شده است."})
         _pin_limiter.reset(host)
     return await call_next(request)
 
@@ -282,15 +290,16 @@ def _inbox_loop() -> None:
 
 
 def _daily_backup_loop() -> None:
-    """هنگام اجرا و سپس هر ساعت بررسی می‌شود که پشتیبان روزانه گرفته شده باشد."""
+    """هنگام اجرا و سپس هر ده دقیقه: پشتیبان روزانه گرفته شده باشد و دسترسی بی‌استفاده گوشی خاموش شود."""
     while True:
         try:
             made = backup.maybe_daily_backup(db())
             if made:
                 log.info("پشتیبان خودکار روزانه ساخته شد: %s", made["name"])
+            lan_auto_off()
         except Exception:
             log.exception("daily backup failed")
-        time.sleep(3600)
+        time.sleep(600)  # پشتیبان روزانه است؛ این فاصله برای خاموش شدن به‌موقع دسترسی گوشی است
 
 
 def _idle_watchdog() -> None:
@@ -499,15 +508,39 @@ def mobile_page():
     return FileResponse(WEB_DIR / "m.html")
 
 
+def _sender(request: Request, given: str = "") -> str:
+    """نام فرستنده: نام ثبت‌شده همان گوشی (از روی خود رایانه، نام نوشته‌شده در صفحه)."""
+    device = getattr(request.state, "device", None)
+    return device["name"] if device else ((given or "").strip()[:40] or "بدون نام")
+
+
+class DeviceLogin(BaseModel):
+    name: str
+
+
+@app.post("/api/m/login")
+def mobile_login(body: DeviceLogin, request: Request):
+    """رمز در میان‌افزار بررسی شده است؛ گوشی کلید خودش را می‌گیرد و از این به بعد رمز لازم ندارد."""
+    name = body.name.strip()[:40]
+    if not name:
+        err(400, "نام خود را بنویسید (تا ویس‌هایتان در رایانه با همین نام دیده شود).")
+    token = lan.new_device_token()
+    db().add_device(name, lan.token_hash(token), request.client.host if request.client else "")
+    db().log_event(f"گوشی «{name}» برای ارسال ویس وصل شد.")
+    return {"token": token, "name": name}
+
+
 @app.post("/api/m/check")
-def mobile_check():
-    """رمز در میان‌افزار بررسی شده است؛ اینجا فقط اطلاعات صفحه برگردانده می‌شود."""
-    return {"ok": True, "today": format_jalali(today_jalali()), "extensions": sorted(SUPPORTED_AUDIO_EXTENSIONS)}
+def mobile_check(request: Request):
+    """کلید گوشی در میان‌افزار بررسی شده است؛ اینجا فقط اطلاعات صفحه برگردانده می‌شود."""
+    return {"ok": True, "name": _sender(request), "today": format_jalali(today_jalali()),
+            "extensions": sorted(SUPPORTED_AUDIO_EXTENSIONS)}
 
 
 @app.post("/api/m/upload")
-async def mobile_upload(files: list[UploadFile] = File(...), visit_date: str = Form(""), sender: str = Form("")):
-    sender = (sender or "").strip()[:40] or "بدون نام"
+async def mobile_upload(request: Request, files: list[UploadFile] = File(...), visit_date: str = Form(""),
+                        sender: str = Form("")):
+    sender = _sender(request, sender)
     results = await _store_uploads(files, _PHONE_BATCH + sender, visit_date, True)
     s = load_settings()
     if s.lan_auto_start and any(r["result"] == "added" for r in results) and model_available(s.model_name):
@@ -517,16 +550,17 @@ async def mobile_upload(files: list[UploadFile] = File(...), visit_date: str = F
 
 
 @app.get("/api/m/recent")
-def mobile_recent(sender: str = ""):
-    """وضعیت آخرین ویس‌های فرستاده‌شده از گوشی همین فرستنده (فقط نام فایل و وضعیت پردازش)."""
+def mobile_recent(request: Request, sender: str = ""):
+    """وضعیت آخرین ویس‌های فرستاده‌شده از همین گوشی (فقط نام فایل و وضعیت پردازش؛ نه ویس دیگران)."""
     rows = db().q("""SELECT a.original_name, a.status, a.created_at FROM audio_files a JOIN batches b ON b.id=a.batch_id
-                     WHERE b.name=? ORDER BY a.id DESC LIMIT 20""", (_PHONE_BATCH + ((sender or "").strip()[:40] or "بدون نام"),))
+                     WHERE b.name=? ORDER BY a.id DESC LIMIT 20""", (_PHONE_BATCH + _sender(request, sender),))
     return {"files": rows}
 
 
 class LanIn(BaseModel):
     enabled: bool
     auto_start: bool = True
+    idle_hours: int = 0
 
 
 @app.get("/api/lan")
@@ -534,26 +568,52 @@ def lan_info():
     s = load_settings()
     bound = os.environ.get("V2X_BIND_HOST", s.host)
     return {
-        "enabled": s.lan_enabled, "pin": s.lan_pin, "auto_start": s.lan_auto_start,
+        "enabled": s.lan_enabled, "pin": s.lan_pin, "auto_start": s.lan_auto_start, "idle_hours": s.lan_idle_hours,
         "urls": [f"http://{ip}:{s.port}/m" for ip in lan.lan_addresses()],
         "restart_needed": s.lan_enabled != (bound == "0.0.0.0"),
+        "devices": db().list_devices(),
     }
 
 
 @app.put("/api/lan")
 def lan_set(body: LanIn):
     s = load_settings()
-    updates = {"lan_enabled": body.enabled, "lan_auto_start": body.auto_start}
+    updates = {"lan_enabled": body.enabled, "lan_auto_start": body.auto_start, "lan_idle_hours": max(0, body.idle_hours)}
     if body.enabled and not s.lan_pin:
         updates["lan_pin"] = lan.generate_pin()
+    if body.enabled and not s.lan_enabled:
+        db().set_meta("lan_enabled_at", str(time.time()))
     save_settings(updates)
     return lan_info()
 
 
 @app.post("/api/lan/new-pin")
 def lan_new_pin():
+    """رمز جدید: همه گوشی‌های وصل‌شده هم برداشته می‌شوند و باید با رمز تازه دوباره وصل شوند."""
     save_settings({"lan_pin": lan.generate_pin()})
+    db().delete_devices()
     return lan_info()
+
+
+@app.delete("/api/lan/devices/{device_id}")
+def lan_remove_device(device_id: int):
+    if not db().delete_devices(device_id):
+        err(404, "این گوشی در فهرست نیست.")
+    return lan_info()
+
+
+def lan_auto_off() -> bool:
+    """اگر «خاموش شدن خودکار» تنظیم شده و این مدت هیچ گوشی‌ای ویس نفرستاده، دسترسی شبکه بسته می‌شود."""
+    s = load_settings()
+    if not (s.lan_enabled and s.lan_idle_hours):
+        return False
+    seen = [datetime.fromisoformat(d["last_seen"]).timestamp() for d in db().list_devices() if d["last_seen"]]
+    last = max(seen + [float(db().get_meta("lan_enabled_at") or 0)])
+    if time.time() - last < s.lan_idle_hours * 3600:
+        return False
+    save_settings({"lan_enabled": False})
+    db().log_event(f"ارسال از گوشی پس از {s.lan_idle_hours} ساعت بی‌استفاده خودکار خاموش شد.")
+    return True
 
 
 class FolderImport(BaseModel):

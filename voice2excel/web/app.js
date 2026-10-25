@@ -2380,16 +2380,28 @@ async function renderSettings(el) {
           ${L.restart_needed ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>یک بار برنامه را ببندید و دوباره باز کنید</b>تا دسترسی از شبکه فعال شود. اگر ویندوز درباره «دیوار آتش» (Firewall) پرسید، گزینه «شبکه خصوصی» را مجاز کنید.</div></div>` : ""}
           <dl class="kv"><dt>نشانی در گوشی</dt><dd>${L.urls.length ? L.urls.map((u) => `<span class="path">${esc(u)}</span>`).join(" ") : '<span class="muted">این رایانه به شبکه محلی وصل نیست.</span>'}</dd>
             <dt>رمز</dt><dd><span class="phone-view"><span class="ltr">${esc(L.pin)}</span></span> <button class="btn sm ghost" id="lan-pin">رمز جدید</button></dd></dl>
-          <div class="muted small">رمز را فقط به بازاریاب‌های خودتان بدهید. با «رمز جدید»، گوشی‌هایی که رمز قبلی را داشتند دیگر نمی‌توانند ویس بفرستند.</div>` : ""}
+          <div class="muted small">رمز را فقط به بازاریاب‌های خودتان بدهید. هر گوشی فقط یک بار رمز را وارد می‌کند و پس از آن در فهرست زیر است. با «رمز جدید»، همه گوشی‌ها برداشته می‌شوند.</div>
+          <label class="row small">خاموش شدن خودکار اگر هیچ گوشی‌ای ویس نفرستاد:
+            <select class="input sm" id="lan-idle" style="width:auto">${[[0, "هرگز"], [4, "پس از ۴ ساعت"], [8, "پس از ۸ ساعت"], [12, "پس از ۱۲ ساعت"], [24, "پس از یک روز"]]
+              .map(([v, l]) => `<option value="${v}" ${L.idle_hours === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+          ${L.devices.length ? `<table class="table"><thead><tr><th>گوشی وصل‌شده</th><th>آخرین ارسال</th><th></th></tr></thead><tbody>
+            ${L.devices.map((d) => `<tr><td><b>${esc(d.name)}</b> <span class="muted small ltr">${esc(d.last_ip || "")}</span></td>
+              <td class="small">${fa((d.last_seen || "").replace("T", " "))}</td>
+              <td class="actions"><button class="btn sm danger" data-devdel="${d.id}">برداشتن</button></td></tr>`).join("")}</tbody></table>`
+            : '<div class="muted small">هنوز گوشی‌ای وصل نشده است.</div>'}` : ""}
       </div>`;
       const save = async () => {
-        try { await api("/api/lan", { method: "PUT", body: { enabled: $("#lan-on").checked, auto_start: $("#lan-auto") ? $("#lan-auto").checked : true } }); drawLan(); }
+        try { await api("/api/lan", { method: "PUT", body: { enabled: $("#lan-on").checked, auto_start: $("#lan-auto") ? $("#lan-auto").checked : true, idle_hours: +($("#lan-idle")?.value ?? L.idle_hours) } }); drawLan(); }
         catch (e) { toastErr(e); }
       };
       $("#lan-on").onchange = save;
       $("#lan-auto")?.addEventListener("change", save);
+      $("#lan-idle")?.addEventListener("change", save);
+      $$("[data-devdel]", box).forEach((b) => b.onclick = async () => {
+        try { await api(`/api/lan/devices/${b.dataset.devdel}`, { method: "DELETE" }); toast("گوشی برداشته شد؛ دیگر نمی‌تواند ویس بفرستد.", "ok"); drawLan(); } catch (e) { toastErr(e); }
+      });
       $("#lan-pin")?.addEventListener("click", async () => {
-        if (!(await confirmBox("رمز جدید", "گوشی‌هایی که رمز قبلی را دارند باید رمز جدید را وارد کنند. ادامه می‌دهید؟", "رمز جدید"))) return;
+        if (!(await confirmBox("رمز جدید", "همه گوشی‌های وصل‌شده برداشته می‌شوند و باید با رمز جدید دوباره وصل شوند. ادامه می‌دهید؟", "رمز جدید"))) return;
         try { await api("/api/lan/new-pin", { method: "POST" }); drawLan(); } catch (e) { toastErr(e); }
       });
     };

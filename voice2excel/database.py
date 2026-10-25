@@ -104,6 +104,10 @@ CREATE TABLE IF NOT EXISTS entity_sources(
     count INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(entity_id, source_id)
 );
+CREATE TABLE IF NOT EXISTS lan_devices(
+    id INTEGER PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL, last_seen TEXT, last_ip TEXT
+);
 """
 
 
@@ -300,6 +304,28 @@ class Database:
     def set_meta(self, key: str, value: str) -> None:
         with self.tx() as c:
             c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)", (key, value))
+
+    # ---------- گوشی‌های شبکه محلی ----------
+    def add_device(self, name: str, token_hash: str, ip: str) -> int:
+        with self.tx() as c:
+            return c.execute("INSERT INTO lan_devices(name, token_hash, created_at, last_seen, last_ip) VALUES(?,?,?,?,?)",
+                             (name, token_hash, now(), now(), ip)).lastrowid
+
+    def device_by_token(self, token_hash: str) -> dict | None:
+        return self.one("SELECT * FROM lan_devices WHERE token_hash=?", (token_hash,))
+
+    def touch_device(self, device_id: int, ip: str) -> None:
+        with self.tx() as c:
+            c.execute("UPDATE lan_devices SET last_seen=?, last_ip=? WHERE id=?", (now(), ip, device_id))
+
+    def list_devices(self) -> list[dict]:
+        return self.q("SELECT id, name, created_at, last_seen, last_ip FROM lan_devices ORDER BY last_seen DESC")
+
+    def delete_devices(self, device_id: int | None = None) -> int:
+        with self.tx() as c:
+            if device_id is None:
+                return c.execute("DELETE FROM lan_devices").rowcount
+            return c.execute("DELETE FROM lan_devices WHERE id=?", (device_id,)).rowcount
 
     def wipe_all(self) -> None:
         """پاک‌کردن همه اطلاعات کاربران (رکورد، متن ویس، واژه‌نامه، اصلاحات، رخدادها)؛ فقط متای فنی می‌ماند.
