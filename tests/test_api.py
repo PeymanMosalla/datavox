@@ -79,9 +79,32 @@ def test_end_to_end(db, settings, wav_factory, tmp_path, monkeypatch):
         exp_id = rep["export_id"]
         assert c.post(f"/api/exports/{exp_id}/replace-original").status_code == 200
         assert src.read_bytes() != before
-        # بازگردانی: رکوردها دوباره آماده ثبت می‌شوند
-        assert c.post(f"/api/exports/{exp_id}/undo").status_code == 200
+        # بازگردانی: فایل اصلی به نسخه پیش از ثبت برمی‌گردد و رکوردها دوباره آماده ثبت می‌شوند
+        assert c.post(f"/api/exports/{exp_id}/undo").json()["restored"]
+        assert src.read_bytes() == before
         assert c.get("/api/status").json()["records"]["approved"] == 2
+
+        # ثبت یک‌مرحله‌ای: مستقیم در فایل اصلی، با پشتیبان؛ و بازگشت آن
+        com = c.post("/api/excel/commit", json={}).json()
+        assert com["applied"] and src.read_bytes() != before
+        ws = openpyxl.load_workbook(src)["Sheet1"]
+        assert ws.cell(com["first_row"], 3).value in ("مهندس رجبی", "مهندس نصیری")
+        assert c.get("/api/status").json()["pending_replace"] == 0
+        assert c.post(f"/api/exports/{com['export_id']}/undo").json()["restored"]
+        assert src.read_bytes() == before
+
+        # فایل اصلی پس از ثبت تغییر کرده: بازگشت فایل را دست نمی‌زند
+        com = c.post("/api/excel/commit", json={}).json()
+        wb = openpyxl.load_workbook(src); wb["Sheet1"]["A1"].comment = None; wb["Sheet1"].cell(1, 30).value = "x"; wb.save(src)
+        edited = src.read_bytes()
+        r = c.post(f"/api/exports/{com['export_id']}/undo").json()
+        assert not r["restored"] and src.read_bytes() == edited
+        # فایل باز در Excel: پیش از هر نوشتنی متوقف می‌شود
+        owner = src.with_name("~$" + src.name)
+        owner.write_bytes(b"x")
+        assert c.post("/api/excel/commit", json={}).status_code == 409
+        owner.unlink()
+        assert src.read_bytes() == edited
 
         assert c.get("/api/report/errors.xlsx").status_code == 200
         assert c.get("/api/report/records.xlsx").status_code == 200

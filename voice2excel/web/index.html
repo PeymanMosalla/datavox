@@ -8,6 +8,8 @@
   <script>
     // تم انتخابی کاربر پیش از نمایش صفحه اعمال می‌شود (بدون چشمک زدن رنگ)
     try { const t = localStorage.getItem("v2x.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) { }
+    // منوی ساده («کار امروز» و «تنظیمات»)؛ همه صفحه‌ها فقط اگر کاربر در تنظیمات خواسته باشد
+    try { if (localStorage.getItem("v2x.nav") === "full") document.documentElement.classList.add("full-nav"); } catch (e) { }
   </script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -24,19 +26,22 @@
         </div>
       </div>
       <nav class="nav" id="nav">
-        <a href="#/dashboard" data-page="dashboard">
+        <a href="#/today" data-page="today">
+          <svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><path d="M4 6h16M4 12h3M4 18h16"/></svg>
+          <span>کار امروز</span><b class="badge warn" id="nav-today"></b></a>
+        <a href="#/dashboard" data-page="dashboard" class="adv">
           <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>
           <span>داشبورد</span></a>
-        <a href="#/voices" data-page="voices">
+        <a href="#/voices" data-page="voices" class="adv">
           <svg viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Zm-6 8a6 6 0 0 0 12 0M12 18v2.5"/></svg>
           <span>ویس‌ها و پردازش</span><b class="badge" id="nav-queue"></b></a>
-        <a href="#/review" data-page="review">
+        <a href="#/review" data-page="review" class="adv">
           <svg viewBox="0 0 24 24"><path d="M9 11l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="4"/></svg>
           <span>بازبینی اطلاعات</span><b class="badge warn" id="nav-review"></b></a>
-        <a href="#/excel" data-page="excel">
+        <a href="#/excel" data-page="excel" class="adv">
           <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
           <span>ثبت در اکسل</span><b class="badge ok" id="nav-approved"></b></a>
-        <a href="#/dictionary" data-page="dictionary">
+        <a href="#/dictionary" data-page="dictionary" class="adv">
           <svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4Z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>
           <span>واژه‌نامه</span></a>
         <a href="#/settings" data-page="settings">

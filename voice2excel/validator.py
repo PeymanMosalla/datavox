@@ -55,8 +55,7 @@ def _check_phone(value: str, meta: dict, edited: bool, settings: Settings) -> Fi
             reasons.append("مرز گروه‌های عددی در گفتار روشن نبود (مثلاً «نهصد پانزده» بدون «و»)؛ ترتیب رقم‌ها را با ویس بررسی کنید.")
         if not edited and settings.review_spoken_phones:
             worsen("review")
-            reasons.append("قالب شماره درست است، ولی ممکن است مدل گفتار رقمی را اشتباه شنیده باشد (مثلاً «سه» و «سی»). "
-                           "تا سنجش دقت روی ویس‌های واقعی، هر شماره با شنیدن ویس تأیید می‌شود.")
+            reasons.append("شماره را با شنیدن ویس تأیید کنید (مدل گفتار گاهی رقمی مثل «سه» و «سی» را اشتباه می‌شنود).")
         if pm and not pm.get("explicit") and kind != "mobile":
             worsen("review")
             reasons.append("پیش از این شماره واژه‌ای مثل «شماره» یا «تلفن» نیامده و فقط از الگوی رقم‌ها برداشت شد.")

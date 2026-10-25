@@ -159,7 +159,7 @@ async function pickPath(kind, start = "") {
 }
 
 // ---------------- وضعیت سراسری ----------------
-const state = { meta: null, status: null, page: "dashboard", profile: null };
+const state = { meta: null, status: null, page: "today", profile: null };
 
 async function refreshStatus() {
   let s;
@@ -170,6 +170,7 @@ async function refreshStatus() {
   const q = s.files.queued + s.files.processing;
   $("#nav-queue").textContent = q ? fa(q) : "";
   $("#nav-review").textContent = s.records.review ? fa(s.records.review) : "";
+  $("#nav-today").textContent = s.records.review ? fa(s.records.review) : "";
   $("#nav-approved").textContent = s.records.approved ? fa(s.records.approved) : "";
   const pill = $("#worker-pill");
   pill.className = "worker-pill" + (w.running ? " running" : w.last_error ? " error" : "");
@@ -192,7 +193,7 @@ async function refreshStatus() {
 /** پایان پردازش صف: اعلان در برنامه، صدای کوتاه و (اگر پنجره دیده نمی‌شود) اعلان ویندوز. */
 function notifyDone(s, n) {
   const msg = `پردازش ${fa(n)} ویس تمام شد${s.records.review ? `؛ ${fa(s.records.review)} رکورد منتظر بازبینی است` : ""}.`;
-  toast(msg, "ok", s.records.review ? { label: "بازبینی", onClick: () => { location.hash = "#/review"; } } : null);
+  toast(msg, "ok", s.records.review && state.page !== "today" ? { label: "بازبینی", onClick: () => { location.hash = "#/today"; } } : null);
   if (localStorage.getItem("v2x.sound") !== "0") chime();
   if (document.hidden && "Notification" in window && Notification.permission === "granted") {
     try { new Notification("ثبت ویس", { body: msg, lang: "fa", dir: "rtl" }); } catch { }
@@ -225,7 +226,7 @@ function renderBanners() {
   if (s.worker.last_error && !s.worker.running) {
     out.push(`<div class="alert err">${I.alert}<div class="alert-body"><b>پردازش متوقف شد</b>${esc(s.worker.last_error)}</div></div>`);
   }
-  if (s.pending_replace) {
+  if (s.pending_replace && state.page === "excel") {
     out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>خروجی اکسل هنوز جایگزین فایل اصلی نشده</b>${fa(s.pending_replace)} خروجی ساخته شده که هنوز روی فایل اصلی شرکت اعمال نشده است. پس از بررسی، از بخش «ثبت در اکسل» جایگزینش کنید.</div><a class="btn sm" href="#/excel">مشاهده</a></div>`);
   }
   $("#banners").innerHTML = out.join("");
@@ -233,6 +234,7 @@ function renderBanners() {
 
 // ---------------- مسیریابی ----------------
 const PAGES = {
+  today: { title: "کار امروز", sub: "ویس بدهید، موارد مشکوک را ببینید، در اکسل ثبت کنید", render: renderToday },
   dashboard: { title: "داشبورد", sub: "نمای کلی ویس‌ها، پردازش و رکوردها", render: renderDashboard },
   voices: { title: "ویس‌ها و پردازش", sub: "افزودن ویس، صف پردازش و وضعیت هر فایل", render: renderVoices },
   review: { title: "بازبینی اطلاعات", sub: "بررسی، اصلاح و تأیید اطلاعات استخراج‌شده پیش از ثبت", render: renderReview },
@@ -246,19 +248,183 @@ let routeSeq = 0;
 function setHook(seq, fn) { if (seq === routeSeq) pageHooks.onStatus = fn; }
 
 function route() {
-  const name = (location.hash.replace(/^#\//, "").split("?")[0]) || "dashboard";
-  const p = PAGES[name] || PAGES.dashboard;
-  state.page = PAGES[name] ? name : "dashboard";
+  const name = (location.hash.replace(/^#\//, "").split("?")[0]) || "today";
+  const p = PAGES[name] || PAGES.today;
+  state.page = PAGES[name] ? name : "today";
   $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === state.page));
+  renderBanners();
   $("#page-title").textContent = p.title;
   $("#page-sub").textContent = p.sub;
   pageHooks = {};
+  reviewState.reload = reviewState.updateRow = null;  // قلاب‌های صفحه بازبینیِ قبلی به DOM حذف‌شده اشاره دارند
   routeSeq++;
   closeDrawer();
   $("#page").innerHTML = '<div class="row"><span class="spinner"></span></div>';
   p.render($("#page")).catch(toastErr);
 }
 window.addEventListener("hashchange", route);
+
+// ================= کار امروز =================
+/** صفحه اصلی: سه گام کار روزانه — ویس‌ها، موارد نیازمند نگاه کاربر، ثبت در اکسل. */
+const todayState = { lastCommit: null };
+
+async function renderToday(el) {
+  const seq = routeSeq;
+  api("/api/model/warmup", { method: "POST" }).catch(() => {});
+  const s0 = state.status || (await api("/api/status"));
+  const exts = (state.meta?.audio_extensions || []).join(",");
+  el.innerHTML = onboardingCard(s0) + `<div class="today">
+    <section class="card"><div class="card-h"><h2><span class="t-n">${fa(1)}</span> ویس‌ها</h2>
+        <label class="t-date small muted">تاریخ بازدید <input class="input sm ltr" id="t-date" value="${esc(s0.today)}"></label></div>
+      <div class="card-b stack">
+        <div class="dropzone slim" id="t-dz"><div class="dz-ico">${I.upload}</div>
+          <div><b>ویس‌ها را اینجا رها کنید</b> یا <button class="btn sm" id="t-pick">انتخاب فایل</button>
+            <div class="muted small">پردازش خودکار شروع می‌شود. اگر نام فایل تاریخ داشته باشد، همان تاریخ ثبت می‌شود.</div></div>
+          <input type="file" id="t-files" multiple accept="${esc(exts)},audio/*" hidden></div>
+        <div id="t-progress"></div></div></section>
+    <section class="card"><div class="card-h"><h2><span class="t-n">${fa(2)}</span> نیاز به نگاه شما</h2><div class="row" id="t-rv-actions"></div></div>
+      <div id="t-review"></div></section>
+    <section class="card"><div class="card-h"><h2><span class="t-n">${fa(3)}</span> ثبت در اکسل</h2></div>
+      <div class="card-b" id="t-excel"></div></section></div>`;
+  bindOnboarding();
+
+  const dz = $("#t-dz");
+  const add = async (list) => {
+    const files = audioOnly(list);
+    if (!files.length) return;
+    $("#t-progress").innerHTML = `<div class="progress"><div class="progress-bar" id="t-up-bar"></div></div><div class="muted small">در حال افزودن ${fa(files.length)} ویس...</div>`;
+    try {
+      const results = await uploadAudio(files, $("#t-date").value.trim(), true, (p) => { const b = $("#t-up-bar"); if (b) b.style.width = p + "%"; });
+      reportUpload(results);
+      if (results.some((r) => r.result === "added")) await startQueue();
+    } catch (e) { toastErr(e); }
+    await refreshStatus();
+    drawProgress();
+  };
+  $("#t-pick").onclick = () => $("#t-files").click();
+  $("#t-files").onchange = (e) => { add(e.target.files); e.target.value = ""; };
+  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("over"); });
+  dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+  dz.addEventListener("drop", async (e) => { e.preventDefault(); dz.classList.remove("over"); add(await droppedFiles(e)); });
+
+  function drawProgress() {
+    const s = state.status, box = $("#t-progress");
+    if (!s || seq !== routeSeq || !box) return;
+    const w = s.worker, q = s.files.queued + s.files.processing;
+    const parts = [];
+    if (w.running) {
+      const total = w.run_done + q;
+      parts.push(`<div class="row between small"><span>در حال پردازش: <b>${esc(w.current_name || "...")}</b></span>
+          <span>${fa(w.run_done)} از ${fa(total)} <button class="btn sm ghost" id="t-stop">${I.stop} توقف</button></span></div>
+        <div class="progress"><div class="progress-bar" style="width:${s.progress}%"></div></div>`);
+    } else if (q) {
+      parts.push(`<div class="row between small"><span>${fa(q)} ویس در صف</span><button class="btn sm primary" id="t-start">${I.play} شروع پردازش</button></div>`);
+    }
+    if (q && w.model_state === "loading") parts.push(`<div class="row small">${modelChip(w.model_state, s.model.available)}</div>`);
+    if (s.files.failed && !w.running) parts.push(`<div class="row small err-text">${I.alert} ${fa(s.files.failed)} ویس پردازش نشد.
+      <button class="btn sm" id="t-retry">${I.retry} تلاش دوباره</button><a class="btn sm ghost" href="#/voices">جزئیات</a></div>`);
+    box.innerHTML = parts.join("");
+    $("#t-stop")?.addEventListener("click", stopQueue);
+    $("#t-start")?.addEventListener("click", startQueue);
+    $("#t-retry")?.addEventListener("click", async () => {
+      try { await api("/api/files/retry-failed", { method: "POST" }); await startQueue(); } catch (e) { toastErr(e); }
+    });
+  }
+
+  const LABEL = Object.fromEntries((state.meta?.fields || []).map((f) => [f.key, f.label]));
+  const SHOW = 12;
+  async function drawReview() {
+    if (seq !== routeSeq) return;
+    const { records } = await api("/api/records?filter=review");
+    const box = $("#t-review");
+    if (!box) return;
+    const ids = records.map((r) => r.id);
+    $("#t-rv-actions").innerHTML = records.length > 1 ? `<button class="btn sm primary" id="t-focus" title="یک رکورد در هر صفحه، با پخش خودکار شماره و میان‌برهای صفحه‌کلید">${I.eye} بازبینی سریع (${fa(records.length)})</button>` : "";
+    $("#t-focus")?.addEventListener("click", () => openFocus(ids));
+    if (!records.length) {
+      box.innerHTML = `<div class="card-b row muted">${I.ok} موردی برای بررسی نیست.</div>`;
+      return;
+    }
+    box.innerHTML = `<div class="t-list">${records.slice(0, SHOW).map((r) => {
+      const v = r.values, vf = r.validation.fields || {};
+      const problems = Object.entries(vf).filter(([, f]) => f.status !== "valid")
+        .map(([k, f]) => `<li><b>${esc(LABEL[k] || k)}:</b> ${esc((f.reasons || [])[0] || FIELD_STATUS[f.status])}</li>`);
+      if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li>${esc(x)}</li>`));
+      const play = r.audio_available && r.times?.phone ? `<button class="btn sm ghost" data-tplay="${r.id}" title="پخش بخش شماره از ویس">${I.play} شماره</button>` : "";
+      return `<div class="t-rec" data-trec="${r.id}">
+        <div class="t-rec-main"><div><b>${esc(v.engineer_name || "نام پیدا نشد")}</b>
+            <span class="ltr t-phone">${esc((v.phone || "").replace(/\n/g, " ، ")) || "—"}</span></div>
+          <div class="small">${esc(v.address || "آدرس پیدا نشد")}${techSummary(v) ? ` <span class="muted">· ${esc(techSummary(v))}</span>` : ""}</div>
+          <ul class="t-problems small">${problems.join("")}</ul></div>
+        <div class="t-rec-act">${play}
+          <button class="btn sm ok" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
+          <button class="btn sm" data-topen="${r.id}">${I.edit} اصلاح</button>
+          <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد">${I.x}</button></div></div>`;
+    }).join("")}</div>
+    ${records.length > SHOW ? `<div class="card-b small muted">و ${fa(records.length - SHOW)} مورد دیگر؛ با «بازبینی سریع» همه را یکی‌یکی ببینید.</div>` : ""}`;
+    $$("[data-tplay]", box).forEach((b) => b.onclick = () => playRecordSegment(records.find((r) => r.id === +b.dataset.tplay), "phone"));
+    $$("[data-topen]", box).forEach((b) => b.onclick = () => openRecord(+b.dataset.topen));
+    $$("[data-tact]", box).forEach((b) => b.onclick = async () => {
+      const id = +b.dataset.r, act = b.dataset.tact;
+      try {
+        await api(`/api/records/${id}/action`, { method: "POST", body: { action: act, add_to_dictionary: act === "approve" } });
+        toast(act === "approve" ? "تأیید شد." : "رد شد.", "ok", { label: "بازگشت", onClick: async () => { await undoLast(id); drawReview(); } });
+        refreshStatus();
+      } catch (e) { toastErr(e); }
+    });
+  }
+  // کشوی جزئیات و بازبینی سریع پس از هر تغییر همین فهرست را تازه می‌کنند
+  reviewState.reload = reviewState.updateRow = () => drawReview().catch(() => {});
+
+  function drawExcel() {
+    const s = state.status, box = $("#t-excel");
+    if (!s || seq !== routeSeq || !box) return;
+    const n = s.records.approved, last = todayState.lastCommit;
+    let html = "";
+    if (last) {
+      html += last.applied
+        ? `<div class="alert ok">${I.ok}<div class="alert-body">${fa(last.rows.length)} ردیف در فایل شرکت ثبت شد (ردیف ${fa(last.first_row)} تا ${fa(last.last_row)}). پیش از ثبت از فایل پشتیبان گرفته شد.</div>
+            <button class="btn sm" id="t-open">${I.open} نمایش فایل</button><button class="btn sm ghost" id="t-undo">${I.history} بازگشت</button></div>`
+        : `<div class="alert warn">${I.alert}<div class="alert-body">${esc(last.message)}</div><a class="btn sm" href="#/excel">مشاهده</a></div>`;
+    }
+    if (!s.setup.excel_ready) {
+      html += `<div class="row">فایل اکسل شرکت هنوز وصل نشده است. <a class="btn primary" href="#/excel">${I.table} اتصال فایل اکسل</a></div>`;
+    } else if (n) {
+      html += `<div class="row"><button class="btn primary lg" id="t-commit">${I.table} ثبت ${fa(n)} ردیف در اکسل</button>
+        <span class="muted small">در «${esc(s.setup.excel_name)}»</span><a class="btn sm ghost" href="#/excel">پیش‌نمایش</a></div>`;
+    } else if (!last) {
+      html += `<div class="muted">${s.records.review ? "پس از بررسی موارد بالا، ردیف‌ها اینجا آماده ثبت می‌شوند." : "ردیفی برای ثبت نیست."}</div>`;
+    }
+    if (s.pending_replace) html += `<div class="small muted" style="margin-top:8px">${fa(s.pending_replace)} خروجی قدیمی هنوز روی فایل اصلی اعمال نشده است. <a href="#/excel">مشاهده</a></div>`;
+    box.innerHTML = html;
+    $("#t-commit")?.addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      e.target.innerHTML = '<span class="spinner"></span> در حال ثبت...';
+      try { todayState.lastCommit = await api("/api/excel/commit", { method: "POST", body: {} }); }
+      catch (er) { toastErr(er); }
+      await refreshStatus();
+      drawExcel();
+    });
+    $("#t-open")?.addEventListener("click", () => api("/api/open-folder", { method: "POST", body: { path: last.target_path } }).catch(toastErr));
+    $("#t-undo")?.addEventListener("click", async () => {
+      if (!(await confirmBox("بازگشت ثبت", "ردیف‌های این ثبت از فایل اکسل برداشته می‌شوند (فایل به نسخه پیش از ثبت برمی‌گردد) و رکوردها دوباره آماده ثبت می‌شوند.", "بازگشت", "danger"))) return;
+      try { toast((await api(`/api/exports/${last.export_id}/undo`, { method: "POST" })).message, "ok"); todayState.lastCommit = null; }
+      catch (er) { toastErr(er); }
+      await refreshStatus();
+      drawExcel();
+    });
+  }
+
+  drawProgress();
+  drawExcel();
+  await drawReview();
+  setHook(seq, (s, prev) => {
+    drawProgress();
+    drawExcel();
+    if (!prev || prev.records.review !== s.records.review || prev.files.done !== s.files.done) drawReview().catch(() => {});
+  });
+  const timer = setInterval(() => { if (seq !== routeSeq) return clearInterval(timer); if (state.status?.worker.running) drawProgress(); }, 1000);
+}
 
 // ================= داشبورد =================
 async function renderDashboard(el) {
@@ -360,6 +526,62 @@ async function stopQueue() {
   catch (e) { toastErr(e); }
 }
 
+// ---------------- افزودن ویس (مشترک میان «کار امروز» و «ویس‌ها») ----------------
+/** فقط فایل‌های صوتی پشتیبانی‌شده. */
+function audioOnly(list) {
+  const allowed = new Set(state.meta?.audio_extensions || []);
+  const files = Array.from(list).filter((f) => allowed.has("." + (f.name.split(".").pop() || "").toLowerCase()));
+  if (files.length < list.length) toast(`${fa(list.length - files.length)} فایل غیرصوتی نادیده گرفته شد.`);
+  return files;
+}
+
+/** فایل‌های رهاشده روی صفحه، همراه با محتوای پوشه‌ها. */
+async function droppedFiles(e) {
+  const entries = Array.from(e.dataTransfer.items || []).map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.some((en) => en.isDirectory)) return Array.from(e.dataTransfer.files);
+  const out = [];
+  const walk = (entry) => new Promise((res) => {
+    if (entry.isFile) return entry.file((f) => { out.push(f); res(); }, () => res());
+    const reader = entry.createReader();
+    const readAll = () => reader.readEntries(async (ents) => {
+      if (!ents.length) return res();
+      for (const en of ents) await walk(en);
+      readAll();
+    }, () => res());
+    readAll();
+  });
+  for (const en of entries) await walk(en);
+  return out;
+}
+
+/** ارسال ویس‌ها در بسته‌های ۸تایی؛ onProgress(درصد). خروجی: نتیجه هر فایل. */
+async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () => {}) {
+  const results = [];
+  const totalBytes = files.reduce((a, f) => a + f.size, 0) || 1;
+  let sent = 0;
+  for (let i = 0; i < files.length; i += 8) {
+    const chunk = files.slice(i, i + 8);
+    const fd = new FormData();
+    chunk.forEach((f) => fd.append("files", f, f.name));
+    fd.append("visit_date", visitDate);
+    fd.append("use_filename_date", useFilenameDate ? "true" : "false");
+    const r = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+      xhr.upload.onprogress = (e) => onProgress(Math.min(100, Math.round(100 * (sent + e.loaded) / totalBytes)));
+      xhr.onload = () => {
+        let d = {}; try { d = JSON.parse(xhr.responseText); } catch { }
+        xhr.status < 300 ? resolve(d) : reject(new Error(d.detail || "افزودن فایل‌ها ناموفق بود."));
+      };
+      xhr.onerror = () => reject(new Error("ارتباط با برنامه قطع شد."));
+      xhr.send(fd);
+    });
+    sent += chunk.reduce((a, f) => a + f.size, 0);
+    results.push(...r.results);
+  }
+  return results;
+}
+
 // ================= ویس‌ها =================
 const staged = [];
 /** وضعیت مدل گفتار: آماده (بدون انتظار)، در حال آماده‌سازی، یا در شروع پردازش آماده می‌شود. */
@@ -414,15 +636,7 @@ async function renderVoices(el) {
 
   const dz = $("#dz");
   const addFiles = (list) => {
-    const allowed = new Set(state.meta?.audio_extensions || []);
-    let skipped = 0;
-    for (const f of list) {
-      const ext = "." + (f.name.split(".").pop() || "").toLowerCase();
-      if (!allowed.has(ext)) { skipped++; continue; }
-      if (staged.some((x) => x.name === f.name && x.size === f.size)) continue;
-      staged.push(f);
-    }
-    if (skipped) toast(`${fa(skipped)} فایل غیرصوتی نادیده گرفته شد.`);
+    for (const f of audioOnly(list)) if (!staged.some((x) => x.name === f.name && x.size === f.size)) staged.push(f);
     drawStaged();
   };
   $("#pick-files").onclick = () => $("#in-files").click();
@@ -433,25 +647,7 @@ async function renderVoices(el) {
   dz.addEventListener("dragleave", () => dz.classList.remove("over"));
   dz.addEventListener("drop", async (e) => {
     e.preventDefault(); dz.classList.remove("over");
-    const items = Array.from(e.dataTransfer.items || []);
-    const entries = items.map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
-    if (entries.some((en) => en.isDirectory)) {
-      const out = [];
-      const walk = (entry) => new Promise((res) => {
-        if (entry.isFile) entry.file((f) => { out.push(f); res(); }, () => res());
-        else {
-          const reader = entry.createReader();
-          const readAll = () => reader.readEntries(async (ents) => {
-            if (!ents.length) return res();
-            for (const en of ents) await walk(en);
-            readAll();
-          }, () => res());
-          readAll();
-        }
-      });
-      for (const en of entries) await walk(en);
-      addFiles(out);
-    } else addFiles(e.dataTransfer.files);
+    addFiles(await droppedFiles(e));
   });
   $("#pick-path").onclick = async () => {
     const p = await pickPath("audio");
@@ -489,35 +685,11 @@ async function renderVoices(el) {
     const autoStart = $("#auto-start").checked;
     $("#st-upload").disabled = true;
     $("#up-progress").hidden = false;
-    const all = staged.slice();
-    const results = [];
-    const totalBytes = all.reduce((a, f) => a + f.size, 0) || 1;
-    let sent = 0;
     try {
-      for (let i = 0; i < all.length; i += 8) {
-        const chunk = all.slice(i, i + 8);
-        const fd = new FormData();
-        chunk.forEach((f) => fd.append("files", f, f.name));
-        fd.append("visit_date", vd);
-        fd.append("use_filename_date", useFn ? "true" : "false");
-        const r = await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "/api/upload");
-          xhr.upload.onprogress = (e) => {
-            const p = Math.round(100 * (sent + e.loaded) / totalBytes);
-            $("#up-bar").style.width = Math.min(100, p) + "%";
-            $("#up-text").textContent = `در حال افزودن... ${fa(Math.min(100, p))}٪`;
-          };
-          xhr.onload = () => {
-            let d = {}; try { d = JSON.parse(xhr.responseText); } catch { }
-            xhr.status < 300 ? resolve(d) : reject(new Error(d.detail || "افزودن فایل‌ها ناموفق بود."));
-          };
-          xhr.onerror = () => reject(new Error("ارتباط با برنامه قطع شد."));
-          xhr.send(fd);
-        });
-        sent += chunk.reduce((a, f) => a + f.size, 0);
-        results.push(...r.results);
-      }
+      const results = await uploadAudio(staged.slice(), vd, useFn, (p) => {
+        $("#up-bar").style.width = p + "%";
+        $("#up-text").textContent = `در حال افزودن... ${fa(p)}٪`;
+      });
       staged.length = 0;
       drawStaged();
       reportUpload(results);
@@ -638,6 +810,16 @@ let tableAudio = null;
 const reviewState = { filter: "review", records: [], selected: new Set(), audioId: null };
 const TABLE_FIELDS = [["engineer_name", "نام مهندس / شخص تماس"], ["phone", "شماره تماس"], ["address", "آدرس"]];
 
+/** پخش همان تکه از ویس که فیلد key از آن آمده (بدون باز کردن جزئیات). */
+function playRecordSegment(rec, key) {
+  if (!tableAudio || tableAudio.dataset.aid !== String(rec.audio_id)) {
+    if (tableAudio) tableAudio.pause();
+    tableAudio = new Audio(`/api/files/${rec.audio_id}/audio`);
+    tableAudio.dataset.aid = String(rec.audio_id);
+  }
+  playSegment(tableAudio, rec.times[key]);
+}
+
 function techSummary(v) {
   const p = [];
   if (v.floors) p.push(`تعداد ${v.floors} ${v.floors_unit || "سقف"}`);
@@ -651,7 +833,7 @@ function techSummary(v) {
 async function renderReview(el) {
   const seq = routeSeq;
   if (location.hash.includes("?exported")) reviewState.filter = "exported";
-  if (location.hash.includes("open=")) reviewState.filter = "all";
+  if (location.hash.includes("open=") || location.hash.includes("filter=all")) reviewState.filter = "all";
   const s = state.status || (await api("/api/status"));
   let dictTip = "";
   try {
@@ -745,13 +927,7 @@ async function renderReview(el) {
     $$("[data-tseg]", box).forEach((b) => b.addEventListener("click", (e) => {
       e.stopPropagation();
       const rec = reviewState.records.find((x) => x.id === +b.dataset.r);
-      if (!rec) return;
-      if (!tableAudio || tableAudio.dataset.aid !== String(rec.audio_id)) {
-        if (tableAudio) tableAudio.pause();
-        tableAudio = new Audio(`/api/files/${rec.audio_id}/audio`);
-        tableAudio.dataset.aid = String(rec.audio_id);
-      }
-      playSegment(tableAudio, rec.times[b.dataset.tseg]);
+      if (rec) playRecordSegment(rec, b.dataset.tseg);
     }));
     $("#rv-all")?.addEventListener("change", (e) => {
       list.filter((r) => !r.exported_at).forEach((r) => e.target.checked ? reviewState.selected.add(r.id) : reviewState.selected.delete(r.id));
@@ -1676,7 +1852,18 @@ async function renderSettings(el) {
       "large-v3": ["حدود ۳ گیگابایت", "بسیار کند روی CPU؛ برای ۸ گیگ RAM توصیه نمی‌شود"],
     };
     const p = d.performance || {};
+    const fullNav = document.documentElement.classList.contains("full-nav");
     el.innerHTML = `
+      <div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.table} ابزارها</h2>
+        <label class="check small"><input type="checkbox" id="s-fullnav" ${fullNav ? "checked" : ""}> نمایش همه صفحه‌ها در منو</label></div>
+        <div class="card-b row">
+          <a class="btn" href="#/excel">${I.table} اتصال و نگاشت فایل اکسل</a>
+          <a class="btn" href="#/dictionary">${I.book} واژه‌نامه</a>
+          <a class="btn" href="#/dictionary?kb">${I.upload} آموزش از اکسل</a>
+          <a class="btn" href="#/voices">${I.music} همه ویس‌ها</a>
+          <a class="btn" href="#/review?filter=all">${I.eye} همه رکوردها</a>
+          <a class="btn ghost" href="/static/recording-guide.html" target="_blank">${I.info} راهنمای ضبط ویس</a>
+        </div></div>
       <div class="grid grid-2">
         <div class="card"><div class="card-h"><h2>${I.mic} مدل تبدیل گفتار</h2></div><div class="card-b stack">
           <div class="table-wrap" style="border:1px solid var(--border); border-radius:12px"><table class="table"><tbody>
@@ -1746,6 +1933,10 @@ async function renderSettings(el) {
       if (!(await confirmBox("دریافت مدل", `مدل <b class="ltr">${esc(b.dataset.dl)}</b> از اینترنت (Hugging Face) دریافت می‌شود. این تنها ارتباط اینترنتی برنامه است و هیچ ویس یا اطلاعاتی ارسال نمی‌شود. ادامه می‌دهید؟`, "دریافت"))) return;
       try { await api("/api/models/download", { method: "POST", body: { name: b.dataset.dl } }); toast("دریافت شروع شد."); poll(); } catch (e) { toastErr(e); }
     });
+    $("#s-fullnav").onchange = (e) => {
+      try { localStorage.setItem("v2x.nav", e.target.checked ? "full" : "simple"); } catch { }
+      document.documentElement.classList.toggle("full-nav", e.target.checked);
+    };
     $("#s-save").onclick = async () => {
       const body = {
         model_name: ($("input[name=model]:checked") || {}).value || s.model_name,
@@ -1898,7 +2089,7 @@ async function importSamples() {
     reportUpload(r.results);
     await refreshStatus();
     if (r.results.some((x) => x.result === "added")) startQueue();
-    location.hash = "#/voices";
+    location.hash = "#/today";
   } catch (e) { toastErr(e); }
 }
 

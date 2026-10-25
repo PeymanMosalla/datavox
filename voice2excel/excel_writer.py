@@ -277,8 +277,11 @@ def verify_output(output: Path, profile: dict, plan: dict, sheetnames_before, fp
     return {"errors": errors, "warnings": warnings}
 
 
-def replace_original(output_path: str, target_path: str, expected_target_sha: str) -> dict:
-    """جایگزینی فایل اصلی با خروجی تأییدشده (فقط با دستور صریح کاربر)."""
+def replace_original(output_path: str, target_path: str, expected_target_sha: str, backup_path: str | None = None) -> dict:
+    """جایگزینی فایل اصلی با خروجی تأییدشده (فقط با دستور صریح کاربر).
+
+    backup_path: پشتیبانی که از همین نسخه فایل اصلی گرفته شده (ثبت یک‌مرحله‌ای)؛ در این صورت پشتیبان تازه لازم نیست.
+    """
     output, target = Path(output_path), Path(target_path)
     if not output.exists():
         raise ExcelWriteError("فایل خروجی پیدا نشد.")
@@ -290,8 +293,11 @@ def replace_original(output_path: str, target_path: str, expected_target_sha: st
     if file_sha256(target) != expected_target_sha:
         raise ExcelWriteError("فایل اصلی پس از ساخت خروجی تغییر کرده است (احتمالاً کسی آن را ویرایش کرده). "
                               "برای جلوگیری از ازدست‌رفتن آن تغییرات، دوباره خروجی بگیرید.")
-    backup = DATA_DIR / "backups" / f"{target.stem}__پیش-از-جایگزینی_{_ts()}{target.suffix}"
-    shutil.copy2(target, backup)
+    if backup_path and Path(backup_path).exists() and file_sha256(Path(backup_path)) == expected_target_sha:
+        backup = Path(backup_path)
+    else:
+        backup = DATA_DIR / "backups" / f"{target.stem}__پیش-از-جایگزینی_{_ts()}{target.suffix}"
+        shutil.copy2(target, backup)
     tmp = target.with_name(f".~v2x_{_ts()}{target.suffix}")
     shutil.copy2(output, tmp)
     try:

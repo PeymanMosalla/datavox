@@ -88,7 +88,18 @@ try {
   const overlay = await evaluate(`(() => { const e = document.elementFromPoint(700, 450); return e ? (e.id || e.className || e.tagName) : ""; })()`);
   check("لایه‌ای روی صفحه نیست", !/backdrop/.test(overlay), "عنصر بالایی وسط صفحه: " + overlay);
 
-  for (const [page, title] of [["voices", "ویس‌ها و پردازش"], ["review", "بازبینی اطلاعات"], ["excel", "ثبت در اکسل"], ["dictionary", "واژه‌نامه"], ["settings", "تنظیمات"], ["dashboard", "داشبورد"]]) {
+  // منوی ساده: فقط «کار امروز» و «تنظیمات»؛ بقیه صفحه‌ها از کارت «ابزارها» در تنظیمات
+  const navShown = await evaluate(`[...document.querySelectorAll("#nav a")].filter((a) => a.offsetParent).map((a) => a.dataset.page).join(",")`);
+  check("منوی ساده فقط «کار امروز» و «تنظیمات» دارد", navShown === "today,settings", navShown);
+  check("صفحه پیش‌فرض «کار امروز»", (await evaluate("document.querySelector('#page-title').textContent")) === "کار امروز");
+  await click(`#nav a[data-page="settings"]`);
+  await sleep(1200);
+  const rt = await click(`#page a[href="#/excel"]`);
+  await sleep(900);
+  check("پیوند «اتصال فایل اکسل» در تنظیمات", rt.hit && (await evaluate("document.querySelector('#page-title').textContent")) === "ثبت در اکسل");
+  // ادامه آزمون با منوی کامل (همان تنظیم «نمایش همه صفحه‌ها»)
+  await evaluate("localStorage.setItem('v2x.nav', 'full'); document.documentElement.classList.add('full-nav')");
+  for (const [page, title] of [["voices", "ویس‌ها و پردازش"], ["review", "بازبینی اطلاعات"], ["excel", "ثبت در اکسل"], ["dictionary", "واژه‌نامه"], ["settings", "تنظیمات"], ["dashboard", "داشبورد"], ["today", "کار امروز"]]) {
     const r = await click(`#nav a[data-page="${page}"]`);
     await sleep(900);
     const t = await evaluate("document.querySelector('#page-title').textContent");

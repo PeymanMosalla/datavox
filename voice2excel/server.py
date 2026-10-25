@@ -1100,33 +1100,68 @@ class ExportIn(BaseModel):
 _export_lock = threading.Lock()
 
 
-@app.post("/api/excel/export")
-def excel_export(body: ExportIn):
+def _confirmed_profile() -> dict:
     prof = excel_mapping.load_profile(load_settings().active_profile)
     if not prof or not prof.get("confirmed"):
         err(400, "ابتدا نگاشت ستون‌ها را بررسی و ذخیره کنید.")
+    return prof
+
+
+def _export(prof: dict, record_ids: list[int] | None = None) -> dict:
+    """ساخت خروجی (روی کپی) و ثبت آن؛ باید زیر _export_lock صدا زده شود."""
+    import json
+    recs = _approved_records()
+    if record_ids:
+        recs = [r for r in recs if r["id"] in set(record_ids)]
+    try:
+        rep = write_export(prof, recs)
+    except ExcelWriteError as e:
+        db().log_event(f"ثبت در اکسل ناموفق: {e}", "error")
+        err(400, str(e))
+    rep["output_sha"] = file_sha256(Path(rep["output_path"]))
+    with db().tx() as c:
+        cur = c.execute(
+            """INSERT INTO exports(created_at, target_path, output_path, backup_path, profile, rows_written,
+               first_row, last_row, record_ids_json, status, report_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (now(), rep["target_path"], rep["output_path"], rep["backup_path"], prof["name"], len(rep["rows"]),
+             rep["first_row"], rep["last_row"], json.dumps([x["record_id"] for x in rep["rows"]]), "created",
+             json.dumps(rep, ensure_ascii=False)))
+        eid = cur.lastrowid
+        for x in rep["rows"]:
+            c.execute("UPDATE records SET exported_at=?, export_id=?, export_row=? WHERE id=?",
+                      (now(), eid, x["row"], x["record_id"]))
+    rep["export_id"] = eid
+    return rep
+
+
+@app.post("/api/excel/export")
+def excel_export(body: ExportIn):
+    prof = _confirmed_profile()
     with _export_lock:
-        recs = _approved_records()
-        if body.record_ids:
-            recs = [r for r in recs if r["id"] in set(body.record_ids)]
+        return _export(prof, body.record_ids)
+
+
+@app.post("/api/excel/commit")
+def excel_commit(body: ExportIn):
+    """ثبت یک‌مرحله‌ای: نوشتن روی کپی، بررسی، و جایگزینی فایل اصلی (با پشتیبانی که پیش از نوشتن گرفته شده).
+
+    اگر جایگزینی ممکن نباشد (مثلاً فایل در Excel باز شد)، خروجی ساخته‌شده می‌ماند و بعداً قابل اعمال است.
+    """
+    prof = _confirmed_profile()
+    lock = lock_status(Path(prof["excel_path"]))
+    if lock["write_blocked"] or lock["owner_file"]:
+        err(409, lock["message"] or "فایل اکسل شرکت باز است؛ آن را ببندید و دوباره تلاش کنید.")
+    with _export_lock:
+        rep = _export(prof, body.record_ids)
         try:
-            rep = write_export(prof, recs)
+            replace_original(rep["output_path"], rep["target_path"], rep["target_sha"], backup_path=rep["backup_path"])
         except ExcelWriteError as e:
-            db().log_event(f"ثبت در اکسل ناموفق: {e}", "error")
-            err(400, str(e))
-        import json
+            rep["applied"] = False
+            rep["message"] = f"ردیف‌ها در یک کپی ثبت شدند ولی فایل اصلی به‌روز نشد: {e}"
+            return rep
         with db().tx() as c:
-            cur = c.execute(
-                """INSERT INTO exports(created_at, target_path, output_path, backup_path, profile, rows_written,
-                   first_row, last_row, record_ids_json, status, report_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
-                (now(), rep["target_path"], rep["output_path"], rep["backup_path"], prof["name"], len(rep["rows"]),
-                 rep["first_row"], rep["last_row"], json.dumps([x["record_id"] for x in rep["rows"]]), "created",
-                 json.dumps(rep, ensure_ascii=False)))
-            eid = cur.lastrowid
-            for x in rep["rows"]:
-                c.execute("UPDATE records SET exported_at=?, export_id=?, export_row=? WHERE id=?",
-                          (now(), eid, x["row"], x["record_id"]))
-        rep["export_id"] = eid
+            c.execute("UPDATE exports SET replaced_original_at=?, status='applied' WHERE id=?", (now(), rep["export_id"]))
+        rep["applied"] = True
         return rep
 
 
@@ -1161,16 +1196,32 @@ def export_replace(eid: int):
 
 @app.post("/api/exports/{eid}/undo")
 def export_undo(eid: int):
+    """بازگشت یک ثبت: رکوردها به «آماده ثبت» برمی‌گردند و اگر فایل اصلی پس از ثبت دست نخورده باشد،
+    به نسخه پیش از ثبت برگردانده می‌شود."""
+    import json
     e = _get_export(eid)
     if e["status"] == "undone":
         err(409, "این خروجی قبلاً بازگردانده شده است.")
+    restored = False
+    if e["status"] == "applied":
+        rep = json.loads(e["report_json"] or "{}")
+        target, backup = Path(e["target_path"]), Path(e["backup_path"])
+        written_sha = rep.get("output_sha") or (file_sha256(Path(e["output_path"])) if Path(e["output_path"]).exists() else "")
+        if target.exists() and backup.exists() and written_sha and file_sha256(target) == written_sha:
+            try:
+                replace_original(str(backup), str(target), written_sha)
+            except ExcelWriteError as ex:
+                err(409, str(ex))
+            restored = True
     with db().tx() as c:
         c.execute("UPDATE records SET exported_at=NULL, export_id=NULL, export_row=NULL WHERE export_id=?", (eid,))
         c.execute("UPDATE exports SET status='undone' WHERE id=?", (eid,))
     msg = "رکوردها به حالت «آماده ثبت» برگشتند."
-    if e["replaced_original_at"]:
-        msg += f" توجه: فایل اصلی قبلاً جایگزین شده بود؛ نسخه پیش از جایگزینی در پوشه backups موجود است."
-    return {"ok": True, "message": msg}
+    if restored:
+        msg = "ثبت برگشت خورد: فایل اکسل به حالت پیش از ثبت برگشت و رکوردها دوباره آماده ثبت‌اند."
+    elif e["replaced_original_at"]:
+        msg += " فایل اصلی پس از ثبت تغییر کرده بود و دست نخورد؛ نسخه پیش از ثبت در پوشه backups هست."
+    return {"ok": True, "restored": restored, "message": msg}
 
 
 @app.get("/api/exports/{eid}/download")
