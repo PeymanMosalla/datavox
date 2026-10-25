@@ -212,10 +212,13 @@ def create_workbook(tpl: dict, path: Path, sheet: str = "Sheet1") -> None:
 
 
 def write_header(ws, tpl: dict) -> None:
+    from .excel_writer import safe_set  # عنوان ستون (حتی از قالب دریافتی) هرگز فرمول نمی‌شود
+
     s = tpl["style"]
     ws.sheet_view.rightToLeft = s["rtl"]
     for i, c in enumerate(tpl["columns_list"], start=1):
-        cell = ws.cell(1, i, c["title"])
+        cell = ws.cell(1, i)
+        safe_set(cell, c["title"])
         cell.font = _font(s["header"])
         cell.fill = _fill(s["header"]["fill"])
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -426,13 +429,15 @@ def build_sample(tpl: dict, rows: list[list[str]]) -> bytes:
     """فایل نمونه با همین قالب و چند ردیف، برای دیدن نتیجه در خود Excel."""
     import io
 
+    from .excel_writer import safe_set
+
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Sheet1"
     write_header(ws, tpl)
     for r, values in enumerate(rows, start=2):
         for i, v in enumerate(values, start=1):
-            ws.cell(r, i, v or None)
+            safe_set(ws.cell(r, i), v)
         style_row(ws, r, tpl, r - 1)
     finish_sheet(ws, tpl, len(rows) + 1)
     buf = io.BytesIO()

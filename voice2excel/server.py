@@ -103,6 +103,11 @@ async def _security_guard(request, call_next):
     if origin and origin != "null" and _host_name(origin.split("://", 1)[-1]) != host:
         return JSONResponse(status_code=403, content={"detail": "درخواست از صفحه دیگری پذیرفته نمی‌شود."})
     path = request.url.path
+    # حتی درخواست GET از سایت دیگر (مثلاً <img src=".../api/fs?path=\\سرور-مهاجم\x">) اجرا نشود؛ ویندوز با
+    # چنین مسیری به سرور مهاجم وصل می‌شود و هش رمز کاربر را می‌فرستد. فقط باز کردن خود صفحه برنامه مجاز است.
+    if (request.headers.get("sec-fetch-site") in ("cross-site", "same-site")
+            and not (request.headers.get("sec-fetch-mode") == "navigate" and path in _APP_PAGES)):
+        return JSONResponse(status_code=403, content={"detail": "درخواست از صفحه دیگری پذیرفته نمی‌شود."})
     try:
         too_big = int(request.headers.get("content-length") or 0) > MAX_REQUEST_BYTES
     except ValueError:

