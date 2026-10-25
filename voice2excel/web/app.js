@@ -21,6 +21,7 @@ async function api(path, { method = "GET", body, form } = {}) {
   catch { throw new Error("ارتباط با برنامه برقرار نشد. آیا پنجره برنامه (run.bat) باز است؟"); }
   const ct = res.headers.get("content-type") || "";
   const data = ct.includes("json") ? await res.json() : await res.text();
+  if (res.status === 402 && data?.license && !path.startsWith("/api/license")) location.reload();  // مجوز در میانه کار تمام شد
   if (!res.ok) {
     let msg = data && data.detail ? data.detail : "خطا در انجام درخواست";
     if (Array.isArray(msg)) msg = "اطلاعات ارسالی نامعتبر است.";
@@ -2241,6 +2242,7 @@ async function renderSettings(el) {
             <dt>حافظه فعلی برنامه</dt><dd>${d.system.process_mb ? fa(d.system.process_mb) + " مگابایت" : "—"}</dd>
             <dt>بیشینه حافظه در پردازش</dt><dd>${p.peak ? fa(Math.round(p.peak)) + " مگابایت" : "—"}</dd>
             <dt>میانگین زمان هر ویس</dt><dd>${p.avg_s ? fmtSec(p.avg_s) + (p.avg_d ? ` برای ویس ${fmtSec(p.avg_d)}` : "") : "—"} ${p.n ? `<span class="muted">(${fa(p.n)} ویس)</span>` : ""}</dd>
+            <dt>مجوز</dt><dd>${d.license.customer ? esc(d.license.customer) + (d.license.expires_jalali ? ` — تا ${fa(d.license.expires_jalali)}` : "") : "—"} <span class="muted small ltr">${esc(d.license.machine)}</span></dd>
             <dt>هسته‌های CPU</dt><dd>${fa(d.system.cpu_count)}</dd>
             <dt>پوشه داده‌ها</dt><dd><span class="path">${esc(d.system.data_dir)}</span></dd>
             <dt>پوشه مدل‌ها</dt><dd><span class="path">${esc(d.system.models_dir)}</span></dd></dl>
@@ -2456,7 +2458,38 @@ async function importSamples() {
 }
 
 // ---------------- شروع ----------------
+// ---------- فعال‌سازی (مجوز آفلاین) ----------
+function renderActivation(lic) {
+  document.documentElement.classList.add("activation");
+  $("#page-title").textContent = "فعال‌سازی برنامه";
+  $("#page-sub").textContent = "";
+  $("#page").innerHTML = `<div class="card" style="max-width:640px"><div class="card-b stack">
+    ${lic.error ? `<div class="alert warn">${I.alert}<div class="alert-body">${esc(lic.error)}</div></div>` : ""}
+    <div>برای استفاده از برنامه روی این رایانه، کد زیر را برای فروشنده بفرستید تا فایل مجوز را برایتان بفرستد.</div>
+    <div class="row"><b class="ltr" id="act-code" style="font-size:20px;letter-spacing:2px">${esc(lic.machine)}</b>
+      <button class="btn sm" id="act-copy">کپی کد</button></div>
+    <label>فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
+      <textarea class="input ltr" id="act-text" rows="4" placeholder="V2X1...."></textarea></label>
+    <div class="row"><input type="file" id="act-file" accept=".v2x,.txt" hidden>
+      <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
+      <button class="btn primary" id="act-go">${I.check} فعال‌سازی</button></div>
+  </div></div>`;
+  $("#act-copy").onclick = async () => {
+    try { await navigator.clipboard.writeText(lic.machine); toast("کد کپی شد.", "ok"); } catch { toast("کد را انتخاب و کپی کنید."); }
+  };
+  $("#act-pick").onclick = () => $("#act-file").click();
+  $("#act-file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("#act-text").value = (await f.text()).trim(); };
+  $("#act-go").onclick = async () => {
+    try { await api("/api/license", { method: "POST", body: { text: $("#act-text").value } }); toast("برنامه فعال شد.", "ok"); setTimeout(() => location.reload(), 600); }
+    catch (e) { toastErr(e); }
+  };
+}
+
 (async function init() {
+  try {
+    const lic = await api("/api/license");
+    if (!lic.ok) return renderActivation(lic);
+  } catch (e) { toastErr(e); }
   try { state.meta = await api("/api/meta"); } catch (e) { toastErr(e); }
   await refreshStatus();
   route();

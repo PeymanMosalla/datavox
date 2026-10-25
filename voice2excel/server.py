@@ -22,7 +22,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, backup, dictionary, excel_mapping, excel_template, knowledge, lan, learning, pipeline, updater
+from . import (__version__, backup, dictionary, excel_mapping, excel_template, knowledge, lan, learning, licensing,
+               pipeline, updater)
 from .audio_processor import MAX_AUDIO_BYTES, is_supported, looks_like_audio
 from .config import (AVAILABLE_MODELS, DATA_DIR, MODELS_DIR, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS, WEB_DIR,
                      ensure_dirs, load_settings, save_settings)
@@ -47,7 +48,7 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="ثبت ویس", version=__version__, docs_url=None, redoc_url=None, lifespan=_lifespan)
+app = FastAPI(title="ثبت ویس", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 
 
 _last_request = {"t": time.time()}
@@ -117,6 +118,9 @@ async def _security_guard(request, call_next):
     if (request.method not in _SAFE_METHODS and path.startswith("/api/") and not path.startswith("/api/m/")
             and not secrets.compare_digest(request.headers.get(TOKEN_HEADER, ""), API_TOKEN)):
         return JSONResponse(status_code=403, content={"detail": "نشست برنامه منقضی شده است؛ صفحه را دوباره باز کنید (F5)."})
+    if (licensing.REQUIRED and path.startswith("/api/") and not path.startswith(_LICENSE_FREE)
+            and not licensing.status()["ok"]):
+        return JSONResponse(status_code=402, content={"detail": "برنامه فعال نیست؛ ابتدا مجوز را وارد کنید.", "license": True})
     response = await call_next(request)
     response.headers.update(_SECURITY_HEADERS)
     if path in _APP_PAGES:
@@ -129,6 +133,7 @@ async def _security_guard(request, call_next):
 _SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer"}
 _APP_PAGES = {"/", "/m", "/m/"}
 MAX_REQUEST_BYTES = 4 * 1024 ** 3
+_LICENSE_FREE = ("/api/license", "/api/shutdown", "/api/status")  # status: سنجش آماده بودن برنامه در Voice2Excel.exe
 _CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
         "media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
         "frame-ancestors 'none'")
@@ -382,6 +387,34 @@ def shutdown():
 
     threading.Timer(0.5, bye).start()
     return {"ok": True}
+
+
+# ---------- مجوز ----------
+def _license_out() -> dict:
+    st = licensing.status()
+    exp = st.get("expires")
+    return {**st, "expires_jalali": format_jalali(from_gregorian(datetime.fromisoformat(exp).date())) if exp else None}
+
+
+@app.get("/api/license")
+def license_info():
+    return _license_out()
+
+
+class LicenseIn(BaseModel):
+    text: str
+
+
+@app.post("/api/license")
+def license_install(body: LicenseIn):
+    if len(body.text) > 4000:
+        err(400, "این متن، مجوز «ثبت ویس» نیست.")
+    try:
+        licensing.install(body.text)
+    except licensing.LicenseError as e:
+        err(400, str(e))
+    log.info("مجوز برنامه نصب شد.")
+    return _license_out()
 
 
 # ---------- فایل‌های صوتی ----------
@@ -1736,6 +1769,7 @@ def get_settings():
         "download": _download_state,
         "system": {"ram_gb": ram, "process_mb": rss, "cpu_count": os.cpu_count(), "data_dir": str(DATA_DIR),
                    "models_dir": str(MODELS_DIR)},
+        "license": _license_out(),
         "performance": perf,
     }
 
