@@ -41,7 +41,7 @@ _PROTECT_RULES = r"پیگیری|تاریخ\s*تماس|نتیجه|وضعیت"
 COMPANY = "default"
 # تنظیمات «قالب مقادیر» که در صفحه «قالب اکسل» برای هر دو نوع قالب قابل تغییرند
 VALUE_FORMAT_KEYS = {"date_format", "phone_format", "phone_group", "multi_phone_separator", "name_title",
-                     "text_style", "notes_parts", "blank_row_between_dates", "date_first_row_only"}
+                     "text_style", "notes_parts", "blank_row_between_dates", "date_first_row_only", "highlights"}
 
 
 def profiles_dir() -> Path:

@@ -551,3 +551,7 @@ body.no-scroll .toasts { bottom: 86px; }
 .tp-preview table { border-collapse: collapse; table-layout: fixed; }
 .tp-preview th, .tp-preview td { padding: 4px 8px; vertical-align: middle; overflow: hidden; }
 .tp-preview td.ltr-cell { direction: ltr; unicode-bidi: isolate; }
+.tp-hl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tp-hl .check { min-width: 140px; }
+.tp-hl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tp-hl .check { min-width: 140px; }

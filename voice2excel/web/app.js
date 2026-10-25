@@ -402,7 +402,9 @@ async function renderToday(el) {
     let html = "";
     if (last) {
       html += last.applied
-        ? `<div class="alert ok">${I.ok}<div class="alert-body">${fa(last.rows.length)} ردیف در «${esc(last.target_path.split(/[\\/]/).pop())}» ثبت شد (ردیف ${fa(last.first_row)} تا ${fa(last.last_row)}). پیش از ثبت از فایل پشتیبان گرفته شد.</div>
+        ? `<div class="alert ok">${I.ok}<div class="alert-body">${(last.files || []).length > 1
+            ? `${fa(last.rows.length)} ردیف در ${fa(last.files.length)} فایل ثبت شد: ${last.files.map((f) => `«${esc(f)}»`).join("، ")}.`
+            : `${fa(last.rows.length)} ردیف در «${esc(last.target_path.split(/[\\/]/).pop())}» ثبت شد (ردیف ${fa(last.first_row)} تا ${fa(last.last_row)}).`} پیش از ثبت از فایل پشتیبان گرفته شد.</div>
             <button class="btn sm" id="t-open">${I.open} نمایش فایل</button><button class="btn sm ghost" id="t-undo">${I.history} بازگشت</button></div>`
         : `<div class="alert warn">${I.alert}<div class="alert-body">${esc(last.message)}</div><a class="btn sm" href="#/excel">مشاهده</a></div>`;
     }
@@ -427,7 +429,12 @@ async function renderToday(el) {
     $("#t-open")?.addEventListener("click", () => api("/api/open-folder", { method: "POST", body: { path: last.target_path } }).catch(toastErr));
     $("#t-undo")?.addEventListener("click", async () => {
       if (!(await confirmBox("بازگشت ثبت", "ردیف‌های این ثبت از فایل اکسل برداشته می‌شوند (فایل به نسخه پیش از ثبت برمی‌گردد) و رکوردها دوباره آماده ثبت می‌شوند.", "بازگشت", "danger"))) return;
-      try { toast((await api(`/api/exports/${last.export_id}/undo`, { method: "POST" })).message, "ok"); todayState.lastCommit = null; }
+      try {
+        // ثبتی که در چند فایل (روز/ماه جدا) انجام شده، همه با هم برمی‌گردند؛ آخرین اول
+        let msg = "";
+        for (const eid of [...(last.export_ids || [last.export_id])].reverse()) msg = (await api(`/api/exports/${eid}/undo`, { method: "POST" })).message;
+        toast(msg, "ok"); todayState.lastCommit = null;
+      }
       catch (er) { toastErr(er); }
       await refreshStatus();
       drawExcel();
@@ -1709,7 +1716,9 @@ async function renderTemplates(el) {
       </select><span id="tp-active"></span><span id="tp-dirty"></span></div>
       <div class="row"><button class="btn" id="tp-new">${I.plus} قالب جدید</button>
         <button class="btn" id="tp-activate">${I.check} استفاده برای ثبت</button>
-        <button class="btn ghost" id="tp-del" title="حذف قالب">${I.trash}</button></div></div>
+        <button class="btn ghost" id="tp-import" title="ورود قالبی که از رایانه دیگری خروجی گرفته شده">${I.upload} ورود قالب</button>
+        <button class="btn ghost" id="tp-del" title="حذف قالب">${I.trash}</button>
+        <input type="file" id="tp-import-file" accept=".json" hidden></div></div>
     <div id="tp-body"></div></div>`;
   const active = meta.templates.find((t) => t.active);
   const drawHead = () => {
@@ -1733,6 +1742,16 @@ async function renderTemplates(el) {
     if (tplState.dirty) return toast("اول قالب را ذخیره کنید.", "err");
     try { await api(`/api/templates/${tplState.name}/activate`, { method: "POST" }); toast("از این پس ثبت در اکسل با همین قالب انجام می‌شود.", "ok"); refreshStatus(); renderTemplates(el); } catch (e) { toastErr(e); }
   };
+  $("#tp-import").onclick = () => $("#tp-import-file").click();
+  $("#tp-import-file").onchange = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    const fd = new FormData();
+    fd.append("file", f, f.name);
+    try { tplState.name = (await api("/api/templates/import", { method: "POST", form: fd })).name; tplState.dirty = false; tplState.tab = "columns"; toast("قالب وارد شد؛ پوشه خروجی را در زبانه «مقصد» بررسی کنید.", "ok"); renderTemplates(el); }
+    catch (er) { toastErr(er); }
+  };
   $("#tp-del").onclick = async () => {
     if (!(await confirmBox("حذف قالب", "قالب حذف می‌شود. فایل‌هایی که قبلاً با آن ساخته شده‌اند دست نمی‌خورند.", "حذف", "danger"))) return;
     try { await api(`/api/templates/${tplState.name}`, { method: "DELETE" }); tplState.name = null; tplState.dirty = false; renderTemplates(el); } catch (e) { toastErr(e); }
@@ -1748,7 +1767,8 @@ async function renderTemplates(el) {
   tplState.tpl = template;
   template.policy = template.policy || {};
   const isNew = template.mode === "new";
-  const TABS = isNew ? [["columns", "ستون‌ها"], ["values", "قالب مقادیر"], ["style", "ظاهر"], ["output", "مقصد"]] : [["values", "قالب مقادیر"]];
+  const TABS = isNew ? [["columns", "ستون‌ها"], ["values", "قالب مقادیر"], ["colors", "رنگ‌گذاری"], ["style", "ظاهر"], ["output", "مقصد"]]
+    : [["values", "قالب مقادیر"], ["colors", "رنگ‌گذاری"]];
   if (!TABS.some(([k]) => k === tplState.tab)) tplState.tab = TABS[0][0];
   body.innerHTML = `${isNew ? "" : `<div class="card-b"><div class="alert info">${I.info}<div class="alert-body">این قالب ردیف‌ها را به فایل «${esc(target.split(/[\\/]/).pop())}» اضافه می‌کند. ترتیب، عنوان و ظاهر ستون‌های فایل شرکت حفظ می‌شود تا داده‌های قبلی دست نخورند؛ اینجا فقط قالب مقادیر تغییر می‌کند. ستون‌ها در «اتصال و نگاشت فایل اکسل» تنظیم می‌شوند.</div><a class="btn sm" href="#/excel">نگاشت ستون‌ها</a></div></div>`}
     <div class="card-b" style="padding-bottom:0"><div class="tabs" id="tp-tabs">${TABS.map(([k, l]) => `<button data-tt="${k}" class="${k === tplState.tab ? "active" : ""}">${l}</button>`).join("")}</div></div>
@@ -1757,12 +1777,16 @@ async function renderTemplates(el) {
       <div class="tp-preview" id="tp-preview"></div></div>` : ""}
     <div class="card-b row" style="border-top:1px solid var(--border)">
       <button class="btn primary" id="tp-save">${I.check} ذخیره قالب</button>
-      ${isNew ? `<button class="btn" id="tp-sample">${I.down} دریافت فایل نمونه</button><span class="small muted">فایل: <span class="path">${esc(target)}</span></span>` : ""}</div>`;
+      ${isNew ? `<button class="btn" id="tp-sample">${I.down} دریافت فایل نمونه</button>
+        <button class="btn ghost" id="tp-like" title="ستون‌ها و ظاهر را از یک فایل اکسل دیگر بردارد">${I.table} مثل این فایل…</button>
+        <a class="btn ghost" href="/api/templates/${esc(tplState.name)}/export" title="برای استفاده در رایانه یا مشتری دیگر (پوشه خروجی همراهش نیست)">${I.down} خروجی قالب</a>
+        <input type="file" id="tp-like-file" accept=".xlsx,.xlsm" hidden>` : ""}</div>`;
   $$("[data-tt]", body).forEach((b) => b.onclick = () => { tplState.tab = b.dataset.tt; $$("[data-tt]", body).forEach((x) => x.classList.toggle("active", x === b)); drawTab(); });
   const changed = (values = false) => { tplState.dirty = true; drawHead(); if (values) loadPreview(); else drawPreview(); };
   const loadPreview = debounce(async () => {
     if (!isNew) return;
-    try { const p = await api("/api/templates/preview", { method: "POST", body: template }); tplState.headers = p.headers; tplState.rows = p.rows; drawPreview(); }
+    try { const p = await api("/api/templates/preview", { method: "POST", body: template }); tplState.headers = p.headers; tplState.rows = p.rows; tplState.colors = p.colors || []; tplState.target = p.target;
+      const tn = $("#tp-target-name"); if (tn) tn.textContent = p.target; drawPreview(); }
     catch (e) { $("#tp-preview").innerHTML = `<div class="err-text small">${esc(e.message)}</div>`; }
   }, 300);
 
@@ -1771,7 +1795,8 @@ async function renderTemplates(el) {
     if (t === "columns") {
       const used = new Set(template.columns_list.map((c) => c.field));
       box.innerHTML = `<div class="tp-cols">${template.columns_list.map((c, i) => `<div class="tp-col" draggable="true" data-ci="${i}">
-          <span class="tp-drag" title="برای جابه‌جایی بکشید">☰</span><span class="small muted tp-flabel">${esc(fieldLabel(c.field))}</span>
+          <span class="tp-drag" title="برای جابه‌جایی بکشید">☰</span>
+          <select class="select sm tp-flabel" data-cf title="چه چیزی در این ستون نوشته شود">${state.tplMeta.fields.map((f) => `<option value="${f.key}" ${f.key === c.field ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select>
           <input class="input sm" data-ck="title" value="${esc(c.title)}" title="عنوان ستون">
           ${c.field === "constant" ? `<input class="input sm" data-ck="value" value="${esc(c.value || "")}" placeholder="مقدار ثابت">` : ""}
           <label class="small muted">عرض <input class="input sm" type="number" min="4" max="120" data-ck="width" value="${c.width}" style="width:64px"></label>
@@ -1783,6 +1808,11 @@ async function renderTemplates(el) {
       $$(".tp-col", box).forEach((row) => {
         const i = +row.dataset.ci, col = template.columns_list[i];
         $$("[data-ck]", row).forEach((inp) => inp.oninput = () => { col[inp.dataset.ck] = inp.dataset.ck === "width" ? +inp.value : inp.value; changed(inp.dataset.ck === "value"); });
+        $("[data-cf]", row).onchange = (e) => {
+          col.field = e.target.value;
+          if (col.field === "constant") col.value = col.value || ""; else delete col.value;
+          drawTab(); changed(true);
+        };
         $$("[data-cmove]", row).forEach((b) => b.onclick = () => moveCol(i, i + +b.dataset.cmove));
         $("[data-crm]", row).onclick = () => { if (template.columns_list.length > 1) { template.columns_list.splice(i, 1); drawTab(); changed(true); } };
         row.ondragstart = (e) => e.dataTransfer.setData("text/plain", String(i));
@@ -1816,6 +1846,19 @@ async function renderTemplates(el) {
       $$("[data-pk]", box).forEach((x) => x.onchange = () => { P[x.dataset.pk] = x.type === "checkbox" ? x.checked : x.value; changed(true); });
       $$("[data-ts]", box).forEach((x) => x.onchange = () => { P.text_style = { sep: " ، ", digits: "ascii", ...P.text_style, [x.dataset.ts]: x.value }; changed(true); });
       $$("[data-np]", box).forEach((x) => x.onchange = () => { P.notes_parts = $$("[data-np]", box).filter((c) => c.checked).map((c) => c.dataset.np); changed(true); });
+    } else if (t === "colors") {
+      const H = P.highlights = { ...state.tplMeta.highlight_defaults, warn: "", today: "", followup: "", ...(P.highlights || {}) };
+      const row = (k, label, hint) => `<div class="tp-hl"><label class="check"><input type="checkbox" data-hk="${k}" ${H[k] ? "checked" : ""}> ${label}</label>
+        <input type="color" class="tp-color" data-hc="${k}" value="${esc(H[k] || state.tplMeta.highlight_defaults[k] || "#fff3dc")}"><span class="small muted">${hint}</span></div>`;
+      box.innerHTML = `<div class="stack">
+        <div class="small muted">ردیف‌هایی که یکی از این شرایط را دارند، با رنگ خودشان ثبت می‌شوند (اولویت به ترتیب از بالا). ${isNew ? "" : "در فایل شرکت فقط ردیف‌های تازه رنگ می‌گیرند؛ ردیف‌های قبلی دست نمی‌خورند."}</div>
+        ${row("followup", "پیگیری نزدیک", `تاریخ پیگیری تا <input class="input sm" type="number" min="0" max="60" id="tp-fdays" value="${H.followup_days}" style="width:60px;display:inline-block"> روز آینده`)}
+        ${row("warn", "ردیف ناقص", "نام، شماره یا آدرس ندارد یا نامعتبر است")}
+        ${row("today", "بازدید امروز", "تاریخ بازدید همان روز ثبت است")}</div>`;
+      const set = (k) => { H[k] = $(`[data-hk="${k}"]`, box).checked ? $(`[data-hc="${k}"]`, box).value : ""; changed(true); };
+      $$("[data-hk]", box).forEach((x) => x.onchange = () => set(x.dataset.hk));
+      $$("[data-hc]", box).forEach((x) => x.oninput = () => { if ($(`[data-hk="${x.dataset.hc}"]`, box).checked) set(x.dataset.hc); });
+      $("#tp-fdays").oninput = (e) => { H.followup_days = Math.max(0, Math.min(60, +e.target.value || 0)); changed(true); };
     } else if (t === "style") {
       const S = template.style, fonts = state.tplMeta.fonts;
       const fontSel = (part) => `<select class="select" data-sp="${part}.font">${fonts.map((f) => `<option value="${esc(f.name)}" ${S[part].font === f.name ? "selected" : ""}>${esc(f.name)}${f.installed ? "" : " (روی این رایانه نصب نیست)"}</option>`).join("")}</select>`;
@@ -1852,7 +1895,10 @@ async function renderTemplates(el) {
       box.innerHTML = `<div class="stack"><div class="field"><label>پوشه فایل خروجی</label><div class="row" style="flex-wrap:nowrap">
           <input class="input ltr" id="tp-folder" value="${esc(O.folder)}" style="flex:1; text-align:right"><button class="btn" id="tp-pick">${I.folder} انتخاب پوشه</button></div></div>
         <div class="field"><label>نام فایل</label><div class="row"><input class="input" id="tp-file" value="${esc(O.file)}" style="width:260px"><span class="muted">.xlsx</span></div>
-          <span class="hint">اگر فایل نباشد، در اولین ثبت با سرستون همین قالب ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div></div>`;
+          <span class="hint">اگر فایل نباشد، در اولین ثبت با سرستون همین قالب ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div>
+        <div class="field"><label>تقسیم خروجی</label><select class="select" id="tp-split" style="width:300px">${Object.entries(state.tplMeta.splits).map(([k, l]) => `<option value="${k}" ${(O.split || "none") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+          <span class="hint">نمونه نام فایل امروز: <b id="tp-target-name">${esc(tplState.target || "")}</b></span></div></div>`;
+      $("#tp-split").onchange = (e) => { O.split = e.target.value; changed(true); };
       $("#tp-folder").oninput = (e) => { O.folder = e.target.value.trim(); changed(); };
       $("#tp-file").oninput = (e) => { O.file = e.target.value.trim(); changed(); };
       $("#tp-pick").onclick = async () => { const p = await pickPath("audio", O.folder); if (p) { O.folder = p; $("#tp-folder").value = p; changed(); } };
@@ -1875,7 +1921,7 @@ async function renderTemplates(el) {
     const bd = S.border ? "border:1px solid #c9cfdb;" : "";
     box.innerHTML = `<table dir="${S.rtl ? "rtl" : "ltr"}" style="font-family:'${esc(S.body.font)}',Tahoma,sans-serif"><thead><tr>${cols.map((c) => `<th style="width:${Math.round(c.width * 7.5)}px;min-width:${Math.round(c.width * 7.5)}px;
         font-family:'${esc(S.header.font)}',Tahoma;font-size:${pt(S.header.size)};font-weight:${S.header.bold ? 700 : 400};color:${S.header.color};background:${S.header.fill};${S.header.height ? `height:${pt(S.header.height)};` : ""}${bd}">${esc(c.title)}</th>`).join("")}</tr></thead>
-      <tbody>${tplState.rows.map((r, i) => `<tr style="background:${S.zebra && i % 2 === 1 ? S.zebra : "#fff"};${S.body.height ? `height:${pt(S.body.height)};` : ""}">${cols.map((c, j) => `<td class="${c.field === "phone" ? "ltr-cell" : ""}" style="font-size:${pt(S.body.size)};color:${S.body.color};text-align:${c.align};
+      <tbody>${tplState.rows.map((r, i) => `<tr style="background:${tplState.colors?.[i] || (S.zebra && i % 2 === 1 ? S.zebra : "#fff")};${S.body.height ? `height:${pt(S.body.height)};` : ""}">${cols.map((c, j) => `<td class="${c.field === "phone" ? "ltr-cell" : ""}" style="font-size:${pt(S.body.size)};color:${S.body.color};text-align:${c.align};
         white-space:${S.body.wrap ? "pre-wrap" : "nowrap"};${bd}">${esc(r[j] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   }
 
@@ -1888,6 +1934,24 @@ async function renderTemplates(el) {
       refreshStatus();
     } catch (e) { toastErr(e); }
   };
+  $("#tp-like")?.addEventListener("click", () => $("#tp-like-file").click());
+  $("#tp-like-file")?.addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    const fd = new FormData();
+    fd.append("file", f, f.name);
+    try {
+      const got = await api("/api/templates/from-file", { method: "POST", form: fd });
+      template.columns_list = got.columns_list;
+      template.style = got.style;
+      const unknown = got.columns_list.filter((c) => c.field === "constant").length;
+      toast(`ستون‌ها و ظاهر از «${f.name}» برداشته شد${unknown ? `؛ ${fa(unknown)} ستون شناخته نشد و خالی می‌ماند (در زبانه «ستون‌ها» می‌توانید فیلدش را عوض کنید)` : ""}. ذخیره را فراموش نکنید.`, "ok");
+      tplState.tab = "columns";
+      $$("[data-tt]", body).forEach((x) => x.classList.toggle("active", x.dataset.tt === "columns"));
+      drawTab(); changed(true);
+    } catch (er) { toastErr(er); }
+  });
   $("#tp-sample")?.addEventListener("click", async () => {
     try {
       const res = await fetch("/api/templates/sample", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(template) });

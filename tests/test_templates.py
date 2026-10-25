@@ -9,10 +9,10 @@ from voice2excel.excel_mapping import format_date, format_phone
 from voice2excel.pipeline import build_records
 
 
-def _add_approved(db, settings, text, sha):
-    batch = db.create_batch("t", "1405/07/28")
-    aid = db.add_audio(batch, f"{sha}.ogg", None, sha, 1, "1405/07/28", "user")
-    _, _, recs = build_records(db, settings, text, "1405/07/28")
+def _add_approved(db, settings, text, sha, vd="1405/07/28"):
+    batch = db.create_batch("t", vd)
+    aid = db.add_audio(batch, f"{sha}.ogg", None, sha, 1, vd, "user")
+    _, _, recs = build_records(db, settings, text, vd)
     for r in recs:
         r["review_state"], r["approved_by"] = "approved", "user"
     db.save_results(aid, {"raw_text": text, "normalized_text": text, "processed_text": text}, recs)
@@ -125,3 +125,90 @@ def test_new_template_writes_date_on_every_row(db, settings, tmp_path):
     ws = openpyxl.load_workbook(rep["output_path"])["Sheet1"]
     assert ws["A2"].value == ws["A3"].value == "1405/07/28"
     excel_mapping.delete_profile("t_d")
+
+
+# ---------- مرحله ۲ ----------
+def _rec(i, vd, **values):
+    return {"id": i, "audio_id": i, "building_index": 0, "original_name": "a", "transcript": "", "status": "review",
+            "validation": {"fields": {}}, "values": {"visit_date": vd, "engineer_name": f"مهندس {i}", "phone": "09151234567", **values}}
+
+
+def test_highlight_rules():
+    pol = {"highlights": excel_template.clean_highlights({"warn": "#FFF3DC", "today": "#E3F5EC", "followup": "#FDE8EA",
+                                                          "followup_days": 3})}
+    today = "1405/07/28"
+    assert excel_template.highlight(pol, _rec(1, today, followup_date="1405/07/30"), today) == "#FDE8EA"
+    assert excel_template.highlight(pol, _rec(1, "1405/07/20", followup_date="1405/08/20"), today) == ""
+    bad = _rec(2, "1405/07/20")
+    bad["validation"]["fields"]["phone"] = {"status": "invalid"}
+    assert excel_template.highlight(pol, bad, today) == "#FFF3DC"  # ردیف ناقص
+    assert excel_template.highlight(pol, _rec(3, today), today) == "#E3F5EC"
+    assert excel_template.highlight({}, bad, today) == ""  # رنگ‌گذاری خاموش
+
+
+def test_split_by_month_files_and_sheets(tmp_path):
+    from voice2excel.excel_writer import write_export
+    recs = [_rec(1, "1405/07/28"), _rec(2, "1405/07/29"), _rec(3, "1405/08/02")]
+    for split, expect in (("month_file", {("روزانه 1405-07.xlsx", "Sheet1"): 2, ("روزانه 1405-08.xlsx", "Sheet1"): 1}),
+                          ("month_sheet", {("روزانه.xlsx", "1405-07"): 2, ("روزانه.xlsx", "1405-08"): 1})):
+        folder = tmp_path / split
+        folder.mkdir()
+        tpl = excel_template.clean({**excel_template.new_template("t", "روزانه", str(folder)),
+                                    "output": {"folder": str(folder), "file": "روزانه", "split": split}})
+        for vd, grp in excel_template.group_records(tpl, recs):
+            rep = write_export(excel_template.writer_profile(tpl, visit_date=vd), grp)
+            from voice2excel.excel_writer import replace_original
+            replace_original(rep["output_path"], rep["target_path"], rep["target_sha"])
+        got = {}
+        for f in folder.glob("*.xlsx"):
+            wb = openpyxl.load_workbook(f)
+            for ws in wb.worksheets:
+                got[(f.name, ws.title)] = ws.max_row - 1
+        assert got == expect, (split, got)
+
+
+def test_like_this_file_and_template_transfer(db, settings, tmp_path):
+    tpl = excel_template.clean(excel_template.new_template("t", "مدیر", str(tmp_path)))
+    tpl["style"]["header"].update(fill="#138A52", font="B Nazanin", size=13)
+    tpl["style"]["zebra"] = "#E8F6EF"
+    sample = tmp_path / "s.xlsx"
+    sample.write_bytes(excel_template.build_sample(tpl, [["1405/07/28", "مهندس الف", "0915", "x", "y", "z"]] * 3))
+    got = excel_template.from_file(sample)
+    assert [c["title"] for c in got["columns_list"]] == [c["title"] for c in tpl["columns_list"]]
+    assert got["columns_list"][1]["field"] == "engineer_name" and got["columns_list"][0]["field"] == "visit_date"
+    s = got["style"]
+    assert s["header"]["fill"] == "#138A52" and s["header"]["font"] == "B Nazanin" and s["header"]["size"] == 13
+    assert s["zebra"] == "#E8F6EF" and s["rtl"] and s["freeze"] and s["filter"]
+    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+        r = c.post("/api/templates/from-file", files=[("file", ("s.xlsx", sample.read_bytes(), "application/octet-stream"))])
+        assert r.json()["style"]["header"]["fill"] == "#138A52"
+        assert c.post("/api/templates/from-file", files=[("file", ("s.txt", b"x", "text/plain"))]).status_code == 400
+        name = c.post("/api/templates", json={"title": "انتقالی"}).json()["name"]
+        exported = c.get(f"/api/templates/{name}/export")
+        data = exported.json()
+        assert data["v2x_template"] == 1 and "folder" not in data["output"]
+        new = c.post("/api/templates/import", files=[("file", ("t.json", exported.content, "application/json"))]).json()["name"]
+        assert new != name and c.get(f"/api/templates/{new}").json()["template"]["title"] == "انتقالی"
+        assert c.post("/api/templates/import", files=[("file", ("t.json", b'{"x":1}', "application/json"))]).status_code == 400
+        for n in (name, new):
+            c.delete(f"/api/templates/{n}")
+
+
+def test_commit_split_writes_and_undoes_each_file(db, settings, tmp_path):
+    with TestClient(server.app, client=("127.0.0.1", 50000)) as c:
+        name = c.post("/api/templates", json={"title": "ماهانه"}).json()["name"]
+        tpl = c.get(f"/api/templates/{name}").json()["template"]
+        tpl["output"] = {"folder": str(tmp_path), "file": "ماهانه", "split": "month_file"}
+        c.put(f"/api/templates/{name}", json=tpl)
+        c.post(f"/api/templates/{name}/activate")
+        _add_approved(db, settings, "مهندس رجبی شماره 09151234567 آدرس سجادیه 58", "m1", "1405/07/28")
+        _add_approved(db, settings, "مهندس کاظمی شماره 09371234567 آدرس امامت 60", "m2", "1405/08/02")
+        com = c.post("/api/excel/commit", json={}).json()
+        assert com["applied"] and len(com["export_ids"]) == 2 and len(com["rows"]) == 2
+        assert com["files"] == ["ماهانه 1405-07.xlsx", "ماهانه 1405-08.xlsx"]
+        for eid in com["export_ids"]:
+            assert c.post(f"/api/exports/{eid}/undo").json()["restored"]
+        for f in com["files"]:
+            assert openpyxl.load_workbook(tmp_path / f)["Sheet1"].max_row == 1  # فقط سرستون
+        server.save_settings({"active_profile": excel_mapping.COMPANY})
+        c.delete(f"/api/templates/{name}")

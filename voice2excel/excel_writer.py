@@ -26,6 +26,7 @@ from .deduplicator import file_sha256
 from . import excel_template
 from .excel_mapping import cell_values, format_date
 from .excel_reader import inspect_workbook, last_data_row, lock_status, zip_parts
+from .dates_fa import format_jalali, today_jalali
 from .normalizer import normalize_text
 
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
@@ -182,8 +183,11 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
 
     # ۲) بارگذاری از روی نسخه پشتیبان (فایل اصلی حتی برای خواندن قفل نمی‌شود)
     wb = openpyxl.load_workbook(backup, keep_vba=ext == ".xlsm", rich_text=True)
+    templated = profile.get("mode") == "new"  # فایل خود برنامه: ظاهر از قالب، نه از ردیف قبلی
     if profile["sheet"] not in wb.sheetnames:
-        raise ExcelWriteError(f"شیت «{profile['sheet']}» در فایل پیدا نشد.")
+        if not templated:
+            raise ExcelWriteError(f"شیت «{profile['sheet']}» در فایل پیدا نشد.")
+        excel_template.write_header(wb.create_sheet(profile["sheet"]), profile)  # شیت ماه تازه
     ws = wb[profile["sheet"]]
     mism = _header_mismatches(ws, profile)
     if mism:
@@ -201,7 +205,8 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
     style_row = last if last > profile["header_row"] else None
 
     # ۳) نوشتن ردیف‌ها
-    templated = profile.get("mode") == "new"  # فایل خود برنامه: ظاهر از قالب، نه از ردیف قبلی
+    by_id = {r["id"]: r for r in records}
+    today = format_jalali(today_jalali())
     for item in plan["rows"]:
         r = item["row"]
         if templated:
@@ -212,6 +217,9 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
             h = ws.row_dimensions[style_row].height
             if h:
                 ws.row_dimensions[r].height = h
+        color = excel_template.highlight(policy, by_id.get(item["record_id"], {}), today)
+        if color:  # رنگ‌گذاری هوشمند (پیگیری نزدیک، ردیف ناقص، بازدید امروز)
+            excel_template.paint_row(ws, r, max_col, color)
         for col_letter, value in item["cells"].items():
             ci = column_index_from_string(col_letter)
             if ci in protected:

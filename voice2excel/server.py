@@ -103,15 +103,16 @@ def set_worker(w: Worker | None) -> None:
     _worker = w
 
 
-def _write_profile(create: bool = False) -> dict | None:
+def _write_profile(create: bool = False, visit_date: str | None = None) -> dict | None:
     """نگاشت قالب فعال برای ثبت؛ قالب «فایل جدید» به نگاشت فایل خود برنامه تبدیل می‌شود.
 
     create: اگر فایل خروجی قالب هنوز ساخته نشده، با سرستون ساخته شود (فقط هنگام ثبت و پیش‌نمایش).
+    visit_date: برای قالبی که فایل یا شیت هر روز/ماه را جدا می‌کند (پیش‌فرض: امروز).
     """
     prof = excel_mapping.load_profile(load_settings().active_profile)
     if prof and prof.get("mode") == "new":
         try:
-            return excel_template.writer_profile(prof, create)
+            return excel_template.writer_profile(prof, create, visit_date)
         except FileNotFoundError as e:
             if create:
                 err(400, str(e))
@@ -1201,22 +1202,38 @@ def excel_commit(body: ExportIn):
 
     اگر جایگزینی ممکن نباشد (مثلاً فایل در Excel باز شد)، خروجی ساخته‌شده می‌ماند و بعداً قابل اعمال است.
     """
-    prof = _confirmed_profile()
-    lock = lock_status(Path(prof["excel_path"]))
-    if lock["write_blocked"] or lock["owner_file"]:
-        err(409, lock["message"] or "فایل اکسل شرکت باز است؛ آن را ببندید و دوباره تلاش کنید.")
+    tpl = excel_mapping.load_profile(load_settings().active_profile)
+    recs = [r for r in _approved_records() if not body.record_ids or r["id"] in set(body.record_ids)]
+    if not recs:
+        err(400, "هیچ رکورد تأییدشده‌ای برای ثبت وجود ندارد.")
+    # قالبی که فایل یا شیت هر روز/ماه را جدا می‌کند، چند مقصد دارد؛ هر مقصد ثبت (و پشتیبان) جداگانه دارد
+    groups = excel_template.group_records(tpl, recs) if tpl and tpl.get("mode") == "new" else [(None, recs)]
+    targets = [(_write_profile(create=True, visit_date=vd) if vd is not None else _confirmed_profile(), grp)
+               for vd, grp in groups]
+    for prof, _ in targets:
+        if not prof or not prof.get("confirmed"):
+            err(400, "ابتدا نگاشت ستون‌ها را بررسی و ذخیره کنید.")
+        lock = lock_status(Path(prof["excel_path"]))
+        if lock["write_blocked"] or lock["owner_file"]:
+            err(409, lock["message"] or "فایل اکسل باز است؛ آن را ببندید و دوباره تلاش کنید.")
+    done: list[dict] = []
     with _export_lock:
-        rep = _export(prof, body.record_ids)
-        try:
-            replace_original(rep["output_path"], rep["target_path"], rep["target_sha"], backup_path=rep["backup_path"])
-        except ExcelWriteError as e:
-            rep["applied"] = False
-            rep["message"] = f"ردیف‌ها در یک کپی ثبت شدند ولی فایل اصلی به‌روز نشد: {e}"
-            return rep
-        with db().tx() as c:
-            c.execute("UPDATE exports SET replaced_original_at=?, status='applied' WHERE id=?", (now(), rep["export_id"]))
-        rep["applied"] = True
-        return rep
+        for prof, grp in targets:
+            rep = _export(prof, [r["id"] for r in grp])
+            try:
+                replace_original(rep["output_path"], rep["target_path"], rep["target_sha"], backup_path=rep["backup_path"])
+            except ExcelWriteError as e:
+                rep["applied"] = False
+                rep["message"] = f"ردیف‌ها در یک کپی ثبت شدند ولی فایل «{Path(rep['target_path']).name}» به‌روز نشد: {e}"
+            else:
+                with db().tx() as c:
+                    c.execute("UPDATE exports SET replaced_original_at=?, status='applied' WHERE id=?", (now(), rep["export_id"]))
+                rep["applied"] = True
+            done.append(rep)
+    first = done[0]
+    return {**first, "applied": all(r["applied"] for r in done), "message": " ".join(r.get("message", "") for r in done).strip(),
+            "rows": [x for r in done for x in r["rows"]], "export_ids": [r["export_id"] for r in done],
+            "files": sorted({Path(r["target_path"]).name for r in done})}
 
 
 # ---------- قالب‌های خروجی اکسل ----------
@@ -1240,7 +1257,7 @@ def _sample_records() -> list[dict]:
     """چند رکورد واقعی اخیر برای پیش‌نمایش (اگر نباشد، نمونه ساختگی)."""
     rows = db().list_records("r.review_state!='rejected'")[-4:]
     return [{"id": r["id"], "values": r["values"], "original_name": r["original_name"], "transcript": "",
-             "validation": r["validation"]} for r in rows] or \
+             "validation": r["validation"], "status": r["status"]} for r in rows] or \
         [{"id": i, "values": v, "original_name": "sample.ogg", "transcript": "", "validation": {}} for i, v in enumerate(_SAMPLE_VALUES)]
 
 
@@ -1258,7 +1275,8 @@ def templates_list():
     return {"templates": items, "active": active, "fields": [{"key": k, "label": excel_template.field_label(k)}
             for k in [*(k for k, _, _ in FIELD_DEFS), *COMPUTED_FIELDS, "followup", *excel_template.EXTRA_FIELDS]],
             "presets": {k: {"label": v[0], "fill": v[1], "color": v[2], "zebra": v[3]} for k, v in excel_template.PRESETS.items()},
-            "fonts": excel_template.installed_fonts(), "aligns": excel_template.ALIGNS}
+            "fonts": excel_template.installed_fonts(), "aligns": excel_template.ALIGNS, "splits": excel_template.SPLITS,
+            "highlight_defaults": excel_template.DEFAULT_HIGHLIGHTS}
 
 
 @app.get("/api/templates/{name}")
@@ -1294,6 +1312,8 @@ def template_save(name: str, body: dict):
         # فایل شرکت: فقط قالب مقادیر؛ ستون‌ها و ظاهر فایل موجود دست نمی‌خورد
         prof["policy"] = {**prof.get("policy", {}), **{k: v for k, v in (body.get("policy") or {}).items()
                                                       if k in excel_mapping.VALUE_FORMAT_KEYS}}
+        if "highlights" in prof["policy"]:
+            prof["policy"]["highlights"] = excel_template.clean_highlights(prof["policy"]["highlights"])
         excel_mapping.save_profile(prof)
         return {"template": prof}
     tpl = _clean_template({**body, "name": name})
@@ -1309,6 +1329,60 @@ def template_save(name: str, body: dict):
                        "نام فایل خروجی را عوض کنید تا فایل تازه ساخته شود.")
     excel_mapping.save_profile(tpl)
     return {"template": tpl, "warning": warning}
+
+
+async def _read_upload(file: UploadFile, limit: int = 20 * 1024 * 1024) -> bytes:
+    data = await file.read(limit + 1)
+    if len(data) > limit:
+        err(400, "حجم فایل زیاد است.")
+    return data
+
+
+@app.post("/api/templates/from-file")
+async def template_from_file(file: UploadFile = File(...)):
+    """«مثل این فایل»: ستون‌ها و ظاهر از یک فایل اکسل نمونه خوانده می‌شود (چیزی ذخیره نمی‌شود)."""
+    if Path(file.filename or "").suffix.lower() not in (".xlsx", ".xlsm"):
+        err(400, "فقط فایل XLSX یا XLSM.")
+    KB_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = KB_DIR / f"style_{uuid.uuid4().hex}.xlsx"
+    tmp.write_bytes(await _read_upload(file))
+    try:
+        return excel_template.from_file(tmp)
+    except ValueError as e:
+        err(400, str(e))
+    except Exception:
+        log.exception("template from file failed")
+        err(400, "فایل اکسل باز نشد (خراب یا رمزدار است).")
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+@app.get("/api/templates/{name}/export")
+def template_export(name: str):
+    prof = excel_mapping.load_profile(name)
+    if not prof or prof.get("mode") != "new":
+        err(404, "فقط قالب‌های «فایل جدید» قابل انتقال‌اند.")
+    import json
+    data = json.dumps(excel_template.to_export(prof), ensure_ascii=False, indent=1).encode("utf-8")
+    return StreamingResponse(io.BytesIO(data), media_type="application/json",
+                             headers={"Content-Disposition": "attachment; filename=template.v2x.json"})
+
+
+@app.post("/api/templates/import")
+async def template_import(file: UploadFile = File(...)):
+    import json
+    try:
+        data = json.loads((await _read_upload(file, 1024 * 1024)).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        err(400, "این فایل، قالب «ثبت ویس» نیست.")
+    name = "t_" + uuid.uuid4().hex[:8]
+    folder = Path.home() / "Documents"
+    try:
+        tpl = excel_template.from_export(data, name, str(folder if folder.is_dir() else Path.home()))
+    except ValueError as e:
+        err(400, str(e))
+    excel_mapping.save_profile(tpl)
+    return {"name": name}
 
 
 @app.delete("/api/templates/{name}")
@@ -1330,27 +1404,30 @@ def template_activate(name: str):
     return {"ok": True}
 
 
-def _template_rows(body: dict) -> tuple[dict, list[list[str]]]:
-    """مقدار ستون‌ها برای چند رکورد نمونه، با همان قالب‌بندی مقادیری که در ثبت به کار می‌رود."""
+def _template_rows(body: dict) -> tuple[dict, list[list[str]], list[str]]:
+    """مقدار ستون‌ها و رنگ ردیف برای چند رکورد نمونه، با همان قواعدی که در ثبت به کار می‌رود."""
     tpl = _clean_template(body)
     prof = excel_template.writer_profile(tpl, create=False)
     cols = list(prof["headers"])
-    rows = []
+    today = format_jalali(today_jalali())
+    rows, colors = [], []
     for i, rec in enumerate(_sample_records(), start=1):
         cells = excel_mapping.cell_values(prof, rec)
         rows.append([str(i) if prof["columns"][c] == "row_number" else cells.get(c, "") for c in cols])
-    return tpl, rows
+        colors.append(excel_template.highlight(prof["policy"], rec, today))
+    return tpl, rows, colors
 
 
 @app.post("/api/templates/preview")
 def template_preview(body: dict):
-    tpl, rows = _template_rows(body)
-    return {"headers": [c["title"] for c in tpl["columns_list"]], "rows": rows}
+    tpl, rows, colors = _template_rows(body)
+    return {"headers": [c["title"] for c in tpl["columns_list"]], "rows": rows, "colors": colors,
+            "target": excel_template.target_path(tpl).name}
 
 
 @app.post("/api/templates/sample")
 def template_sample(body: dict):
-    tpl, rows = _template_rows(body)
+    tpl, rows, _ = _template_rows(body)
     data = excel_template.build_sample(tpl, rows)
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                              headers={"Content-Disposition": "attachment; filename=sample.xlsx"})
