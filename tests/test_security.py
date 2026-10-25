@@ -152,3 +152,40 @@ def test_backup_restore_extracts_only_known_parts(db, monkeypatch):
     monkeypatch.setattr(backup, "MAX_RESTORE_BYTES", 10)
     with pytest.raises(backup.BackupError, match="غیرعادی"):
         backup.restore_backup(db, made["name"])
+
+
+# ---------- ۸. حریم خصوصی ----------
+def test_phone_numbers_masked_in_events_and_tracebacks(db):
+    import logging
+
+    from voice2excel.logger import _MaskFilter, mask_sensitive
+    db.log_event("ثبت در اکسل ناموفق: مقدار 0915 123 4567 و ۰۹۱۲۱۲۳۴۵۶۷ و شماره09351234567")
+    msg = db.q("SELECT message FROM events")[0]["message"]
+    assert "4567" not in msg and "1234567" not in msg and "091***" in msg
+    assert mask_sensitive("backup-20261026-101500-manual.zip") == "backup-20261026-101500-manual.zip"
+    try:
+        raise ValueError("bad phone 09151234567")
+    except ValueError:
+        import sys
+        rec = logging.LogRecord("x", logging.ERROR, "", 0, "failed %s", ("09121112233",), sys.exc_info())
+    _MaskFilter().filter(rec)
+    out = logging.Formatter().format(rec)
+    assert "09151234567" not in out and "09121112233" not in out
+
+
+def test_full_wipe_needs_phrase_and_removes_everything(db, monkeypatch, wav_factory):
+    from voice2excel import backup
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(server, "model_available", lambda name: False)
+    with _client(**server.auth_headers()) as c:
+        assert _upload(c, "a.wav", wav_factory("a.wav", 0.5).read_bytes())["result"] == "added"
+        db.log_event("رخداد آزمون")
+        db.set_meta("inbox_since", "123")
+        backup.create_backup(db, "manual")
+        assert c.post("/api/maintenance/wipe", json={"confirm": "بله"}).status_code == 400
+        assert db.one("SELECT COUNT(*) n FROM audio_files")["n"] == 1
+        assert c.post("/api/maintenance/wipe", json={"confirm": "پاک شود"}).json()["ok"]
+    for t in ("audio_files", "batches", "events", "records", "entities"):
+        assert db.one(f"SELECT COUNT(*) n FROM {t}")["n"] == 0, t
+    assert db.get_meta("inbox_since") == "123"  # پوشه ورودی، ویس‌های قدیمی را دوباره اضافه نکند
+    assert not list((server.DATA_DIR / "uploads").iterdir()) and not backup.list_backups()

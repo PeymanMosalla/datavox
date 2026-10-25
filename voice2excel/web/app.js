@@ -2257,9 +2257,10 @@ async function renderSettings(el) {
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.trash} نگهداری، گزارش و حریم خصوصی</h2></div><div class="card-b stack">
         <div class="row">
           <a class="btn" href="/api/report/errors.xlsx">${I.down} گزارش خطاها و هشدارها</a>
-          <a class="btn" href="/api/report/records.xlsx">${I.down} گزارش کامل رکوردها (با متن ویس)</a>
+          <button class="btn" id="s-report">${I.down} گزارش کامل رکوردها (با متن ویس)</button>
           <button class="btn" id="s-open-data">${I.open} باز کردن پوشه داده‌ها</button>
           <button class="btn danger" id="s-purge">${I.trash} حذف فایل‌های صوتیِ ثبت‌شده</button>
+          <button class="btn danger" id="s-wipe">${I.trash} پاک‌کردن کامل اطلاعات</button>
           <label class="check small"><input type="checkbox" id="s-sound" ${localStorage.getItem("v2x.sound") !== "0" ? "checked" : ""}> صدای پایان پردازش</label>
         </div>
         <div class="muted small">فایل‌های صوتی برای پخش در بازبینی نگه داشته می‌شوند. پس از ثبت در اکسل می‌توانید آن‌ها را پاک کنید؛ متن ویس‌ها و رکوردها باقی می‌مانند.</div>
@@ -2385,6 +2386,25 @@ async function renderSettings(el) {
     $("#s-purge").onclick = async () => {
       if (!(await confirmBox("حذف فایل‌های صوتی", "فایل‌های صوتی ویس‌هایی که همه رکوردهایشان در اکسل ثبت (یا رد) شده‌اند، برای همیشه از پوشه برنامه حذف می‌شوند. فایل‌های اصلی شما در جای خودشان دست نمی‌خورند.", "حذف", "danger"))) return;
       try { const r = await api("/api/maintenance/purge-audio", { method: "POST", body: { scope: "exported" } }); toast(`${fa(r.deleted)} فایل صوتی حذف شد.`, "ok"); } catch (e) { toastErr(e); }
+    };
+    $("#s-report").onclick = async () => {
+      if (!(await confirmBox("گزارش کامل رکوردها", "این فایل نام، شماره تلفن، نشانی و متن کامل همه ویس‌ها را دارد. آن را فقط در جای امن نگه دارید و برای کسی که اجازه دیدن این اطلاعات را ندارد نفرستید.", "دریافت گزارش"))) return;
+      location.href = "/api/report/records.xlsx";
+    };
+    $("#s-wipe").onclick = async () => {
+      const phrase = "پاک شود";
+      const ok = await openModal({
+        title: "پاک‌کردن کامل اطلاعات",
+        body: `<div class="stack"><div>همه رکوردها، متن و فایل ویس‌ها، واژه‌نامه آموخته، پشتیبان‌ها، نسخه‌های اکسل داخل پوشه برنامه و گزارش‌ها <b>برای همیشه</b> پاک می‌شوند و برگشت‌پذیر نیست. تنظیمات و قالب‌های اکسل می‌مانند؛ فایل اکسل اصلی و فایل‌های ساخته‌شده در پوشه‌های خودتان دست نمی‌خورند.</div>
+          <label>برای تأیید، عبارت «${phrase}» را بنویسید:<input id="wipe-phrase" type="text" autocomplete="off"></label></div>`,
+        actions: [{ label: "پاک‌کردن همه", cls: "danger", onClick: async (m) => {
+          const v = $("#wipe-phrase", m).value.trim();
+          if (v !== phrase) { toast(`عبارت «${phrase}» را دقیقاً بنویسید.`, "err"); return false; }
+          try { await api("/api/maintenance/wipe", { method: "POST", body: { confirm: v } }); return true; }
+          catch (e) { toastErr(e); return false; }
+        } }, { label: "انصراف", cls: "ghost", value: false }],
+      });
+      if (ok) { toast("همه اطلاعات پاک شد.", "ok"); refreshStatus(); draw(); }
     };
     const ev = await api("/api/events");
     $("#s-events").innerHTML = ev.events.length ? `<ul class="reasons">${ev.events.map((e) => `<li>${fa(e.at.replace("T", " "))} — ${esc(e.message.split("\n")[0])}</li>`).join("")}</ul>` : '<span class="muted">رخدادی ثبت نشده است.</span>';

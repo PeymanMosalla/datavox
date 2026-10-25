@@ -1806,6 +1806,37 @@ def purge_audio(body: PurgeIn):
     return {"deleted": len(rows)}
 
 
+WIPE_PHRASE = "پاک شود"
+
+
+class WipeIn(BaseModel):
+    confirm: str
+
+
+@app.post("/api/maintenance/wipe")
+def wipe_all(body: WipeIn):
+    """پاک‌کردن کامل اطلاعات (مثلاً پیش از تحویل رایانه به دیگری): رکوردها، متن و فایل ویس‌ها، واژه‌نامه
+    آموخته، پشتیبان‌ها، نسخه‌های اکسل داخل پوشه برنامه و گزارش‌ها. تنظیمات و قالب‌های اکسل می‌مانند؛
+    فایل اکسل اصلی و فایل‌های ساخته‌شده در پوشه‌های کاربر دست نمی‌خورند."""
+    if body.confirm.strip() != WIPE_PHRASE:
+        err(400, f"برای پاک‌کردن، عبارت «{WIPE_PHRASE}» را دقیقاً بنویسید.")
+    worker().cancel()
+    worker().join(20)
+    if worker().running:
+        err(409, "پردازش هنوز در جریان است؛ چند ثانیه دیگر دوباره امتحان کنید.")
+    db().wipe_all()
+    for sub in ("uploads", "tmp", "outputs", "backups", "reports", "auto-backups"):
+        shutil.rmtree(DATA_DIR / sub, ignore_errors=True)
+        (DATA_DIR / sub).mkdir(parents=True, exist_ok=True)
+    for p in (DATA_DIR / "logs").glob("*.log*"):
+        try:
+            p.unlink()
+        except OSError:  # فایل گزارشی که الان باز است فقط خالی می‌شود
+            p.write_bytes(b"")
+    log.warning("همه اطلاعات برنامه به درخواست کاربر پاک شد.")
+    return {"ok": True}
+
+
 @app.get("/api/backups")
 def backups_list():
     return {"backups": backup.list_backups(), "dir": str(backup.backup_dir())}

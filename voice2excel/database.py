@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .config import DATA_DIR
+from .logger import mask_sensitive
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS batches(
@@ -174,7 +175,7 @@ class Database:
     def log_event(self, message: str, level: str = "info", audio_id: int | None = None) -> None:
         with self.tx() as c:
             c.execute("INSERT INTO events(at, level, audio_id, message) VALUES(?,?,?,?)",
-                      (now(), level, audio_id, message))
+                      (now(), level, audio_id, mask_sensitive(message)))
 
     # ---------- فایل‌ها ----------
     def create_batch(self, name: str, visit_date: str) -> int:
@@ -299,6 +300,21 @@ class Database:
     def set_meta(self, key: str, value: str) -> None:
         with self.tx() as c:
             c.execute("INSERT OR REPLACE INTO meta(key, value) VALUES(?,?)", (key, value))
+
+    def wipe_all(self) -> None:
+        """پاک‌کردن همه اطلاعات کاربران (رکورد، متن ویس، واژه‌نامه، اصلاحات، رخدادها)؛ فقط متای فنی می‌ماند.
+        فایل پایگاه داده بازنویسی می‌شود تا داده پاک‌شده در فضای خالی فایل باقی نماند."""
+        with self.write_lock:
+            conn = self.conn()
+            conn.execute("PRAGMA foreign_keys=OFF")  # بیرون از تراکنش؛ ترتیب پاک‌کردن جدول‌ها مهم نباشد
+            try:
+                with self.tx() as c:
+                    for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name!='meta'").fetchall():
+                        c.execute(f'DELETE FROM "{t}"')  # sqlite_sequence هم: شماره‌ها از ۱ شروع شوند
+            finally:
+                conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("VACUUM")
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
 
 def _decode_record(r: dict) -> dict:

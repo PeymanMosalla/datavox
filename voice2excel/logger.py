@@ -11,7 +11,8 @@ from logging.handlers import RotatingFileHandler
 
 from .config import DATA_DIR
 
-_LONG_DIGITS = re.compile(r"(?:\+?\d[\d\s\-]{6,}\d)")
+# نام فایل‌های برنامه (مثل backup-20261026-101500) شماره نیست و پوشانده نمی‌شود
+_LONG_DIGITS = re.compile(r"(?<![A-Za-z0-9_\-])\+?\d[\d\s\-]{6,}\d")
 _PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
@@ -24,6 +25,8 @@ class _MaskFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.msg = mask_sensitive(record.getMessage())
         record.args = ()
+        if record.exc_info and not record.exc_text:  # متن خطا هم ممکن است مقدار یک خانه یا شماره را داشته باشد
+            record.exc_text = mask_sensitive(logging.Formatter().formatException(record.exc_info))
         return True
 
 
