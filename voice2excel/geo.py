@@ -50,10 +50,19 @@ def decode(blob: bytes) -> dict:
 
 
 @lru_cache(maxsize=1)
-def base_streets() -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """[(نام استاندارد، شکل‌های دیگر)]؛ اگر فایل نباشد یا خراب باشد، خالی (برنامه بدون آن هم کار می‌کند)."""
+def _data() -> dict:
     try:
-        data = decode(ASSET.read_bytes())
+        return decode(ASSET.read_bytes())
     except (OSError, ValueError, zlib.error):
-        return ()
-    return tuple((s[0], tuple(s[1])) for s in data.get("s", []))
+        return {}  # برنامه بدون داده پایه هم کار می‌کند
+
+
+def base_streets() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """[(نام استاندارد، شکل‌های دیگر)]."""
+    return tuple((s[0], tuple(s[1])) for s in _data().get("s", []))
+
+
+def base_names() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(نام‌خانوادگی‌های رایج، نام‌های کوچک رایج)."""
+    d = _data()
+    return tuple(d.get("n", [])), tuple(d.get("f", []))

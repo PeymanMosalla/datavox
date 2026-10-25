@@ -65,10 +65,14 @@ class Lexicon:
     # کلیدهای قابل‌اتکا بدون عدد (نه واژه عمومی، نه مشترک میان خیابان و نام شخص)
     street_keys: set[str] = field(default_factory=set)
     engineer_keys: set[str] = field(default_factory=set)
+    # نام‌های کوچک رایج («علی کازمی» ← هر واژه جدا یکسان می‌شود)
+    first_spell: dict[str, set[str]] = field(default_factory=dict)
+    first_names: set[str] = field(default_factory=set)
 
     @classmethod
-    def build(cls, entries, base=()) -> "Lexicon":
-        """entries: [(نوع، املای استاندارد، املای ثبت‌شده)] از واژه‌نامه کاربر؛ base: [(خیابان، شکل‌های دیگر)]."""
+    def build(cls, entries, base=(), base_names=((), ())) -> "Lexicon":
+        """entries: [(نوع، املای استاندارد، املای ثبت‌شده)] از واژه‌نامه کاربر؛ base: [(خیابان، شکل‌های دیگر)]؛
+        base_names: (نام‌خانوادگی‌های رایج، نام‌های کوچک رایج)."""
         lex = cls()
         for etype, canonical, alias in entries:
             if etype not in ("street", "engineer"):
@@ -88,6 +92,16 @@ class Lexicon:
                     continue  # املای واژه‌نامه کاربر مقدم است
                 lex.street_names.add(n)
                 lex.street_spell.setdefault(k, set()).add(canonical)
+        surnames, first = base_names
+        user_engineers = set(lex.engineer_spell)
+        for n in surnames:
+            k = match_key(n)
+            if k not in user_engineers:  # املای واژه‌نامه کاربر مقدم است
+                lex.engineer_names.add(n)
+                lex.engineer_spell.setdefault(k, set()).add(n)
+        for n in first:
+            lex.first_names.add(n)
+            lex.first_spell.setdefault(match_key(n), set()).add(n)
         common = _common_keys()
         good = {k for k in set(lex.street_spell) | set(lex.engineer_spell) if len(k) >= 3 and k not in common}
         lex.shared_keys = {k for k in lex.street_spell if k in good}
@@ -189,7 +203,17 @@ class Lexicon:
         return canon if canon != name else None
 
     def canonical_engineer(self, bare: str) -> str | None:
-        return self._canonical(bare, self.engineer_spell, self.engineer_names, match_key)
+        """املای واژه‌نامه برای کل نام؛ اگر کل نام شناخته نبود، هر واژه جدا («علی کازمی» ← «علی کاظمی»)."""
+        whole = self._canonical(bare, self.engineer_spell, self.engineer_names, match_key)
+        if whole and _letters(whole) == _letters(bare):
+            return None  # «حسن زاده» و «حسن‌زاده» هر دو درست‌اند؛ سبک نوشتن کاربر حفظ می‌شود
+        words = bare.split()
+        if whole or not 2 <= len(words) <= MAX_WORDS or bare in self.engineer_names:
+            return whole
+        fixed = [w if w in self.engineer_names or w in self.first_names else
+                 self._canonical(w, self.engineer_spell, self.engineer_names, match_key)
+                 or self._canonical(w, self.first_spell, self.first_names, match_key) or w for w in words]
+        return " ".join(fixed) if fixed != words else None
 
     def fix_streets(self, text: str) -> tuple[str, list[tuple[str, str]]]:
         """نام خیابان‌های پیش از هر عدد را به املای واژه‌نامه برمی‌گرداند. خروجی: (متن، [(قبلی، جدید)])."""
@@ -215,6 +239,10 @@ class Lexicon:
             text = text[:a] + new + text[b:]
             changes.append((old, new))
         return text, changes[::-1]
+
+
+def _letters(s: str) -> str:
+    return re.sub(r"[\s‌]", "", s)
 
 
 def _is_word(w: str) -> bool:
@@ -254,7 +282,7 @@ def get_lexicon(db, base: bool = True) -> Lexicon:
 
     base: داده پایه نشانی‌های شهر هم در کنار واژه‌نامه کاربر به کار رود.
     """
-    from .geo import base_streets
+    from .geo import base_names, base_streets
 
     sig = (str(db.path), base, tuple(db.one(
         "SELECT (SELECT COUNT(*) FROM aliases) a, (SELECT COALESCE(MAX(id), 0) FROM aliases) b, "
@@ -264,6 +292,6 @@ def get_lexicon(db, base: bool = True) -> Lexicon:
             rows = db.q("SELECT e.type, e.canonical, a.alias FROM entities e JOIN aliases a ON a.entity_id=e.id "
                         "WHERE e.type IN ('street', 'engineer')")
             _cache["lex"] = Lexicon.build(((r["type"], r["canonical"], r["alias"]) for r in rows),
-                                          base_streets() if base else ())
+                                          base_streets() if base else (), base_names() if base else ((), ()))
             _cache["sig"] = sig
         return _cache["lex"]

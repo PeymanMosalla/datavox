@@ -267,3 +267,21 @@ def test_counts_and_quantities_are_not_streets():
     assert not r.get("address")
     # ولی پس از «تعداد 7»، خیابان بعدی آدرس است
     assert lex.street_cuts("تعداد 7 سجادیه 58") != []
+
+
+def test_base_names_fix_homophones_only():
+    lex = Lexicon.build([], (), (("کاظمی", "حسن‌زاده", "صیفی", "سیفی", "رضایی"), ("علی",)))
+    assert lex.canonical_engineer("کازمی") == "کاظمی"
+    assert lex.canonical_engineer("علی کازمی") == "علی کاظمی"  # هر واژه جدا
+    assert lex.canonical_engineer("حسن زاده") is None  # فقط فاصله فرق دارد: سبک کاربر حفظ می‌شود
+    assert lex.canonical_engineer("صیفی") is None and lex.canonical_engineer("سیفی") is None
+    assert lex.canonical_engineer("کاظمیان") is None  # فقط مشابه، نه هم‌آوا
+    assert lex.is_engineer("رضایی")  # نام بدون «مهندس» شناخته می‌شود
+    # واژه‌نامه کاربر بر فهرست عمومی مقدم است
+    lex = Lexicon.build([("engineer", "کازمی", "کازمی")], (), (("کاظمی",), ()))
+    assert lex.canonical_engineer("کازمی") is None
+
+
+def test_bundled_names_load():
+    surnames, first = geo.base_names()
+    assert len(surnames) > 400 and "کاظمی" in surnames and "علی" in first

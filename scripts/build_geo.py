@@ -36,6 +36,12 @@ def osm_names(path: Path) -> list[str]:
     return out
 
 
+def read_list(path: Path) -> list[str]:
+    """فهرست یک‌نام‌در‌هر‌خط (خط‌های # توضیح‌اند)؛ تکراری‌ها حذف."""
+    names = (normalize_text(ln) for ln in path.read_text(encoding="utf-8").splitlines())
+    return list(dict.fromkeys(n for n in names if n and not n.startswith("#")))
+
+
 def excel_addresses(path: Path) -> list:
     info = knowledge.analyze_workbook(path)
     sheet = next(s for s in info["sheets"] if s["name"] == info["sheet"])
@@ -76,13 +82,17 @@ def main() -> int:
     ap.add_argument("--osm", type=Path)
     ap.add_argument("--excel", type=Path, nargs="*", default=[])
     ap.add_argument("--min-osm", type=int, default=2, help="کمینه تکرار نام در نقشه")
+    ap.add_argument("--names", type=Path, default=ROOT / "packaging" / "names",
+                    help="پوشه surnames.txt و firstnames.txt (نام‌های رایج عمومی)")
     ap.add_argument("--city", default="مشهد")
     ap.add_argument("--out", type=Path, default=ROOT / "voice2excel" / "assets" / "geo.dat")
     a = ap.parse_args()
     streets = build(a.osm, a.excel, a.min_osm)
+    surnames, first = (read_list(a.names / f) for f in ("surnames.txt", "firstnames.txt"))
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_bytes(geo.encode({"v": 1, "city": a.city, "s": streets}))
-    print(f"{len(streets)} خیابان ← {a.out} ({a.out.stat().st_size // 1024} کیلوبایت)")
+    a.out.write_bytes(geo.encode({"v": 2, "city": a.city, "s": streets, "n": surnames, "f": first}))
+    print(f"{len(streets)} خیابان، {len(surnames)} نام‌خانوادگی، {len(first)} نام ← {a.out} "
+          f"({a.out.stat().st_size // 1024} کیلوبایت)")
     return 0
 
 
