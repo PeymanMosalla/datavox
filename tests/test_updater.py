@@ -75,7 +75,7 @@ def _write_zip(path, manifest, members):
     raw = json.dumps(manifest).encode("utf-8")
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("manifest.json", raw)
-        z.writestr("manifest.sig", ed25519.sign(TEST_KEY, raw))
+        z.comment = updater.SIG_PREFIX + ed25519.sign(TEST_KEY, raw).hex().encode()
         for name, data in members.items():
             z.writestr(name, data)
 
@@ -129,6 +129,7 @@ def test_unsigned_or_forged_update_rejected(env):
     updater.build_update_zip(src, good, "rt-1", _bump(__version__))
     tampered = tmp / "tampered.zip"
     with zipfile.ZipFile(good) as zi, zipfile.ZipFile(tampered, "w") as zo:
+        zo.comment = zi.comment
         for item in zi.infolist():
             data = zi.read(item.filename)
             zo.writestr(item, b"evil()" if item.filename.endswith("app.js") else data)
@@ -144,3 +145,13 @@ def test_zip_bomb_rejected(env, monkeypatch):
     updater.build_update_zip(src, z, "rt-1", _bump(__version__))
     with pytest.raises(updater.UpdateError, match="غیرعادی"):
         updater.inspect_update(z)
+
+
+def test_signed_update_installable_by_pre_2_0_updater(env):
+    """نسخه ۱٫۹٫x هر فایلِ بیرون از فهرست manifest را رد می‌کرد؛ امضا نباید فایل جداگانه باشد."""
+    tmp, src = env
+    z = tmp / "u.zip"
+    m = updater.build_update_zip(src, z, "rt-1", _bump(__version__))
+    with zipfile.ZipFile(z) as zz:
+        names = {n for n in zz.namelist() if not n.endswith("/")}
+        assert names - set(m["files"]) == {"manifest.json"} and zz.comment.startswith(updater.SIG_PREFIX)
