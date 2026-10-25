@@ -13,6 +13,11 @@ import numpy as np
 from .config import SUPPORTED_AUDIO_EXTENSIONS, Settings
 
 SAMPLE_RATE = 16000
+MAX_AUDIO_BYTES = 1024 ** 3  # یک گیگابایت؛ ویس یک‌ساعته معمولی چند ده مگابایت است
+
+# امضای آغاز فایل‌هایی که صوت نیستند (برنامه، فایل فشرده، سند، صفحه وب) ولی پسوند صوتی گرفته‌اند
+_NOT_AUDIO = (b"MZ", b"PK\x03\x04", b"%PDF", b"\x7fELF", b"Rar!", b"7z\xbc\xaf",
+              b"\xd0\xcf\x11\xe0", b"{\\rtf", b"#!", b"<")
 
 
 class AudioError(Exception):
@@ -27,6 +32,11 @@ class AudioInfo:
 
 def is_supported(name: str) -> bool:
     return Path(name).suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS
+
+
+def looks_like_audio(head: bytes) -> bool:
+    """فایلی که با امضای یک برنامه یا سند شروع شده، فقط تغییر نام داده شده و صوت نیست."""
+    return not head.lstrip(b"\xef\xbb\xbf \t\r\n").startswith(_NOT_AUDIO)
 
 
 def _decode(path: Path, warnings: list[str] | None = None) -> np.ndarray:

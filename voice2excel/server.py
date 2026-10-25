@@ -23,13 +23,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, backup, dictionary, excel_mapping, excel_template, knowledge, lan, learning, pipeline, updater
-from .audio_processor import is_supported
+from .audio_processor import MAX_AUDIO_BYTES, is_supported, looks_like_audio
 from .config import (AVAILABLE_MODELS, DATA_DIR, MODELS_DIR, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS, WEB_DIR,
                      ensure_dirs, load_settings, save_settings)
 from .database import Database, get_db, now
 from .dates_fa import date_from_filename, format_jalali, from_gregorian, parse_jalali, today_jalali
 from .deduplicator import file_sha256
-from .excel_reader import inspect_workbook, lock_status, read_rows
+from .excel_reader import check_package, inspect_workbook, lock_status, read_rows
 from .excel_writer import ExcelWriteError, preview, replace_original, write_export
 from .inbox import Inbox
 from .logger import get_logger
@@ -103,10 +103,30 @@ async def _security_guard(request, call_next):
     if origin and origin != "null" and _host_name(origin.split("://", 1)[-1]) != host:
         return JSONResponse(status_code=403, content={"detail": "درخواست از صفحه دیگری پذیرفته نمی‌شود."})
     path = request.url.path
+    try:
+        too_big = int(request.headers.get("content-length") or 0) > MAX_REQUEST_BYTES
+    except ValueError:
+        too_big = True
+    if too_big:  # پیش از آنکه بدنه درخواست روی دیسک موقت نوشته شود
+        return JSONResponse(status_code=413, content={"detail": "حجم ارسال بیش از حد مجاز است؛ فایل‌ها را در چند نوبت بفرستید."})
     if (request.method not in _SAFE_METHODS and path.startswith("/api/") and not path.startswith("/api/m/")
             and not secrets.compare_digest(request.headers.get(TOKEN_HEADER, ""), API_TOKEN)):
         return JSONResponse(status_code=403, content={"detail": "نشست برنامه منقضی شده است؛ صفحه را دوباره باز کنید (F5)."})
-    return await call_next(request)
+    response = await call_next(request)
+    response.headers.update(_SECURITY_HEADERS)
+    if path in _APP_PAGES:
+        response.headers["Content-Security-Policy"] = _CSP
+    return response
+
+
+# صفحه برنامه در قاب (iframe) سایت دیگری باز نمی‌شود تا با کلیک فریبنده فرمانی اجرا نشود؛ فایل‌ها با نوع
+# اعلام‌شده خوانده می‌شوند (ویس جعلی به‌عنوان صفحه وب اجرا نمی‌شود)؛ در صفحه‌های برنامه فقط کد خود برنامه اجرا می‌شود.
+_SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer"}
+_APP_PAGES = {"/", "/m", "/m/"}
+MAX_REQUEST_BYTES = 4 * 1024 ** 3
+_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+        "media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
+        "frame-ancestors 'none'")
 
 
 @app.middleware("http")
@@ -364,14 +384,21 @@ def _register_file(src_stream, original_name: str, batch_id: int, visit_date: st
     uploads = DATA_DIR / "uploads"
     ext = Path(original_name).suffix.lower()
     tmp = uploads / f".incoming_{uuid.uuid4().hex}{ext}"
-    size = 0
+    size, head = 0, b""
     with open(tmp, "wb") as out:
         while True:
             chunk = src_stream.read(1 << 20)
             if not chunk:
                 break
+            head = head or chunk[:64]
             size += len(chunk)
+            if size > MAX_AUDIO_BYTES:
+                break
             out.write(chunk)
+    if size > MAX_AUDIO_BYTES or not looks_like_audio(head):
+        tmp.unlink(missing_ok=True)
+        return {"name": original_name, "result": "error",
+                "message": "حجم فایل بیش از یک گیگابایت است." if size > MAX_AUDIO_BYTES else "این فایل صوتی نیست."}
     sha = file_sha256(tmp)
     existing = db().find_audio_by_hash(sha)
     if existing:
@@ -1047,7 +1074,12 @@ async def knowledge_analyze(files: list[UploadFile] = File(...)):
             out.append({"name": name, "error": "حجم فایل بیش از ۵۰ مگابایت است."})
             continue
         try:
+            check_package(path)
             info = knowledge.analyze_workbook(path)
+        except ValueError as e:
+            path.unlink(missing_ok=True)
+            out.append({"name": name, "error": str(e)})
+            continue
         except Exception:
             log.exception("knowledge analyze failed")
             path.unlink(missing_ok=True)
@@ -1138,7 +1170,7 @@ def excel_profile_save(profile: dict):
     rep = inspect_workbook(p)
     sheet = next((s for s in rep.get("sheets", []) if s["name"] == profile.get("sheet")), None)
     if not sheet:
-        err(400, "شیت انتخاب‌شده در فایل نیست.")
+        err(400, next((r["message"] for r in rep["risks"] if r["level"] == "block"), "شیت انتخاب‌شده در فایل نیست."))
     hr = int(profile.get("header_row") or sheet["header_row"])
     import openpyxl
 
@@ -1403,6 +1435,7 @@ async def template_from_file(file: UploadFile = File(...)):
     tmp = KB_DIR / f"style_{uuid.uuid4().hex}.xlsx"
     tmp.write_bytes(await _read_upload(file))
     try:
+        check_package(tmp)
         return excel_template.from_file(tmp)
     except ValueError as e:
         err(400, str(e))

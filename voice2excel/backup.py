@@ -22,6 +22,8 @@ from .database import Database
 
 KEEP_AUTO = 14
 KEEP_MANUAL = 20
+MAX_RESTORE_BYTES = 2 * 1024 ** 3
+_MEMBER_RE = re.compile(r"^(manifest\.json|voice2excel\.db|settings\.json|profiles/[\w.-]+\.json)$")
 _NAME_RE = re.compile(r"^backup-\d{8}-\d{6}-(auto|manual|before-restore)\.zip$")
 REASON_LABELS = {"auto": "خودکار روزانه", "manual": "دستی", "before-restore": "پیش از بازگردانی"}
 
@@ -135,7 +137,12 @@ def restore_backup(db: Database, name: str) -> dict:
                 manifest = json.loads(z.read("manifest.json"))
                 if manifest.get("app") != "voice2excel":
                     raise BackupError("این فایل، پشتیبان برنامه ثبت ویس نیست.")
-                z.extractall(tmp)
+                # فقط بخش‌های شناخته‌شده و با اندازه معقول باز می‌شوند (نه هر فایلی که در زیپ گذاشته شده)
+                members = [i for i in z.infolist() if _MEMBER_RE.match(i.filename)]
+                if sum(i.file_size for i in members) > MAX_RESTORE_BYTES:
+                    raise BackupError("فایل پشتیبان غیرعادی بزرگ است.")
+                for i in members:
+                    z.extract(i, tmp)
         except (zipfile.BadZipFile, KeyError, ValueError) as e:
             raise BackupError("فایل پشتیبان خراب است.") from e
         snap = Path(tmp) / "voice2excel.db"

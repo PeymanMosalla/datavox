@@ -16,7 +16,7 @@ import threading
 import time
 
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
-REMOTE_PAGES = {"/m", "/m/", "/static/recording-guide.html"}
+REMOTE_PAGES = {"/m", "/m/", "/static/m.js", "/static/recording-guide.html"}
 REMOTE_PREFIXES = ("/api/m/", "/static/fonts/")
 MAX_FAILURES = 8
 WINDOW_SECONDS = 600

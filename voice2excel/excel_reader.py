@@ -53,6 +53,22 @@ def lock_status(path: Path) -> dict:
     return {"locked": locked, "write_blocked": write_blocked, "owner_file": owner_exists, "message": msg}
 
 
+MAX_UNPACKED_BYTES = 300 * 1024 * 1024
+MAX_PARTS = 5000
+
+
+def check_package(path: Path) -> None:
+    """پیش از باز کردن با openpyxl: فایلی که پس از باز شدن بسیار بزرگ می‌شود (بمب فشرده) حافظه را پر نکند.
+    اندازه اعلام‌شده هر بخش هنگام خواندن هم رعایت می‌شود (zipfile بیش از آن نمی‌خواند)."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            infos = z.infolist()
+    except (zipfile.BadZipFile, OSError):
+        raise ValueError("فایل اکسل خراب است یا رمزگذاری شده است.") from None
+    if len(infos) > MAX_PARTS or sum(i.file_size for i in infos) > MAX_UNPACKED_BYTES:
+        raise ValueError("ساختار این فایل اکسل غیرعادی است (پس از باز شدن بسیار بزرگ می‌شود) و باز نمی‌شود.")
+
+
 def zip_parts(path: Path) -> list[str]:
     with zipfile.ZipFile(path) as z:
         return sorted(n for n in z.namelist() if not n.endswith("/"))  # مدخل پوشه، بخش واقعی فایل نیست
@@ -102,9 +118,10 @@ def inspect_workbook(path: str | Path) -> dict:
         report["risks"].append({"level": "block", "message": "فقط فایل‌های XLSX و XLSM پشتیبانی می‌شوند (فایل XLS قدیمی را در Excel با قالب XLSX ذخیره کنید)."})
         return report
     try:
+        check_package(path)
         parts = zip_parts(path)
-    except zipfile.BadZipFile:
-        report["risks"].append({"level": "block", "message": "فایل اکسل خراب است یا رمزگذاری شده است."})
+    except ValueError as e:
+        report["risks"].append({"level": "block", "message": str(e)})
         return report
     report["parts"] = parts
     report["has_macros"] = "xl/vbaProject.bin" in parts

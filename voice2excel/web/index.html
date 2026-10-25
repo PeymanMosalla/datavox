@@ -5,12 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ثبت ویس</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%233355d6'/%3E%3Cpath d='M12 5a2.5 2.5 0 0 0-2.5 2.5v4a2.5 2.5 0 0 0 5 0v-4A2.5 2.5 0 0 0 12 5Zm-5 6.5a5 5 0 0 0 10 0M12 16.5V19' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
-  <script>
-    // تم انتخابی کاربر پیش از نمایش صفحه اعمال می‌شود (بدون چشمک زدن رنگ)
-    try { const t = localStorage.getItem("v2x.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) { }
-    // منوی ساده («کار امروز» و «تنظیمات»)؛ همه صفحه‌ها فقط اگر کاربر در تنظیمات خواسته باشد
-    try { if (localStorage.getItem("v2x.nav") === "full") document.documentElement.classList.add("full-nav"); } catch (e) { }
-  </script>
+  <script src="/static/boot.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>

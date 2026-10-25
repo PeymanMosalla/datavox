@@ -1,4 +1,5 @@
 """آزمون‌های امنیتی: هر حفره‌ای که پیدا و بسته شده، اینجا یک آزمون دارد تا دوباره باز نشود."""
+import pytest
 from fastapi.testclient import TestClient
 
 from voice2excel import server
@@ -62,3 +63,92 @@ def test_lan_ip_host_allowed_only_when_lan_enabled(db, monkeypatch):
         assert c.post("/api/m/check", headers={"X-PIN": "000000"}).status_code == 401
         assert c.post("/api/files/retry-failed").status_code == 403
     server.save_settings({"lan_enabled": False, "lan_pin": ""})
+
+
+# ---------- ۷. ورودی‌ها: فایل جعلی، حجم زیاد، بمب فشرده ----------
+def _upload(c, name, data):
+    return c.post("/api/upload", files=[("files", (name, data, "application/octet-stream"))],
+                  data={"visit_date": "1405/07/28"}).json()["results"][0]
+
+
+def test_fake_or_huge_audio_rejected(db, monkeypatch, wav_factory):
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(server, "model_available", lambda name: False)
+    with _client(**server.auth_headers()) as c:
+        for fake in (b"MZ\x90\x00 program", b"PK\x03\x04 zip", b"<html><script>x</script>", b"%PDF-1.7"):
+            r = _upload(c, "voice.mp3", fake)
+            assert r["result"] == "error" and "صوتی نیست" in r["message"], fake
+        assert _upload(c, "ok.wav", wav_factory("a.wav", 0.5).read_bytes())["result"] == "added"
+        monkeypatch.setattr(server, "MAX_AUDIO_BYTES", 1000)
+        r = _upload(c, "big.wav", wav_factory("b.wav", 0.5).read_bytes())
+        assert r["result"] == "error" and "گیگابایت" in r["message"]
+    assert not [p for p in (server.DATA_DIR / "uploads").glob(".incoming_*")]  # فایل نیمه‌کاره نماند
+
+
+def test_oversized_request_rejected_before_reading(db, monkeypatch):
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(server, "MAX_REQUEST_BYTES", 100)
+    with _client(**server.auth_headers()) as c:
+        assert c.post("/api/upload", content=b"x" * 500).status_code == 413
+        assert c.post("/api/upload", headers={"Content-Length": "abc"}, content=b"").status_code in (400, 413)
+
+
+def test_security_headers_and_no_inline_script(db, monkeypatch):
+    """صفحه در قاب سایت دیگر باز نمی‌شود (کلیک فریبنده) و فقط کد خود برنامه اجرا می‌شود (در برابر XSS)."""
+    import re
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    with _client() as c:
+        for path in ("/", "/m"):
+            r = c.get(path)
+            assert r.headers["x-frame-options"] == "DENY"
+            csp = r.headers["content-security-policy"]
+            assert "script-src 'self'" in csp and "frame-ancestors 'none'" in csp and "unsafe-eval" not in csp
+            assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", r.text), path  # اسکریپت درون‌خطی با CSP اجرا نمی‌شود
+            assert not re.search(r"\son[a-z]+\s*=", r.text), path
+        assert c.get("/api/status").headers["x-content-type-options"] == "nosniff"
+    js = (server.WEB_DIR / "app.js").read_text(encoding="utf-8") + (server.WEB_DIR / "m.js").read_text(encoding="utf-8")
+    assert not re.search(r"\bon[a-z]+=\?[\"']", js) and "eval(" not in js and "new Function" not in js
+
+
+def _bomb_xlsx(path, size=2 * 1024 * 1024):
+    import zipfile
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("xl/worksheets/sheet1.xml", b"0" * size)
+    return path
+
+
+def test_excel_zip_bomb_rejected(db, monkeypatch, tmp_path):
+    from voice2excel import excel_reader
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(excel_reader, "MAX_UNPACKED_BYTES", 1024 * 1024)
+    bomb = _bomb_xlsx(tmp_path / "bomb.xlsx")
+    assert bomb.stat().st_size < 50 * 1024  # کوچک روی دیسک، بزرگ پس از باز شدن
+    rep = excel_reader.inspect_workbook(bomb)
+    assert any(r["level"] == "block" and "غیرعادی" in r["message"] for r in rep["risks"])
+    with _client(**server.auth_headers()) as c:
+        r = c.post("/api/knowledge/analyze", files=[("files", ("b.xlsx", bomb.read_bytes(), "application/octet-stream"))])
+        assert "غیرعادی" in r.json()["files"][0]["error"]
+        r = c.post("/api/templates/from-file", files={"file": ("b.xlsx", bomb.read_bytes(), "application/octet-stream")})
+        assert r.status_code == 400 and "غیرعادی" in r.json()["detail"]
+        r = c.post("/api/templates/from-file", files={"file": ("x.xlsx", b"not a zip", "application/octet-stream")})
+        assert r.status_code == 400
+
+
+def test_backup_restore_extracts_only_known_parts(db, monkeypatch):
+    import zipfile
+
+    from voice2excel import backup
+    made = backup.create_backup(db, "manual")
+    with zipfile.ZipFile(backup.backup_path(made["name"]), "a") as z:
+        z.writestr("../../evil.py", "x")
+        z.writestr("voice2excel/server.py", "x")
+    extracted = []
+    real = zipfile.ZipFile.extract
+    monkeypatch.setattr(zipfile.ZipFile, "extract",
+                        lambda self, m, path=None, pwd=None: extracted.append(getattr(m, "filename", m)) or real(self, m, path, pwd))
+    backup.restore_backup(db, made["name"])
+    assert "voice2excel.db" in extracted and not [n for n in extracted if "evil" in n or n.endswith(".py")]
+    monkeypatch.setattr(backup, "MAX_RESTORE_BYTES", 10)
+    with pytest.raises(backup.BackupError, match="غیرعادی"):
+        backup.restore_backup(db, made["name"])
