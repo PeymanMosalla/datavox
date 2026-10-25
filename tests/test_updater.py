@@ -4,7 +4,9 @@ import zipfile
 
 import pytest
 
-from voice2excel import __version__, updater
+from voice2excel import __version__, ed25519, updater
+
+TEST_KEY = bytes(range(32))  # کلید آزمون (کلید واقعی سازنده خارج از مخزن است)
 
 
 def _bump(v: str, step: int = 1) -> str:
@@ -20,6 +22,10 @@ def env(tmp_path, monkeypatch):
     (app_root / "runtime.json").write_text(json.dumps({"runtime_id": "rt-1"}), encoding="utf-8")
     monkeypatch.setattr(updater, "RUNTIME_FILE", app_root / "runtime.json")
     monkeypatch.setattr(updater, "STAGE_DIR", tmp_path / "update-staged")
+    monkeypatch.setattr(updater, "UPDATE_PUBLIC_KEY", ed25519.public_key(TEST_KEY))
+    real_build = updater.build_update_zip
+    monkeypatch.setattr(updater, "build_update_zip",
+                        lambda *a, signing_key=TEST_KEY, **k: real_build(*a, signing_key=signing_key, **k))
     src = tmp_path / "src" / "voice2excel"
     (src / "web").mkdir(parents=True)
     (src / "__init__.py").write_text('__version__ = "x"\n', encoding="utf-8")
@@ -65,8 +71,11 @@ def test_dev_mode_without_runtime_file(env, monkeypatch):
 
 
 def _write_zip(path, manifest, members):
+    """بسته دست‌ساز با امضای معتبر (کلید آزمون)، تا بررسی‌های پس از امضا هم آزموده شوند."""
+    raw = json.dumps(manifest).encode("utf-8")
     with zipfile.ZipFile(path, "w") as z:
-        z.writestr("manifest.json", json.dumps(manifest))
+        z.writestr("manifest.json", raw)
+        z.writestr("manifest.sig", ed25519.sign(TEST_KEY, raw))
         for name, data in members.items():
             z.writestr(name, data)
 
@@ -102,3 +111,36 @@ def test_runtime_id_depends_on_python_and_libraries():
     assert a == updater.compute_runtime_id("3.12.4", ["av==19.0.1", "numpy==2.5.4"])  # فقط اصلی.فرعی و بی‌ترتیب
     assert a != updater.compute_runtime_id("3.12.10", ["numpy==2.5.5", "av==19.0.1"])
     assert a != updater.compute_runtime_id("3.13.0", ["numpy==2.5.4", "av==19.0.1"])
+
+
+def test_unsigned_or_forged_update_rejected(env):
+    """حفره پیشین: هر کسی می‌توانست بسته‌ای با کد دلخواه بسازد؛ هش‌ها در خود بسته بودند."""
+    tmp, src = env
+    unsigned = tmp / "unsigned.zip"
+    updater.build_update_zip(src, unsigned, "rt-1", _bump(__version__), signing_key=None)
+    with pytest.raises(updater.UpdateError, match="امضای معتبر"):
+        updater.inspect_update(unsigned)
+    forged = tmp / "forged.zip"
+    updater.build_update_zip(src, forged, "rt-1", _bump(__version__), signing_key=bytes(32))  # کلید دیگری
+    with pytest.raises(updater.UpdateError, match="امضای معتبر"):
+        updater.inspect_update(forged)
+    # بسته امضاشده که پس از امضا یک فایلش عوض شده
+    good = tmp / "good.zip"
+    updater.build_update_zip(src, good, "rt-1", _bump(__version__))
+    tampered = tmp / "tampered.zip"
+    with zipfile.ZipFile(good) as zi, zipfile.ZipFile(tampered, "w") as zo:
+        for item in zi.infolist():
+            data = zi.read(item.filename)
+            zo.writestr(item, b"evil()" if item.filename.endswith("app.js") else data)
+    with pytest.raises(updater.UpdateError, match="هش نادرست"):
+        updater.inspect_update(tampered)
+
+
+def test_zip_bomb_rejected(env, monkeypatch):
+    tmp, src = env
+    (src / "big.txt").write_bytes(b"0" * (2 * 1024 * 1024))
+    monkeypatch.setattr(updater, "MAX_UNPACKED_BYTES", 1024 * 1024)
+    z = tmp / "bomb.zip"
+    updater.build_update_zip(src, z, "rt-1", _bump(__version__))
+    with pytest.raises(updater.UpdateError, match="غیرعادی"):
+        updater.inspect_update(z)

@@ -6,6 +6,10 @@
 3. Voice2Excel.exe در اجرای بعدی نسخه آماده را جایگزین می‌کند و اگر برنامه بالا نیامد، نسخه قبلی را برمی‌گرداند.
 
 اگر کتابخانه‌ها یا Python تغییر کرده باشند (شناسه محیط اجرا متفاوت)، به‌روزرسانی سبک پذیرفته نمی‌شود و بسته کامل لازم است.
+
+امنیت: manifest با کلید خصوصی سازنده امضا می‌شود (Ed25519، فایل manifest.sig) و برنامه فقط بسته‌ای را
+می‌پذیرد که امضایش با کلید عمومی زیر بخواند؛ هش هر فایل در همان manifest امضاشده است، پس تغییر حتی یک بایت
+از کد، بسته را نامعتبر می‌کند. کلید خصوصی فقط نزد سازنده است (خارج از مخزن).
 """
 from __future__ import annotations
 
@@ -16,13 +20,15 @@ import shutil
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from . import __version__
+from . import __version__, ed25519
 
 APP_ROOT = Path(__file__).resolve().parent.parent  # در نسخه قابل‌حمل: <پوشه برنامه>/app
 BASE_DIR = APP_ROOT.parent
 RUNTIME_FILE = APP_ROOT / "runtime.json"
 STAGE_DIR = BASE_DIR / "update-staged"
 MAX_UPDATE_BYTES = 30 * 1024 * 1024
+MAX_UNPACKED_BYTES = 120 * 1024 * 1024  # در برابر فایل فشرده‌ای که پس از باز شدن بسیار بزرگ می‌شود
+UPDATE_PUBLIC_KEY = bytes.fromhex("4abcac16343d36a4e002cec3ef9a6052fa539fc12a786bd4ae65d64c23bbea12")
 ROOT_EXTRAS = {"Guide.html", "Recording-Guide.html"}  # فایل‌های کنار Voice2Excel.exe که با به‌روزرسانی عوض می‌شوند
 
 
@@ -73,10 +79,20 @@ def inspect_update(zip_path: Path) -> dict:
         names = [n for n in z.namelist() if not n.endswith("/")]
         if not all(_safe_member(n) for n in names):
             raise UpdateError("بسته شامل مسیر نامعتبر است و پذیرفته نمی‌شود.")
+        if sum(i.file_size for i in z.infolist()) > MAX_UNPACKED_BYTES:
+            raise UpdateError("حجم بسته پس از باز شدن غیرعادی است و پذیرفته نمی‌شود.")
         try:
-            manifest = json.loads(z.read("manifest.json"))
+            raw = z.read("manifest.json")
+            manifest = json.loads(raw)
         except (KeyError, ValueError) as e:
             raise UpdateError("بسته به‌روزرسانی manifest ندارد.") from e
+        try:
+            sig = z.read("manifest.sig")
+        except KeyError:
+            sig = b""
+        if not ed25519.verify(UPDATE_PUBLIC_KEY, raw, sig):
+            raise UpdateError("این بسته امضای معتبر سازنده برنامه را ندارد و پذیرفته نمی‌شود "
+                              "(ممکن است دست‌کاری یا از منبع نامعتبر گرفته شده باشد).")
         if manifest.get("app") != "voice2excel" or manifest.get("type") != "update":
             raise UpdateError("این فایل، بسته به‌روزرسانی برنامه ثبت ویس نیست.")
         new_v = manifest.get("version", "")
@@ -99,7 +115,7 @@ def inspect_update(zip_path: Path) -> dict:
                 raise UpdateError(f"فایل {name} در بسته نیست.") from e
             if _sha256(data) != digest:
                 raise UpdateError(f"فایل {name} آسیب دیده است (هش نادرست).")
-        extra = set(names) - set(files) - {"manifest.json"}
+        extra = set(names) - set(files) - {"manifest.json", "manifest.sig"}
         if extra:
             raise UpdateError("بسته فایل‌های ثبت‌نشده در manifest دارد.")
     return manifest
@@ -138,8 +154,8 @@ def cancel_staged() -> None:
 
 
 def build_update_zip(src_pkg: Path, out_zip: Path, runtime_id: str, version: str, extras: list[Path] = (),
-                     notes: str = "") -> dict:
-    """ساخت بسته به‌روزرسانی (در scripts/build_update.py و آزمون‌ها استفاده می‌شود)."""
+                     notes: str = "", signing_key: bytes | None = None) -> dict:
+    """ساخت بسته به‌روزرسانی (در scripts/build_update.py و آزمون‌ها). signing_key: کلید خصوصی امضا (۳۲ بایت)."""
     files: dict[str, str] = {}
     entries: list[tuple[str, bytes]] = []
     for p in sorted(src_pkg.rglob("*")):
@@ -156,8 +172,11 @@ def build_update_zip(src_pkg: Path, out_zip: Path, runtime_id: str, version: str
     manifest = {"app": "voice2excel", "type": "update", "version": version, "runtime_id": runtime_id,
                 "files": files, "notes": notes}
     out_zip.parent.mkdir(parents=True, exist_ok=True)
+    raw = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
     with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        z.writestr("manifest.json", raw)
+        if signing_key:
+            z.writestr("manifest.sig", ed25519.sign(signing_key, raw))
         for arc, data in entries:
             z.writestr(arc, data)
     return manifest

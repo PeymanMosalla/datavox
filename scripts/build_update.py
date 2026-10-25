@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -20,6 +21,19 @@ from build_portable import PY_VERSION, runtime_requirements  # noqa: E402
 
 from voice2excel import __version__  # noqa: E402
 from voice2excel.updater import build_update_zip, compute_runtime_id  # noqa: E402
+
+
+def load_signing_key() -> bytes:
+    """کلید خصوصی امضای به‌روزرسانی؛ فقط روی رایانه سازنده و خارج از مخزن (هرگز در گیت یا بسته برنامه)."""
+    p = Path(os.environ.get("V2X_UPDATE_KEY") or Path.home() / ".voice2excel-keys" / "update-signing.key")
+    if not p.exists():
+        raise SystemExit(f"کلید امضای به‌روزرسانی پیدا نشد: {p} — بدون آن بسته‌ای ساخته نمی‌شود که برنامه بپذیرد.")
+    key = bytes.fromhex(p.read_text().strip())
+    from voice2excel import ed25519
+    from voice2excel.updater import UPDATE_PUBLIC_KEY
+    if ed25519.public_key(key) != UPDATE_PUBLIC_KEY:
+        raise SystemExit("این کلید با کلید عمومی داخل برنامه نمی‌خواند.")
+    return key
 
 
 def main() -> int:
@@ -43,7 +57,7 @@ def main() -> int:
         tmp.write_bytes(src.read_bytes())
         extras.append(tmp)
     m = build_update_zip(Path(a.src), out, compute_runtime_id(PY_VERSION, runtime_requirements()), a.version,
-                         extras, a.notes)
+                         extras, a.notes, signing_key=load_signing_key())
     for tmp in extras:
         tmp.unlink(missing_ok=True)
     print(f"بسته به‌روزرسانی ساخته شد: {out} ({out.stat().st_size / 1e6:.1f} مگابایت، {len(m['files'])} فایل)")
