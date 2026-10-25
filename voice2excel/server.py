@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, backup, dictionary, excel_mapping, knowledge, lan, learning, pipeline, updater
+from . import __version__, backup, dictionary, excel_mapping, excel_template, knowledge, lan, learning, pipeline, updater
 from .audio_processor import is_supported
 from .config import (AVAILABLE_MODELS, DATA_DIR, MODELS_DIR, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS, WEB_DIR,
                      ensure_dirs, load_settings, save_settings)
@@ -103,12 +103,28 @@ def set_worker(w: Worker | None) -> None:
     _worker = w
 
 
+def _write_profile(create: bool = False) -> dict | None:
+    """نگاشت قالب فعال برای ثبت؛ قالب «فایل جدید» به نگاشت فایل خود برنامه تبدیل می‌شود.
+
+    create: اگر فایل خروجی قالب هنوز ساخته نشده، با سرستون ساخته شود (فقط هنگام ثبت و پیش‌نمایش).
+    """
+    prof = excel_mapping.load_profile(load_settings().active_profile)
+    if prof and prof.get("mode") == "new":
+        try:
+            return excel_template.writer_profile(prof, create)
+        except FileNotFoundError as e:
+            if create:
+                err(400, str(e))
+            return None
+    return prof
+
+
 # ---------- نامزدهای تکرار از فایل اکسل مقصد ----------
 _excel_cache: dict = {"key": None, "rows": []}
 
 
 def _excel_candidates() -> list[dict]:
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = _write_profile()
     if not prof or not prof.get("excel_path"):
         return []
     p = Path(prof["excel_path"])
@@ -240,13 +256,15 @@ def status():
 
 def _setup_state() -> dict:
     """وضعیت گام‌های راه‌اندازی اولیه (برای راهنمای اجرای اول)."""
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = _write_profile()
     return {
-        "excel_ready": bool(prof and prof.get("confirmed")),
+        "excel_ready": bool(prof and prof.get("confirmed") and Path(prof["excel_path"]).parent.is_dir()),
         "excel_name": Path(prof["excel_path"]).name if prof and prof.get("excel_path") else "",
         "dictionary": db().one("SELECT COUNT(*) n FROM entities")["n"],
         "corrections": db().one("SELECT COUNT(*) n FROM corrections")["n"],
         "inbox": load_settings().inbox_dir,
+        "template_mode": (prof or {}).get("mode", "append"),
+        "template_title": (prof or {}).get("title", ""),
     }
 
 
@@ -896,7 +914,7 @@ _PROFILE_ROLES = {"engineer_name": "engineer", "address": "address", "project_na
 @app.post("/api/dictionary/seed-from-excel")
 def dict_seed():
     """یادگیری از فایل اکسل شرکتِ نگاشت‌شده (همان «آموزش از اکسل» با ستون‌های نگاشت)."""
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = excel_mapping.load_profile(excel_mapping.COMPANY)
     if not prof:
         err(400, "ابتدا در بخش «خروجی اکسل» فایل شرکت و نگاشت ستون‌ها را مشخص کنید.")
     roles = {c: _PROFILE_ROLES[f] for c, f in prof["columns"].items() if f in _PROFILE_ROLES}
@@ -1039,20 +1057,20 @@ def excel_inspect(body: PathIn):
     rep = inspect_workbook(p)
     if not rep.get("exists"):
         err(404, "فایل پیدا نشد.")
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = excel_mapping.load_profile(excel_mapping.COMPANY)
     if prof and Path(prof.get("excel_path", "")) == p:
         suggested = prof
     else:
         sheets = rep.get("sheets", [])
         main = max(sheets, key=lambda s: s["data_rows"]) if sheets else None
-        suggested = excel_mapping.new_profile(load_settings().active_profile, str(p), main["name"], main["header_row"],
+        suggested = excel_mapping.new_profile(excel_mapping.COMPANY, str(p), main["name"], main["header_row"],
                                               main["headers"]) if main else None
     return {"report": rep, "profile": suggested}
 
 
 @app.get("/api/excel/profile")
 def excel_profile():
-    return {"profile": excel_mapping.load_profile(load_settings().active_profile)}
+    return {"profile": excel_mapping.load_profile(excel_mapping.COMPANY)}
 
 
 @app.put("/api/excel/profile")
@@ -1080,7 +1098,7 @@ def excel_profile_save(profile: dict):
     if len(set(columns.values())) != len(columns):
         err(400, "یک فیلد به بیش از یک ستون نگاشت شده است.")
     clean = {
-        "name": load_settings().active_profile,
+        "name": excel_mapping.COMPANY,
         "excel_path": str(p),
         "sheet": sheet["name"],
         "header_row": hr,
@@ -1113,9 +1131,7 @@ def _approved_records() -> list[dict]:
 
 @app.post("/api/excel/preview")
 def excel_preview():
-    prof = excel_mapping.load_profile(load_settings().active_profile)
-    if not prof or not prof.get("confirmed"):
-        err(400, "ابتدا نگاشت ستون‌ها را بررسی و ذخیره کنید.")
+    prof = _confirmed_profile()
     recs = _approved_records()
     pending = db().one("SELECT COUNT(*) n FROM records WHERE review_state='pending' AND exported_at IS NULL")["n"]
     if not recs:
@@ -1139,7 +1155,7 @@ _export_lock = threading.Lock()
 
 
 def _confirmed_profile() -> dict:
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = _write_profile(create=True)
     if not prof or not prof.get("confirmed"):
         err(400, "ابتدا نگاشت ستون‌ها را بررسی و ذخیره کنید.")
     return prof
@@ -1201,6 +1217,143 @@ def excel_commit(body: ExportIn):
             c.execute("UPDATE exports SET replaced_original_at=?, status='applied' WHERE id=?", (now(), rep["export_id"]))
         rep["applied"] = True
         return rep
+
+
+# ---------- قالب‌های خروجی اکسل ----------
+_SAMPLE_VALUES = [
+    {"visit_date": "1405/07/28", "engineer_name": "مهندس رجبی", "phone": "09151234567", "address": "سجادیه 58 ، قطعه دوم",
+     "floors": "7", "structure_type": "فلز", "executed": "3 سقف اجرا شده", "notes": "شماره را نگهبان داد"},
+    {"visit_date": "1405/07/28", "engineer_name": "مهندس کاظمی", "phone": "09371234567", "address": "امامت 60 ، پلاک 18",
+     "floors": "6", "structure_type": "بتون", "stage": "تازه استارت خورده"},
+    {"visit_date": "1405/07/29", "engineer_name": "آقای احمدی", "phone": "09121234567\n09351234567", "address": "فلاحی 34",
+     "floors": "5", "structure_type": "فلز", "followup_action": "قرار شد دوشنبه زنگ بزنیم", "followup_date": "1405/08/03"},
+]
+
+
+def _template_info(name: str, prof: dict, active: str) -> dict:
+    new = prof.get("mode") == "new"
+    return {"name": name, "title": prof.get("title") or ("فایل شرکت" if not new else name), "mode": prof.get("mode", "append"),
+            "active": name == active, "target": excel_template.target_path(prof).name if new else Path(prof.get("excel_path", "")).name}
+
+
+def _sample_records() -> list[dict]:
+    """چند رکورد واقعی اخیر برای پیش‌نمایش (اگر نباشد، نمونه ساختگی)."""
+    rows = db().list_records("r.review_state!='rejected'")[-4:]
+    return [{"id": r["id"], "values": r["values"], "original_name": r["original_name"], "transcript": "",
+             "validation": r["validation"]} for r in rows] or \
+        [{"id": i, "values": v, "original_name": "sample.ogg", "transcript": "", "validation": {}} for i, v in enumerate(_SAMPLE_VALUES)]
+
+
+def _clean_template(body: dict) -> dict:
+    try:
+        return excel_template.clean(body)
+    except ValueError as e:
+        err(400, str(e))
+
+
+@app.get("/api/templates")
+def templates_list():
+    active = load_settings().active_profile
+    items = [_template_info(n, p, active) for n in excel_mapping.list_profiles() if (p := excel_mapping.load_profile(n))]
+    return {"templates": items, "active": active, "fields": [{"key": k, "label": excel_template.field_label(k)}
+            for k in [*(k for k, _, _ in FIELD_DEFS), *COMPUTED_FIELDS, "followup", *excel_template.EXTRA_FIELDS]],
+            "presets": {k: {"label": v[0], "fill": v[1], "color": v[2], "zebra": v[3]} for k, v in excel_template.PRESETS.items()},
+            "fonts": excel_template.installed_fonts(), "aligns": excel_template.ALIGNS}
+
+
+@app.get("/api/templates/{name}")
+def template_get(name: str):
+    prof = excel_mapping.load_profile(name)
+    if not prof:
+        err(404, "قالب پیدا نشد.")
+    return {"template": prof, "target": str(excel_template.target_path(prof)) if prof.get("mode") == "new" else prof.get("excel_path", "")}
+
+
+class TemplateNew(BaseModel):
+    title: str
+
+
+@app.post("/api/templates")
+def template_create(body: TemplateNew):
+    title = body.title.strip()[:60]
+    if not title:
+        err(400, "نام قالب را بنویسید.")
+    name = "t_" + uuid.uuid4().hex[:8]
+    folder = Path.home() / "Documents"
+    tpl = excel_template.new_template(name, title, str(folder if folder.is_dir() else Path.home()))
+    excel_mapping.save_profile(tpl)
+    return {"name": name}
+
+
+@app.put("/api/templates/{name}")
+def template_save(name: str, body: dict):
+    prof = excel_mapping.load_profile(name)
+    if not prof:
+        err(404, "قالب پیدا نشد.")
+    if prof.get("mode") != "new":
+        # فایل شرکت: فقط قالب مقادیر؛ ستون‌ها و ظاهر فایل موجود دست نمی‌خورد
+        prof["policy"] = {**prof.get("policy", {}), **{k: v for k, v in (body.get("policy") or {}).items()
+                                                      if k in excel_mapping.VALUE_FORMAT_KEYS}}
+        excel_mapping.save_profile(prof)
+        return {"template": prof}
+    tpl = _clean_template({**body, "name": name})
+    if not Path(tpl["output"]["folder"]).is_dir():
+        err(400, "پوشه خروجی پیدا نشد.")
+    tpl["policy"] = {k: v for k, v in (tpl.get("policy") or {}).items() if k in excel_mapping.VALUE_FORMAT_KEYS}
+    warning = ""
+    target = excel_template.target_path(tpl)
+    if target.exists():
+        old = excel_template.writer_profile(prof, create=False)["headers"]
+        if old != excel_template.writer_profile(tpl, create=False)["headers"]:
+            warning = (f"فایل «{target.name}» با ستون‌های قبلی ساخته شده است؛ برای ثبت با ستون‌های جدید، "
+                       "نام فایل خروجی را عوض کنید تا فایل تازه ساخته شود.")
+    excel_mapping.save_profile(tpl)
+    return {"template": tpl, "warning": warning}
+
+
+@app.delete("/api/templates/{name}")
+def template_delete(name: str):
+    if name == excel_mapping.COMPANY:
+        err(400, "قالب فایل شرکت حذف نمی‌شود.")
+    if name == load_settings().active_profile:
+        err(400, "قالب فعال حذف نمی‌شود؛ اول قالب دیگری را فعال کنید.")
+    excel_mapping.delete_profile(name)
+    return {"ok": True}
+
+
+@app.post("/api/templates/{name}/activate")
+def template_activate(name: str):
+    if not excel_mapping.load_profile(name):
+        err(404, "قالب پیدا نشد.")
+    save_settings({"active_profile": name})
+    _excel_cache["key"] = None
+    return {"ok": True}
+
+
+def _template_rows(body: dict) -> tuple[dict, list[list[str]]]:
+    """مقدار ستون‌ها برای چند رکورد نمونه، با همان قالب‌بندی مقادیری که در ثبت به کار می‌رود."""
+    tpl = _clean_template(body)
+    prof = excel_template.writer_profile(tpl, create=False)
+    cols = list(prof["headers"])
+    rows = []
+    for i, rec in enumerate(_sample_records(), start=1):
+        cells = excel_mapping.cell_values(prof, rec)
+        rows.append([str(i) if prof["columns"][c] == "row_number" else cells.get(c, "") for c in cols])
+    return tpl, rows
+
+
+@app.post("/api/templates/preview")
+def template_preview(body: dict):
+    tpl, rows = _template_rows(body)
+    return {"headers": [c["title"] for c in tpl["columns_list"]], "rows": rows}
+
+
+@app.post("/api/templates/sample")
+def template_sample(body: dict):
+    tpl, rows = _template_rows(body)
+    data = excel_template.build_sample(tpl, rows)
+    return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": "attachment; filename=sample.xlsx"})
 
 
 @app.get("/api/exports")
@@ -1280,7 +1433,7 @@ def open_folder(body: OpenIn):
     p = Path(body.path)
     target = p if p.is_dir() else p.parent
     allowed = [DATA_DIR.resolve()]
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = _write_profile()
     if prof:
         allowed.append(Path(prof["excel_path"]).resolve().parent)
     if not any(str(target.resolve()).startswith(str(a)) for a in allowed):

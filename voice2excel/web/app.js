@@ -235,6 +235,7 @@ function renderBanners() {
 // ---------------- مسیریابی ----------------
 const PAGES = {
   today: { title: "کار امروز", sub: "ویس بدهید، موارد مشکوک را ببینید، در اکسل ثبت کنید", render: renderToday },
+  templates: { title: "قالب اکسل", sub: "ستون‌ها، قالب مقادیر و ظاهر فایل خروجی", render: renderTemplates },
   dashboard: { title: "داشبورد", sub: "نمای کلی ویس‌ها، پردازش و رکوردها", render: renderDashboard },
   voices: { title: "ویس‌ها و پردازش", sub: "افزودن ویس، صف پردازش و وضعیت هر فایل", render: renderVoices },
   review: { title: "بازبینی اطلاعات", sub: "بررسی، اصلاح و تأیید اطلاعات استخراج‌شده پیش از ثبت", render: renderReview },
@@ -401,7 +402,7 @@ async function renderToday(el) {
     let html = "";
     if (last) {
       html += last.applied
-        ? `<div class="alert ok">${I.ok}<div class="alert-body">${fa(last.rows.length)} ردیف در فایل شرکت ثبت شد (ردیف ${fa(last.first_row)} تا ${fa(last.last_row)}). پیش از ثبت از فایل پشتیبان گرفته شد.</div>
+        ? `<div class="alert ok">${I.ok}<div class="alert-body">${fa(last.rows.length)} ردیف در «${esc(last.target_path.split(/[\\/]/).pop())}» ثبت شد (ردیف ${fa(last.first_row)} تا ${fa(last.last_row)}). پیش از ثبت از فایل پشتیبان گرفته شد.</div>
             <button class="btn sm" id="t-open">${I.open} نمایش فایل</button><button class="btn sm ghost" id="t-undo">${I.history} بازگشت</button></div>`
         : `<div class="alert warn">${I.alert}<div class="alert-body">${esc(last.message)}</div><a class="btn sm" href="#/excel">مشاهده</a></div>`;
     }
@@ -1431,7 +1432,10 @@ const excelState = { report: null, profile: null, lastExport: null };
 async function renderExcel(el) {
   const { profile } = await api("/api/excel/profile");
   excelState.profile = profile;
-  el.innerHTML = `
+  const setup = state.status?.setup || {};
+  el.innerHTML = `${setup.template_mode === "new" ? `<div class="alert warn" style="margin-bottom:16px">${I.alert}<div class="alert-body">
+      <b>ثبت فعلاً در قالب «${esc(setup.template_title)}» انجام می‌شود، نه در فایل شرکت.</b>این صفحه نگاشت فایل شرکت است. برای ثبت در فایل شرکت، در «قالب اکسل» قالب فایل شرکت را فعال کنید.</div>
+      <a class="btn sm" href="#/templates">قالب اکسل</a></div>` : ""}
     <div class="card"><div class="card-h"><h2>${I.table} ۱. فایل اکسل مقصد</h2>${profile?.confirmed ? chip("ok", "نگاشت ذخیره شده") : ""}</div>
       <div class="card-b stack">
         <div class="row" style="flex-wrap:nowrap">
@@ -1680,6 +1684,226 @@ async function renderExcel(el) {
     } catch (e) { toastErr(e); return false; }
   }
 }
+
+// ================= قالب اکسل =================
+/** شخصی‌سازی خروجی: قالب «فایل شرکت» (فقط قالب مقادیر) یا قالب «فایل جدید» (ستون‌ها، ظاهر، مقصد). */
+const tplState = { name: null, tpl: null, tab: "columns", dirty: false, rows: [], headers: [] };
+const VALUE_OPTS = {
+  date_format: [["", "1405/07/28"], ["persian", "۱۴۰۵/۰۷/۲۸"], ["long", "۲۸ مهر ۱۴۰۵"]],
+  phone_format: [["text_leading_zero", "با صفر اول (09151234567)"], ["as_number_like_existing", "بدون صفر اول (9151234567)"]],
+  multi_phone_separator: [["\n", "هر شماره در یک خط همان خانه"], [" ، ", "پشت سر هم با « ، »"], [" / ", "پشت سر هم با « / »"]],
+  name_title: [["keep", "با عنوان (مهندس رجبی)"], ["drop", "بدون عنوان (رجبی)"]],
+};
+const NOTE_PARTS = [["technical_summary", "خلاصه فنی"], ["project_name", "نام پروژه"], ["building_type", "نوع ساختمان"], ["permit_status", "وضعیت مجوز"],
+  ["customer_need", "نیاز مشتری"], ["notes", "توضیحات تکمیلی"], ["followup", "پیگیری"]];
+
+async function renderTemplates(el) {
+  const meta = await api("/api/templates");
+  const names = meta.templates.map((t) => t.name);
+  if (!names.includes(tplState.name)) tplState.name = names.includes(meta.active) ? meta.active : names[0] || "__company";
+  const hasCompany = names.includes("default");
+  el.innerHTML = `<div class="card"><div class="card-h">
+      <div class="row"><select class="select" id="tp-sel">
+        ${hasCompany ? "" : `<option value="__company">فایل شرکت (هنوز وصل نشده)</option>`}
+        ${meta.templates.map((t) => `<option value="${esc(t.name)}" ${t.name === tplState.name ? "selected" : ""}>${esc(t.title)}${t.mode === "new" ? " — فایل جدید" : " — افزودن به فایل شرکت"}${t.active ? " ✓" : ""}</option>`).join("")}
+      </select><span id="tp-active"></span><span id="tp-dirty"></span></div>
+      <div class="row"><button class="btn" id="tp-new">${I.plus} قالب جدید</button>
+        <button class="btn" id="tp-activate">${I.check} استفاده برای ثبت</button>
+        <button class="btn ghost" id="tp-del" title="حذف قالب">${I.trash}</button></div></div>
+    <div id="tp-body"></div></div>`;
+  const active = meta.templates.find((t) => t.active);
+  const drawHead = () => {
+    $("#tp-active").innerHTML = tplState.name === meta.active ? chip("ok", "فعال: ثبت در همین قالب انجام می‌شود") : active ? `<span class="small muted">قالب فعال: ${esc(active.title)}</span>` : "";
+    $("#tp-dirty").innerHTML = tplState.dirty ? chip("warn", "ذخیره نشده") : "";
+    $("#tp-activate").disabled = tplState.name === meta.active || tplState.name === "__company";
+    $("#tp-del").disabled = ["default", "__company", meta.active].includes(tplState.name);
+  };
+  $("#tp-sel").onchange = async (e) => {
+    if (tplState.dirty && !(await confirmBox("تغییرات ذخیره نشده", "تغییرات این قالب ذخیره نشده‌اند و از دست می‌روند. ادامه می‌دهید؟", "ادامه", "danger"))) { e.target.value = tplState.name; return; }
+    tplState.name = e.target.value; tplState.dirty = false; tplState.tab = "columns"; renderTemplates(el);
+  };
+  $("#tp-new").onclick = async () => {
+    const title = await openModal({ title: "قالب جدید", body: `<div class="field"><label>نام قالب (و نام فایل خروجی)</label><input class="input" id="m-in" placeholder="مثلاً گزارش مدیر"></div>`,
+      actions: [{ label: "ساخت", cls: "primary", onClick: (m) => $("#m-in", m).value.trim() || false }, { label: "انصراف", cls: "ghost", value: null }],
+      onOpen: (m) => setTimeout(() => $("#m-in", m).focus(), 50) });
+    if (!title) return;
+    try { tplState.name = (await api("/api/templates", { method: "POST", body: { title } })).name; tplState.dirty = false; tplState.tab = "columns"; renderTemplates(el); } catch (e) { toastErr(e); }
+  };
+  $("#tp-activate").onclick = async () => {
+    if (tplState.dirty) return toast("اول قالب را ذخیره کنید.", "err");
+    try { await api(`/api/templates/${tplState.name}/activate`, { method: "POST" }); toast("از این پس ثبت در اکسل با همین قالب انجام می‌شود.", "ok"); refreshStatus(); renderTemplates(el); } catch (e) { toastErr(e); }
+  };
+  $("#tp-del").onclick = async () => {
+    if (!(await confirmBox("حذف قالب", "قالب حذف می‌شود. فایل‌هایی که قبلاً با آن ساخته شده‌اند دست نمی‌خورند.", "حذف", "danger"))) return;
+    try { await api(`/api/templates/${tplState.name}`, { method: "DELETE" }); tplState.name = null; tplState.dirty = false; renderTemplates(el); } catch (e) { toastErr(e); }
+  };
+  drawHead();
+  const body = $("#tp-body");
+  if (tplState.name === "__company") {
+    body.innerHTML = `<div class="card-b"><div class="alert info">${I.info}<div class="alert-body">برای افزودن ردیف به فایل اکسل موجود شرکت، اول فایل را وصل و ستون‌هایش را نگاشت کنید. برای ساختن فایل تازه با ستون‌ها و ظاهر دلخواه، «قالب جدید» را بزنید.</div>
+      <a class="btn sm" href="#/excel">اتصال فایل شرکت</a></div></div>`;
+    return;
+  }
+  const { template, target } = await api(`/api/templates/${tplState.name}`);
+  tplState.tpl = template;
+  template.policy = template.policy || {};
+  const isNew = template.mode === "new";
+  const TABS = isNew ? [["columns", "ستون‌ها"], ["values", "قالب مقادیر"], ["style", "ظاهر"], ["output", "مقصد"]] : [["values", "قالب مقادیر"]];
+  if (!TABS.some(([k]) => k === tplState.tab)) tplState.tab = TABS[0][0];
+  body.innerHTML = `${isNew ? "" : `<div class="card-b"><div class="alert info">${I.info}<div class="alert-body">این قالب ردیف‌ها را به فایل «${esc(target.split(/[\\/]/).pop())}» اضافه می‌کند. ترتیب، عنوان و ظاهر ستون‌های فایل شرکت حفظ می‌شود تا داده‌های قبلی دست نخورند؛ اینجا فقط قالب مقادیر تغییر می‌کند. ستون‌ها در «اتصال و نگاشت فایل اکسل» تنظیم می‌شوند.</div><a class="btn sm" href="#/excel">نگاشت ستون‌ها</a></div></div>`}
+    <div class="card-b" style="padding-bottom:0"><div class="tabs" id="tp-tabs">${TABS.map(([k, l]) => `<button data-tt="${k}" class="${k === tplState.tab ? "active" : ""}">${l}</button>`).join("")}</div></div>
+    <div class="card-b" id="tp-tab"></div>
+    ${isNew ? `<div class="card-b" style="border-top:1px solid var(--border)"><div class="row between"><b>پیش‌نمایش</b><span class="small muted">چند ردیف از رکوردهای اخیر، با همین قالب</span></div>
+      <div class="tp-preview" id="tp-preview"></div></div>` : ""}
+    <div class="card-b row" style="border-top:1px solid var(--border)">
+      <button class="btn primary" id="tp-save">${I.check} ذخیره قالب</button>
+      ${isNew ? `<button class="btn" id="tp-sample">${I.down} دریافت فایل نمونه</button><span class="small muted">فایل: <span class="path">${esc(target)}</span></span>` : ""}</div>`;
+  $$("[data-tt]", body).forEach((b) => b.onclick = () => { tplState.tab = b.dataset.tt; $$("[data-tt]", body).forEach((x) => x.classList.toggle("active", x === b)); drawTab(); });
+  const changed = (values = false) => { tplState.dirty = true; drawHead(); if (values) loadPreview(); else drawPreview(); };
+  const loadPreview = debounce(async () => {
+    if (!isNew) return;
+    try { const p = await api("/api/templates/preview", { method: "POST", body: template }); tplState.headers = p.headers; tplState.rows = p.rows; drawPreview(); }
+    catch (e) { $("#tp-preview").innerHTML = `<div class="err-text small">${esc(e.message)}</div>`; }
+  }, 300);
+
+  function drawTab() {
+    const box = $("#tp-tab"), t = tplState.tab, P = template.policy;
+    if (t === "columns") {
+      const used = new Set(template.columns_list.map((c) => c.field));
+      box.innerHTML = `<div class="tp-cols">${template.columns_list.map((c, i) => `<div class="tp-col" draggable="true" data-ci="${i}">
+          <span class="tp-drag" title="برای جابه‌جایی بکشید">☰</span><span class="small muted tp-flabel">${esc(fieldLabel(c.field))}</span>
+          <input class="input sm" data-ck="title" value="${esc(c.title)}" title="عنوان ستون">
+          ${c.field === "constant" ? `<input class="input sm" data-ck="value" value="${esc(c.value || "")}" placeholder="مقدار ثابت">` : ""}
+          <label class="small muted">عرض <input class="input sm" type="number" min="4" max="120" data-ck="width" value="${c.width}" style="width:64px"></label>
+          <select class="select sm" data-ck="align">${Object.entries(state.tplMeta.aligns).map(([k, l]) => `<option value="${k}" ${c.align === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+          <button class="btn sm icon ghost" data-cmove="-1" title="بالا">${I.prev}</button><button class="btn sm icon ghost" data-cmove="1" title="پایین">${I.next}</button>
+          <button class="btn sm icon ghost" data-crm title="حذف ستون">${I.x}</button></div>`).join("")}</div>
+        <div class="row" style="margin-top:10px"><select class="select" id="tp-addf">${state.tplMeta.fields.filter((f) => f.key === "constant" || !used.has(f.key)).map((f) => `<option value="${f.key}">${esc(f.label)}</option>`).join("")}</select>
+          <button class="btn" id="tp-add">${I.plus} افزودن ستون</button></div>`;
+      $$(".tp-col", box).forEach((row) => {
+        const i = +row.dataset.ci, col = template.columns_list[i];
+        $$("[data-ck]", row).forEach((inp) => inp.oninput = () => { col[inp.dataset.ck] = inp.dataset.ck === "width" ? +inp.value : inp.value; changed(inp.dataset.ck === "value"); });
+        $$("[data-cmove]", row).forEach((b) => b.onclick = () => moveCol(i, i + +b.dataset.cmove));
+        $("[data-crm]", row).onclick = () => { if (template.columns_list.length > 1) { template.columns_list.splice(i, 1); drawTab(); changed(true); } };
+        row.ondragstart = (e) => e.dataTransfer.setData("text/plain", String(i));
+        row.ondragover = (e) => { e.preventDefault(); row.classList.add("over"); };
+        row.ondragleave = () => row.classList.remove("over");
+        row.ondrop = (e) => { e.preventDefault(); moveCol(+e.dataTransfer.getData("text/plain"), i); };
+      });
+      $("#tp-add").onclick = () => {
+        const f = $("#tp-addf").value;
+        template.columns_list.push({ field: f, title: uniqueTitle(fieldLabel(f)), width: 18, align: "right", ...(f === "constant" ? { value: "" } : {}) });
+        drawTab(); changed(true);
+      };
+    } else if (t === "values") {
+      const sel = (k, def) => `<select class="select" data-pk="${k}">${VALUE_OPTS[k].map(([v, l]) => `<option value="${esc(v)}" ${(P[k] ?? def) === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+      const ts = P.text_style || {};
+      box.innerHTML = `<div class="grid grid-2" style="gap:14px">
+        <div class="field"><label>تاریخ</label>${sel("date_format", "")}</div>
+        <div class="field"><label>نام مهندس</label>${sel("name_title", "keep")}</div>
+        <div class="field"><label>شماره تلفن</label>${sel("phone_format", "text_leading_zero")}
+          <label class="check small"><input type="checkbox" data-pk="phone_group" ${P.phone_group ? "checked" : ""}> گروه‌بندی رقم‌ها (0915 123 4567)</label></div>
+        <div class="field"><label>چند شماره برای یک ساختمان</label>${sel("multi_phone_separator", "\n")}</div>
+        <div class="field"><label>رقم‌ها در آدرس و توضیحات</label><select class="select" data-ts="digits">
+          ${[["ascii", "انگلیسی (58)"], ["persian", "فارسی (۵۸)"]].map(([v, l]) => `<option value="${v}" ${(ts.digits || "ascii") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>جداکننده</label><select class="select" data-ts="sep">
+          ${[[" ، ", "سجادیه 58 ، قطعه دوم"], ["، ", "سجادیه 58، قطعه دوم"], [" - ", "سجادیه 58 - قطعه دوم"]].map(([v, l]) => `<option value="${esc(v)}" ${(ts.sep || " ، ") === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+        <div class="field" style="grid-column:1/-1"><label>چیدمان روزها</label><div class="row">
+          <label class="check small"><input type="checkbox" data-pk="blank_row_between_dates" ${P.blank_row_between_dates ? "checked" : ""}> یک ردیف خالی میان روزهای بازدید</label>
+          <label class="check small"><input type="checkbox" data-pk="date_first_row_only" ${P.date_first_row_only ? "checked" : ""}> تاریخ فقط در اولین ردیف هر روز</label></div></div>
+        <div class="field" style="grid-column:1/-1"><label>اجزای ستون «توضیحات ترکیبی»</label><div class="row">
+          ${NOTE_PARTS.map(([k, l]) => `<label class="check small"><input type="checkbox" data-np="${k}" ${(P.notes_parts || NOTE_PARTS.map((x) => x[0])).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div></div></div>`;
+      $$("[data-pk]", box).forEach((x) => x.onchange = () => { P[x.dataset.pk] = x.type === "checkbox" ? x.checked : x.value; changed(true); });
+      $$("[data-ts]", box).forEach((x) => x.onchange = () => { P.text_style = { sep: " ، ", digits: "ascii", ...P.text_style, [x.dataset.ts]: x.value }; changed(true); });
+      $$("[data-np]", box).forEach((x) => x.onchange = () => { P.notes_parts = $$("[data-np]", box).filter((c) => c.checked).map((c) => c.dataset.np); changed(true); });
+    } else if (t === "style") {
+      const S = template.style, fonts = state.tplMeta.fonts;
+      const fontSel = (part) => `<select class="select" data-sp="${part}.font">${fonts.map((f) => `<option value="${esc(f.name)}" ${S[part].font === f.name ? "selected" : ""}>${esc(f.name)}${f.installed ? "" : " (روی این رایانه نصب نیست)"}</option>`).join("")}</select>`;
+      const num = (path, v, min, max) => `<input class="input" type="number" min="${min}" max="${max}" data-sp="${path}" value="${v}" style="width:80px">`;
+      const color = (path, v) => `<input type="color" class="tp-color" data-sp="${path}" value="${esc(v || "#ffffff")}">`;
+      box.innerHTML = `<div class="stack">
+        <div class="row"><span class="small muted">قالب‌های آماده:</span>${Object.entries(state.tplMeta.presets).map(([k, p]) => `<button class="btn sm tp-preset" data-preset="${k}"><span class="tp-swatch" style="background:${p.fill}"></span>${esc(p.label)}</button>`).join("")}</div>
+        <div class="grid grid-2" style="gap:14px">
+          <div class="stack"><b>سرستون</b>
+            <div class="row">${fontSel("header")} ${num("header.size", S.header.size, 6, 36)}<label class="check small"><input type="checkbox" data-sp="header.bold" ${S.header.bold ? "checked" : ""}> پررنگ</label></div>
+            <div class="row small"><label class="row">رنگ متن ${color("header.color", S.header.color)}</label><label class="row">پس‌زمینه ${color("header.fill", S.header.fill)}</label>
+              <label class="row">ارتفاع ${num("header.height", S.header.height, 0, 120)}</label></div></div>
+          <div class="stack"><b>ردیف‌ها</b>
+            <div class="row">${fontSel("body")} ${num("body.size", S.body.size, 6, 36)}<label class="check small"><input type="checkbox" data-sp="body.wrap" ${S.body.wrap ? "checked" : ""}> شکستن متن بلند</label></div>
+            <div class="row small"><label class="row">رنگ متن ${color("body.color", S.body.color)}</label>
+              <label class="row"><input type="checkbox" id="tp-zebra-on" ${S.zebra ? "checked" : ""}> راه‌راه ${color("zebra", S.zebra || "#eef2fc")}</label>
+              <label class="row">ارتفاع ${num("body.height", S.body.height, 0, 200)}</label></div></div></div>
+        <div class="row">${[["border", "کادر خانه‌ها"], ["rtl", "راست‌به‌چپ"], ["freeze", "ثابت ماندن سرستون"], ["filter", "فیلتر روی سرستون"]].map(([k, l]) => `<label class="check"><input type="checkbox" data-sp="${k}" ${S[k] ? "checked" : ""}> ${l}</label>`).join("")}</div>
+        ${fonts.some((f) => f.name === S.body.font && !f.installed) || fonts.some((f) => f.name === S.header.font && !f.installed) ? `<div class="small muted">${I.info} فایل اکسل فقط نام فونت را نگه می‌دارد؛ اگر فونت روی رایانه‌ای که فایل را باز می‌کند نصب نباشد، Excel فونت دیگری نشان می‌دهد.</div>` : ""}</div>`;
+      $$("[data-sp]", box).forEach((x) => x.oninput = () => {
+        const [a, b] = x.dataset.sp.split(".");
+        const v = x.type === "checkbox" ? x.checked : x.type === "number" ? +x.value : x.value;
+        if (b) S[a][b] = v; else S[a] = a === "zebra" && !$("#tp-zebra-on").checked ? "" : v;
+        changed();
+      });
+      $("#tp-zebra-on").onchange = (e) => { S.zebra = e.target.checked ? $('[data-sp="zebra"]', box).value : ""; changed(); };
+      $$("[data-preset]", box).forEach((b) => b.onclick = () => {
+        const p = state.tplMeta.presets[b.dataset.preset];
+        Object.assign(S.header, { fill: p.fill, color: p.color }); S.zebra = p.zebra;
+        drawTab(); changed();
+      });
+    } else {
+      const O = template.output;
+      box.innerHTML = `<div class="stack"><div class="field"><label>پوشه فایل خروجی</label><div class="row" style="flex-wrap:nowrap">
+          <input class="input ltr" id="tp-folder" value="${esc(O.folder)}" style="flex:1; text-align:right"><button class="btn" id="tp-pick">${I.folder} انتخاب پوشه</button></div></div>
+        <div class="field"><label>نام فایل</label><div class="row"><input class="input" id="tp-file" value="${esc(O.file)}" style="width:260px"><span class="muted">.xlsx</span></div>
+          <span class="hint">اگر فایل نباشد، در اولین ثبت با سرستون همین قالب ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div></div>`;
+      $("#tp-folder").oninput = (e) => { O.folder = e.target.value.trim(); changed(); };
+      $("#tp-file").oninput = (e) => { O.file = e.target.value.trim(); changed(); };
+      $("#tp-pick").onclick = async () => { const p = await pickPath("audio", O.folder); if (p) { O.folder = p; $("#tp-folder").value = p; changed(); } };
+    }
+  }
+
+  function moveCol(from, to) {
+    const L = template.columns_list;
+    if (to < 0 || to >= L.length || from === to) return;
+    L.splice(to, 0, L.splice(from, 1)[0]);
+    drawTab(); changed(true);
+  }
+  function uniqueTitle(t) { let n = t, i = 2; while (template.columns_list.some((c) => c.title === n)) n = `${t} ${fa(i++)}`; return n; }
+
+  function drawPreview() {
+    const box = $("#tp-preview");
+    if (!box) return;
+    const S = template.style, cols = template.columns_list;
+    const pt = (n) => `${Math.round(n * 1.33)}px`;
+    const bd = S.border ? "border:1px solid #c9cfdb;" : "";
+    box.innerHTML = `<table dir="${S.rtl ? "rtl" : "ltr"}" style="font-family:'${esc(S.body.font)}',Tahoma,sans-serif"><thead><tr>${cols.map((c) => `<th style="width:${Math.round(c.width * 7.5)}px;min-width:${Math.round(c.width * 7.5)}px;
+        font-family:'${esc(S.header.font)}',Tahoma;font-size:${pt(S.header.size)};font-weight:${S.header.bold ? 700 : 400};color:${S.header.color};background:${S.header.fill};${S.header.height ? `height:${pt(S.header.height)};` : ""}${bd}">${esc(c.title)}</th>`).join("")}</tr></thead>
+      <tbody>${tplState.rows.map((r, i) => `<tr style="background:${S.zebra && i % 2 === 1 ? S.zebra : "#fff"};${S.body.height ? `height:${pt(S.body.height)};` : ""}">${cols.map((c, j) => `<td class="${c.field === "phone" ? "ltr-cell" : ""}" style="font-size:${pt(S.body.size)};color:${S.body.color};text-align:${c.align};
+        white-space:${S.body.wrap ? "pre-wrap" : "nowrap"};${bd}">${esc(r[j] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+
+  $("#tp-save").onclick = async () => {
+    try {
+      const r = await api(`/api/templates/${tplState.name}`, { method: "PUT", body: template });
+      tplState.dirty = false; drawHead();
+      toast("قالب ذخیره شد.", "ok");
+      if (r.warning) toast(r.warning, "err");
+      refreshStatus();
+    } catch (e) { toastErr(e); }
+  };
+  $("#tp-sample")?.addEventListener("click", async () => {
+    try {
+      const res = await fetch("/api/templates/sample", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(template) });
+      if (!res.ok) throw new Error((await res.json()).detail || "ساخت فایل نمونه ناموفق بود.");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await res.blob());
+      a.download = `${template.output.file || "نمونه"} (نمونه).xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (e) { toastErr(e); }
+  });
+  state.tplMeta = meta;
+  drawTab();
+  if (isNew) loadPreview();
+}
+function fieldLabel(k) { return (state.tplMeta?.fields.find((f) => f.key === k) || {}).label || k; }
 
 // ================= واژه‌نامه =================
 async function renderDictionary(el) {

@@ -23,7 +23,8 @@ from openpyxl.utils import column_index_from_string
 
 from .config import DATA_DIR
 from .deduplicator import file_sha256
-from .excel_mapping import cell_values
+from . import excel_template
+from .excel_mapping import cell_values, format_date
 from .excel_reader import inspect_workbook, last_data_row, lock_status, zip_parts
 from .normalizer import normalize_text
 
@@ -112,10 +113,20 @@ def plan_rows(profile: dict, ws, records: list[dict]) -> dict:
     current_group = _group_date(ws, date_col, last, start)
     row = last + 1
     plan = []
+    num_cols = [c for c, f in profile["columns"].items() if f == "row_number"]
+    # شماره ردیف ادامه شماره‌های موجود است (ردیف‌های خالی میان روزها شمرده نمی‌شوند)
+    number = sum(1 for r in range(start, last + 1)
+                 if any(ws.cell(r, c).value not in (None, "") for c in cols)) if num_cols else 0
+    date_fmt = policy.get("date_format")
     for rec in sorted(records, key=lambda r: (r["values"].get("visit_date", ""), r["audio_id"], r["building_index"])):
         values = cell_values(profile, rec)
         vdate = rec["values"].get("visit_date", "")
-        new_group = not current_group or not _same_date(vdate, current_group)
+        number += 1
+        for c in num_cols:
+            values[c] = str(number)
+        same = current_group and (_same_date(vdate, current_group)
+                                  or normalize_text(format_date(vdate, date_fmt)) == normalize_text(current_group))
+        new_group = not same
         if new_group and policy.get("blank_row_between_dates") and (plan or last >= start):
             row += 1  # ردیف خالی میان گروه‌های روزانه (قرارداد فایل شرکت)
         if date_col_letter and policy.get("date_first_row_only") and not new_group:
@@ -190,9 +201,12 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
     style_row = last if last > profile["header_row"] else None
 
     # ۳) نوشتن ردیف‌ها
+    templated = profile.get("mode") == "new"  # فایل خود برنامه: ظاهر از قالب، نه از ردیف قبلی
     for item in plan["rows"]:
         r = item["row"]
-        if style_row and policy.get("copy_style_from_last_row", True):
+        if templated:
+            excel_template.style_row(ws, r, profile, r - profile["header_row"])
+        elif style_row and policy.get("copy_style_from_last_row", True):
             for c in range(1, max_col + 1):
                 _copy_style(ws.cell(style_row, c), ws.cell(r, c))
             h = ws.row_dimensions[style_row].height
@@ -204,12 +218,18 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
                 continue
             cell = ws.cell(r, ci)
             safe_set(cell, value)
-            if col_letter in phone_cols:
+            is_phone = col_letter in phone_cols
+            if is_phone:
                 cell.number_format = "@"
-            if value and "\n" in str(value):
+            if value and ("\n" in str(value) or (is_phone and " " in str(value))):
                 al = copy.copy(cell.alignment) if cell.has_style else Alignment()
+                # «0915 123 4567» در شیت راست‌به‌چپ وارونه نمایش داده می‌شود؛ ترتیب خواندن شماره چپ‌به‌راست است
                 cell.alignment = Alignment(horizontal=al.horizontal, vertical=al.vertical or "center",
-                                           wrap_text=True, readingOrder=al.readingOrder)
+                                           wrap_text="\n" in str(value) or al.wrap_text,
+                                           readingOrder=1 if is_phone else al.readingOrder)  # ۱ = چپ‌به‌راست
+
+    if templated and plan["rows"]:
+        excel_template.finish_sheet(ws, profile, plan["rows"][-1]["row"])
 
     # ۴) ذخیره در فایل موقت و سپس انتقال اتمیک به مسیر خروجی
     output = out_dir / f"{target.stem}__ثبت_{stamp}{ext}"

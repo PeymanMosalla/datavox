@@ -37,6 +37,13 @@ _HEADER_RULES = [
 _PROTECT_RULES = r"پیگیری|تاریخ\s*تماس|نتیجه|وضعیت"
 
 
+# قالب «افزودن به فایل شرکت» (نگاشت ستون‌های فایل موجود)؛ قالب‌های دیگر «فایل جدید»اند
+COMPANY = "default"
+# تنظیمات «قالب مقادیر» که در صفحه «قالب اکسل» برای هر دو نوع قالب قابل تغییرند
+VALUE_FORMAT_KEYS = {"date_format", "phone_format", "phone_group", "multi_phone_separator", "name_title",
+                     "text_style", "notes_parts", "blank_row_between_dates", "date_first_row_only"}
+
+
 def profiles_dir() -> Path:
     d = DATA_DIR / "profiles"
     d.mkdir(parents=True, exist_ok=True)
@@ -94,13 +101,18 @@ def load_profile(name: str) -> dict | None:
         return None
     prof = json.loads(p.read_text(encoding="utf-8"))
     prof.setdefault("policy", {})
-    for k, v in DEFAULT_POLICY.items():
-        prof["policy"].setdefault(k, v)
+    if prof.get("mode") != "new":  # پیش‌فرض‌های قرارداد فایل شرکت؛ قالب «فایل جدید» پیش‌فرض‌های خودش را دارد
+        for k, v in DEFAULT_POLICY.items():
+            prof["policy"].setdefault(k, v)
     return prof
 
 
 def list_profiles() -> list[str]:
     return sorted(p.stem for p in profiles_dir().glob("*.json"))
+
+
+def delete_profile(name: str) -> None:
+    (profiles_dir() / f"{_safe_name(name)}.json").unlink(missing_ok=True)
 
 
 # ---------- ساخت مقدار هر ستون ----------
@@ -154,7 +166,27 @@ def notes_composed(v: dict, mapped_fields: set[str], parts: list[str]) -> str:
 
 
 # فیلدهایی که با سبک فایل شرکت (جداکننده و نوع رقم) نوشته نمی‌شوند
-_UNSTYLED = {"phone", "visit_date", "followup_date", "source_file", "transcript", "validation_summary"}
+_UNSTYLED = {"phone", "visit_date", "followup_date", "source_file", "transcript", "validation_summary", "row_number"}
+_MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور", "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
+
+
+def format_date(value: str, fmt: str | None) -> str:
+    """«1405/07/28»؛ persian ← «۱۴۰۵/۰۷/۲۸»؛ long ← «۲۸ مهر ۱۴۰۵». تاریخ ناخوانا دست نمی‌خورد."""
+    from .dates_fa import parse_jalali
+    from .normalizer import to_persian_digits
+
+    d = parse_jalali(value) if value and fmt in ("persian", "long") else None
+    if not d:
+        return value
+    if fmt == "long":
+        return to_persian_digits(f"{d.day} {_MONTHS[d.month - 1]} {d.year}")
+    return to_persian_digits(f"{d.year}/{d.month:02d}/{d.day:02d}")
+
+
+def format_phone(p: str, group: bool) -> str:
+    if group and re.fullmatch(r"09\d{9}", p):
+        return f"{p[:4]} {p[4:7]} {p[7:]}"
+    return p
 
 
 def cell_values(profile: dict, record: dict) -> dict[str, str]:
@@ -165,6 +197,12 @@ def cell_values(profile: dict, record: dict) -> dict[str, str]:
     style = policy.get("text_style")
     out: dict[str, str] = {}
     for col, field in profile["columns"].items():
+        if field.startswith("const:"):
+            out[col] = field[6:]
+            continue
+        if field == "row_number":
+            out[col] = ""  # در plan_rows از روی جایگاه ردیف پر می‌شود
+            continue
         if field == "notes_composed":
             val = notes_composed(v, mapped, policy.get("notes_parts", DEFAULT_POLICY["notes_parts"]))
         elif field == "technical_summary":
@@ -173,7 +211,13 @@ def cell_values(profile: dict, record: dict) -> dict[str, str]:
             phones = [p.strip() for p in str(v.get("phone", "")).split("\n") if p.strip()]
             if policy.get("phone_format") == "as_number_like_existing":
                 phones = [p[1:] if p.startswith("09") else p for p in phones]
+            phones = [format_phone(p, policy.get("phone_group", False)) for p in phones]
             val = policy.get("multi_phone_separator", "\n").join(phones)
+        elif field in ("visit_date", "followup_date"):
+            val = format_date(v.get(field, ""), policy.get("date_format"))
+        elif field == "engineer_name" and policy.get("name_title") == "drop":
+            from .normalizer import strip_title
+            val = strip_title(v.get(field, ""))[1]
         elif field == "source_file":
             val = record.get("original_name", "")
         elif field == "transcript":
