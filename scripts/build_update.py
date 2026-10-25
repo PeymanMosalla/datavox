@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -46,6 +47,7 @@ def main() -> int:
     ap.add_argument("--notes", default="")
     ap.add_argument("--src", default=str(ROOT / "voice2excel"), help="پوشه کد (برای آزمون)")
     ap.add_argument("--version", default=__version__, help="نسخه (برای آزمون)")
+    ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون)")
     a = ap.parse_args()
     out = ROOT / "dist" / f"Voice2Excel-update-{a.version}.zip"
     # راهنماها کنار exe با نام‌های Guide.html و Recording-Guide.html قرار دارند (منبع: صفحه‌های داخل برنامه)
@@ -56,8 +58,15 @@ def main() -> int:
         tmp.parent.mkdir(parents=True, exist_ok=True)
         tmp.write_bytes(src.read_bytes())
         extras.append(tmp)
-    m = build_update_zip(Path(a.src), out, compute_runtime_id(PY_VERSION, runtime_requirements()), a.version,
-                         extras, a.notes, signing_key=load_signing_key())
+    key = load_signing_key()  # پیش از کامپایل طولانی، تا نبود کلید زود معلوم شود
+    pkg = Path(a.src)
+    with tempfile.TemporaryDirectory(prefix="v2x-upd-") as work:
+        if not a.no_compile:
+            from compile_app import compile_package
+            compile_package(pkg, Path(work) / "voice2excel")
+            pkg = Path(work) / "voice2excel"
+        m = build_update_zip(pkg, out, compute_runtime_id(PY_VERSION, runtime_requirements()), a.version,
+                             extras, a.notes, signing_key=key)
     for tmp in extras:
         tmp.unlink(missing_ok=True)
     print(f"بسته به‌روزرسانی ساخته شد: {out} ({out.stat().st_size / 1e6:.1f} مگابایت، {len(m['files'])} فایل)")

@@ -144,9 +144,14 @@ def copy_vc_runtime(dest: Path) -> list[str]:
     return copied
 
 
-def copy_app(dest: Path) -> None:
-    shutil.copytree(ROOT / "voice2excel", dest / "voice2excel",
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+def copy_app(dest: Path, compiled: bool = True) -> None:
+    """کد برنامه؛ به‌طور پیش‌فرض کامپایل‌شده (.pyd) تا کد خوانا همراه بسته نرود."""
+    if compiled:
+        from compile_app import compile_package
+        compile_package(ROOT / "voice2excel", dest / "voice2excel")
+    else:
+        shutil.copytree(ROOT / "voice2excel", dest / "voice2excel",
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyd"))
 
 
 def make_samples(dest: Path) -> None:
@@ -207,6 +212,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--no-zip", action="store_true")
+    ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون سریع)")
     a = ap.parse_args()
     from voice2excel import __version__
 
@@ -231,7 +237,7 @@ def main() -> int:
     step("کتابخانه‌های زمان‌اجرای Visual C++")
     print("کپی شد:", copy_vc_runtime(out / "python"))
     step("کد برنامه")
-    copy_app(out / "app")
+    copy_app(out / "app", compiled=not a.no_compile)
     # شناسه محیط اجرا: به‌روزرسانی سبک فقط وقتی پذیرفته می‌شود که Python و کتابخانه‌ها همین باشند
     from voice2excel.updater import compute_runtime_id
     (out / "app" / "runtime.json").write_text(json.dumps(
