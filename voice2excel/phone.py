@@ -12,6 +12,9 @@ from .normalizer import to_ascii_digits
 from .numbers_fa import NumberRun
 
 MOBILE = re.compile(r"^09\d{9}$")
+# پیش‌شماره‌های موبایل ایران: همراه اول (091x، 0990-0994)، ایرانسل (093x، 0900-0905، 0941)، رایتل (0920-0922)
+# و اپراتورهای مجازی (0995-0999)
+MOBILE_PREFIXES = frozenset({f"09{n:02d}" for n in [*range(0, 6), *range(10, 23), *range(30, 40), 41, *range(90, 100)]})
 LANDLINE = re.compile(r"^0[1-8]\d{9}$")
 LOCAL = re.compile(r"^[2-9]\d{7}$")
 
@@ -60,6 +63,21 @@ def classify(digits: str) -> tuple[str, str, list[str]]:
         notes.append("شماره ثابت هشت‌رقمی بدون کد شهر است.")
         return "local", d, notes
     return "incomplete", d, notes
+
+
+def known_prefix(mobile: str) -> bool:
+    return mobile[:4] in MOBILE_PREFIXES
+
+
+def suggestions(digits: str) -> list[str]:
+    """پیشنهاد برای شماره نامعتبر؛ هرگز خودکار اعمال نمی‌شود.
+
+    «39159160351»: یازده رقم که فقط رقم اولش با موبایل نمی‌خواند؛ مدل گفتار «صفر» را رقم دیگری شنیده است.
+    """
+    d = re.sub(r"\D", "", to_ascii_digits(digits))
+    if len(d) == 11 and d[0] != "0" and d[1] == "9" and known_prefix("0" + d[1:]):
+        return ["0" + d[1:]]
+    return []
 
 
 def _valid_kind(digits: str) -> bool:

@@ -136,3 +136,19 @@ def test_seed_counts_usage_and_hotwords_prefer_frequent(db):
     assert hw.split("، ") == ["رجبی", "سجادیه"]  # پرتکرارترین مهندس و خیابان
     dictionary.touch_by_name(db, "مهندس عبدی", "engineer")
     assert db.one("SELECT use_count FROM entities WHERE canonical='عبدی'")["use_count"] == 2
+
+
+def test_mobile_prefix_and_first_digit_suggestion(db, settings):
+    from voice2excel.phone import known_prefix, suggestions
+    assert known_prefix("09151234567") and known_prefix("09901234567") and known_prefix("09031234567")
+    assert not known_prefix("09651234567")
+    assert suggestions("39159160351") == ["09159160351"]  # «صفر» به‌اشتباه «سه» شنیده شد
+    assert suggestions("39659160351") == [] and suggestions("0915916") == []
+    vals = {"engineer_name": "مهندس رجبی", "address": "سجادیه 58", "visit_date": "1405/07/28"}
+    f = validate(db, {**vals, "phone": "39159160351"}, meta(), settings).fields["phone"]
+    assert f.status == "invalid" and f.suggestions == ["09159160351"]
+    f = validate(db, {**vals, "phone": "09651234567"}, meta(), settings).fields["phone"]
+    assert f.status == "review" and any("0965" in r for r in f.reasons)
+    settings.default_area_code = "051"
+    f = validate(db, {**vals, "phone": "38123456"}, meta(), settings).fields["phone"]
+    assert f.suggestions == ["05138123456"]

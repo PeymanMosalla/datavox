@@ -12,7 +12,7 @@ from . import dictionary
 from .config import Settings
 from .database import Database
 from .dates_fa import parse_jalali
-from .phone import classify
+from .phone import classify, known_prefix, suggestions as phone_suggestions
 from .schema import FIELD_LABELS, FieldCheck, ValidationResult
 
 
@@ -44,7 +44,13 @@ def _check_phone(value: str, meta: dict, edited: bool, settings: Settings) -> Fi
         if kind == "incomplete":
             worsen("invalid")
             reasons.append(f"شماره {norm} ناقص یا نامعتبر است ({len(norm)} رقم)؛ رقمی حدس زده نشد.")
+            for sg in phone_suggestions(norm):
+                suggestions.append(sg)
+                reasons.append(f"اگر رقم اول «صفر» گفته شده بود: {sg} (با شنیدن ویس تأیید کنید).")
             continue
+        if kind == "mobile" and not known_prefix(norm):
+            worsen("review")
+            reasons.append(f"پیش‌شماره {norm[:4]} برای هیچ اپراتور موبایلی شناخته‌شده نیست؛ رقم‌های اول را با ویس بررسی کنید.")
         if kind == "local":
             worsen("review")
             if settings.default_area_code:
