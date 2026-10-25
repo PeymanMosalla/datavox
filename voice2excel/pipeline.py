@@ -68,7 +68,7 @@ def build_records(db: Database, settings: Settings, text: str, visit_date: str, 
         meta = record_meta(rec)
         if words:
             spans = {k: fv.span for k, fv in rec.fields.items() if fv.span and fv.value}
-            meta["times"], meta["low_confidence"] = field_times(result.text, words, spans)
+            meta["times"], meta["low_confidence"], meta["low_times"] = field_times(result.text, words, spans)
         dups = find_duplicates(db, values, audio_id=audio_id)
         v = validate(db, values, meta, settings, duplicates=dups)
         out.append({

@@ -27,7 +27,7 @@ def test_field_times_follow_the_voice():
     r = extract(TEXT)
     rec = r.records[0]
     spans = {k: fv.span for k, fv in rec.fields.items() if fv.span}
-    times, low = field_times(r.text, RAW, spans)
+    times, low, low_times = field_times(r.text, RAW, spans)
     # نام: از «مهندس» تا «رجبی»
     assert times["engineer_name"][0] <= 0.0 + 0.01 and 0.9 <= times["engineer_name"][1] <= 1.3
     # شماره (همه رقم‌اند و با متن خام یکی نیستند): از پایان «رجبی» تا آغاز «سجادیه»
@@ -37,6 +37,9 @@ def test_field_times_follow_the_voice():
     # واژه کم‌اطمینان داخل بازه شماره برای نمایش به کاربر
     assert "سد" in low.get("phone", [])
     assert "بتن" in low.get("structure_type", [])
+    # زمان پخش همان واژه کم‌اطمینان («سد» 1.7 تا 1.9 ثانیه، با حاشیه)، هم‌ترتیب با فهرست واژه‌ها
+    assert low_times["phone"][low["phone"].index("سد")] == [1.45, 2.15]
+    assert len(low_times["structure_type"]) == len(low["structure_type"])
 
 
 def test_time_map_without_words():

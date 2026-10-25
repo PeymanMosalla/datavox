@@ -333,7 +333,8 @@ async function renderToday(el) {
     });
   }
 
-  const LABEL = Object.fromEntries((state.meta?.fields || []).map((f) => [f.key, f.label]));
+  const LABEL = { ...Object.fromEntries((state.meta?.fields || []).map((f) => [f.key, f.label])), tech: "مشخصات فنی" };
+  const SEG_OF = { followup_date: "followup_action", followup_time_text: "followup_action" };  // فیلدی که بخش ویس خودش را ندارد
   const SHOW = 12;
   async function drawReview() {
     if (seq !== routeSeq) return;
@@ -349,10 +350,20 @@ async function renderToday(el) {
     }
     box.innerHTML = `<div class="t-list">${records.slice(0, SHOW).map((r) => {
       const v = r.values, vf = r.validation.fields || {};
-      const problems = Object.entries(vf).filter(([, f]) => f.status !== "valid")
-        .map(([k, f]) => `<li><b>${esc(LABEL[k] || k)}:</b> ${esc((f.reasons || [])[0] || FIELD_STATUS[f.status])}</li>`);
-      if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li>${esc(x)}</li>`));
-      const play = r.audio_available && r.times?.phone ? `<button class="btn sm ghost" data-tplay="${r.id}" title="پخش بخش شماره از ویس">${I.play} شماره</button>` : "";
+      // هر مورد مشکوک: دلیل، دکمه پخش همان بخش از ویس، و واژه‌هایی که با اطمینان کم شنیده شده‌اند
+      const item = (k, why) => {
+        const seg = SEG_OF[k] || k, t = r.audio_available && fieldTime(r, seg), words = lowWords(r, k);
+        return `<li>${t ? `<button class="btn sm ghost" data-tseg="${seg}" title="پخش همین بخش از ویس">${I.play} بشنوید</button>` : ""}
+          <span class="t-why"><b>${esc(LABEL[k] || k)}:</b> ${esc(why)}</span>${words.length ? `<span class="t-words">${words.join(" ")}</span>` : ""}</li>`;
+      };
+      const bad = Object.entries(vf).filter(([, f]) => f.status !== "valid");
+      const problems = bad.map(([k, f]) => item(k, (f.reasons || [])[0] || FIELD_STATUS[f.status]));
+      // فیلدی که معتبر شمرده شده ولی بخشی از آن با اطمینان کم شنیده شده هم نشان داده می‌شود
+      for (const k of ["engineer_name", "phone", "address", "tech"]) {
+        if (lowWords(r, k).length && !bad.some(([b]) => b === k)) problems.push(item(k, "بخشی با اطمینان کم شنیده شد."));
+      }
+      if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li><span class="t-why">${esc(x)}</span></li>`));
+      const play = r.audio_available ? `<button class="btn sm ghost" data-twhole title="پخش کل ویس">${I.play} کل ویس</button>` : "";
       return `<div class="t-rec" data-trec="${r.id}">
         <div class="t-rec-main"><div><b>${esc(v.engineer_name || "نام پیدا نشد")}</b>
             <span class="ltr t-phone">${esc((v.phone || "").split("\n").filter(Boolean).map(fmtPhone).join(" ، ")) || "—"}</span></div>
@@ -364,7 +375,12 @@ async function renderToday(el) {
           <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد">${I.x}</button></div></div>`;
     }).join("")}</div>
     ${records.length > SHOW ? `<div class="card-b small muted">و ${fa(records.length - SHOW)} مورد دیگر؛ با «بازبینی سریع» همه را یکی‌یکی ببینید.</div>` : ""}`;
-    $$("[data-tplay]", box).forEach((b) => b.onclick = () => playRecordSegment(records.find((r) => r.id === +b.dataset.tplay), "phone"));
+    $$("[data-trec]", box).forEach((card) => {
+      const rec = records.find((r) => r.id === +card.dataset.trec);
+      $$("[data-tseg]", card).forEach((b) => b.onclick = () => playRecordSegment(rec, b.dataset.tseg));
+      $$("[data-lt]", card).forEach((b) => b.onclick = () => playRecordSegment(rec, b.dataset.lt.split(",").map(Number)));
+      $("[data-twhole]", card)?.addEventListener("click", () => playRecordSegment(rec, [0, 1e6]));
+    });
     $$("[data-topen]", box).forEach((b) => b.onclick = () => openRecord(+b.dataset.topen));
     $$("[data-tact]", box).forEach((b) => b.onclick = async () => {
       const id = +b.dataset.r, act = b.dataset.tact;
@@ -812,14 +828,14 @@ let tableAudio = null;
 const reviewState = { filter: "review", records: [], selected: new Set(), audioId: null };
 const TABLE_FIELDS = [["engineer_name", "نام مهندس / شخص تماس"], ["phone", "شماره تماس"], ["address", "آدرس"]];
 
-/** پخش همان تکه از ویس که فیلد key از آن آمده (بدون باز کردن جزئیات). */
-function playRecordSegment(rec, key) {
+/** پخش همان تکه از ویس که فیلد key از آن آمده (یا بازه [شروع، پایان])، بدون باز کردن جزئیات. */
+function playRecordSegment(rec, keyOrSpan) {
   if (!tableAudio || tableAudio.dataset.aid !== String(rec.audio_id)) {
     if (tableAudio) tableAudio.pause();
     tableAudio = new Audio(`/api/files/${rec.audio_id}/audio`);
     tableAudio.dataset.aid = String(rec.audio_id);
   }
-  playSegment(tableAudio, rec.times[key]);
+  playSegment(tableAudio, Array.isArray(keyOrSpan) ? keyOrSpan : fieldTime(rec, keyOrSpan));
 }
 
 function techSummary(v) {
@@ -1069,9 +1085,22 @@ function phoneView(value) {
   const lines = String(value || "").split("\n").filter((x) => x.trim());
   return lines.length ? `<div class="phone-view">${lines.map((l) => `<span class="ltr">${esc(fmtPhone(l))}</span>`).join("")}</div>` : "";
 }
+/** واژه‌های کم‌اطمینان یک فیلد؛ اگر صدا و زمان واژه موجود باشد، هر واژه دکمه پخش همان تکه است (data-lt). */
+function lowWords(r, k) {
+  const keys = k === "tech" ? TECH_KEYS : [k];
+  const seen = new Set();  // یک واژه ممکن است در چند فیلد فنی همان بند تکرار شده باشد
+  return keys.flatMap((x) => (r.low_confidence?.[x] || []).map((w, i) => [w, r.low_times?.[x]?.[i]]))
+    .filter(([w, t]) => !seen.has(w + t) && seen.add(w + t))
+    .map(([w, t]) => r.audio_available && t
+      ? `<button class="lc-word" data-lt="${t.join(",")}" title="پخش همین واژه از ویس">${I.play}«${esc(w)}»</button>` : `«${esc(w)}»`);
+}
 function lowConfView(r, k) {
-  const w = k === "tech" ? TECH_KEYS.flatMap((x) => r.low_confidence?.[x] || []) : (r.low_confidence?.[k] || []);
-  return w.length ? `<div class="lowconf">${I.alert}<span>با اطمینان کم شنیده شد: ${w.map((x) => `«${esc(x)}»`).join("، ")} — با شنیدن این بخش بررسی کنید.</span></div>` : "";
+  const w = lowWords(r, k);
+  return w.length ? `<div class="lowconf">${I.alert}<span>با اطمینان کم شنیده شد: ${w.join(" ")} — ${w.some((x) => x.startsWith("<button")) ? "روی هر واژه بزنید تا همان تکه پخش شود." : "با شنیدن این بخش بررسی کنید."}</span></div>` : "";
+}
+/** دکمه‌های پخش واژه کم‌اطمینان درون el را به پخش‌کننده audio وصل می‌کند. */
+function bindLowWords(el, audio) {
+  $$("[data-lt]", el).forEach((b) => b.onclick = (e) => { e.stopPropagation(); playSegment(audio, b.dataset.lt.split(",").map(Number)); });
 }
 function hasUndo(r) { return (r.edits || []).some((e) => !e.undone && UNDOABLE.has(e.action)); }
 
@@ -1186,6 +1215,7 @@ async function openRecord(id) {
   const audio = $("#dr-audio");
   $$("[data-seg]", d).forEach((b) => b.onclick = () => playSegment(audio, r.times[b.dataset.seg]));
   $$("[data-segk]", d).forEach((b) => b.onclick = () => playSegment(audio, fieldTime(r, b.dataset.segk)));
+  bindLowWords(d, audio);
   $("#dr-close").onclick = closeDrawer;
   $("#dr-prev").onclick = () => idx > 0 && openRecord(ids[idx - 1]);
   $("#dr-next").onclick = () => idx < ids.length - 1 && openRecord(ids[idx + 1]);
@@ -1326,6 +1356,7 @@ async function renderFocus(autoplay = false) {
   const audio = $("#fm-audio");
   $$("[data-fseg]", f).forEach((b) => b.onclick = () => playSegment(audio, fieldTime(r, b.dataset.fseg)));
   $$("[data-fsegk]", f).forEach((b) => b.onclick = () => playSegment(audio, fieldTime(r, b.dataset.fsegk)));
+  bindLowWords(f, audio);
   $("#fm-whole")?.addEventListener("click", () => playWhole(audio));
   $("#fm-autoplay").onchange = (e) => localStorage.setItem("v2x.focus.autoplay", e.target.checked ? "1" : "0");
   $("#fm-close").onclick = closeFocus;

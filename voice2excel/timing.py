@@ -76,21 +76,23 @@ class TimeMap:
             return None
         return round(max(0.0, t0 - PAD), 2), round(min(self.duration + PAD, t1 + PAD), 2)
 
-    def low_confidence_words(self, t0: float, t1: float) -> list[str]:
-        """واژه‌هایی از ویس که در این بازه زمانی با اطمینان کم شنیده شده‌اند (فقط برای نمایش)."""
-        return [w["word"].strip(_PUNCT) for w in self.words
+    def low_confidence_words(self, t0: float, t1: float) -> list[tuple[str, list[float]]]:
+        """واژه‌هایی از ویس که در این بازه با اطمینان کم شنیده شده‌اند، با زمان پخش هر کدام (فقط برای نمایش)."""
+        return [(w["word"].strip(_PUNCT), [round(max(0.0, w["start"] - PAD), 2), round(w["end"] + PAD, 2)])
+                for w in self.words
                 if w["start"] >= t0 - 0.05 and w["end"] <= t1 + 0.05 and w.get("prob", 1.0) < LOW_PROB]
 
 
-def field_times(processed_text: str, words: list[dict], spans: dict[str, list[int]]) -> tuple[dict, dict]:
-    """خروجی: ({فیلد: [شروع، پایان]}، {فیلد: [واژه‌های کم‌اطمینان]})."""
+def field_times(processed_text: str, words: list[dict], spans: dict[str, list[int]]) -> tuple[dict, dict, dict]:
+    """خروجی: ({فیلد: [شروع، پایان]}، {فیلد: [واژه‌های کم‌اطمینان]}، {فیلد: [زمان هر واژه کم‌اطمینان]})."""
     tm = TimeMap(processed_text, words)
-    times, low = {}, {}
+    times, low, low_times = {}, {}, {}
     for field, (s, e) in spans.items():
         t = tm.span_time(s, e)
         if t:
             times[field] = list(t)
             lc = tm.low_confidence_words(*t)
             if lc:
-                low[field] = lc
-    return times, low
+                low[field] = [w for w, _ in lc]
+                low_times[field] = [span for _, span in lc]
+    return times, low, low_times

@@ -561,6 +561,7 @@ def _record_out(r: dict) -> dict:
         "evidence": r["extracted"].get("meta", {}).get("evidence", {}),
         "times": r["extracted"].get("meta", {}).get("times", {}),
         "low_confidence": r["extracted"].get("meta", {}).get("low_confidence", {}),
+        "low_times": r["extracted"].get("meta", {}).get("low_times", {}),
         "audio_available": not r.get("audio_deleted"),
     }
 

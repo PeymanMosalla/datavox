@@ -20,7 +20,7 @@ from .numbers_fa import NumberRun, convert_number_words
 from .schema import ExtractedRecord, ExtractionResult, FieldValue, PhoneInfo, Segment
 
 # با هر تغییر در قواعد استخراج افزایش می‌یابد؛ برنامه پس از به‌روزرسانی، رکوردهای دست‌نخورده را دوباره استخراج می‌کند
-EXTRACTOR_VERSION = "5"
+EXTRACTOR_VERSION = "6"
 
 W = r"[\w‌]"  # نویسه‌ی واژه (شامل نیم‌فاصله)
 B_START = rf"(?<!{W})"
