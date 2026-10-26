@@ -91,7 +91,13 @@ def apply_learned(db: Database, settings: Settings, values: dict, rec=None) -> d
     اصلاحی با تکرار کافی خودکار اعمال و در یادداشت فیلد ثبت می‌شود؛ بقیه به‌عنوان پیشنهاد
     در meta رکورد («learned_suggestions») قرار می‌گیرند.
     """
-    rows = db.q("SELECT field_group, wrong, right, count FROM corrections WHERE enabled=1")
+    rows = db.q("SELECT field_group, wrong, right, count, enabled FROM corrections")
+    own = {(r["field_group"], r["wrong"]) for r in rows}  # اصلاح خود کاربر (حتی خاموش‌شده) مقدم است
+    rows = [r for r in rows if r["enabled"]]
+    if settings.kb_base_pack:
+        from .geo import base_corrections
+        rows += [{"field_group": g, "wrong": w, "right": r, "count": n, "base": True}
+                 for g, w, r, n in base_corrections() if (g, w) not in own]
     if not rows:
         return values
     by_group: dict[str, list[dict]] = {}
@@ -113,6 +119,7 @@ def apply_learned(db: Database, settings: Settings, values: dict, rec=None) -> d
                 current = _replace_token(current, r["wrong"], r["right"])
                 if rec is not None and field in rec.fields:
                     rec.fields[field].notes.append(
+                        f"اصلاح خودکار املای رایج: «{r['wrong']}» ← «{r['right']}»." if r.get("base") else
                         f"اصلاح خودکار بر اساس اصلاحات قبلی شما: «{r['wrong']}» ← «{r['right']}» ({r['count']} بار).")
             else:
                 suggestions.setdefault(field, []).append(_replace_token(current, r["wrong"], r["right"]))

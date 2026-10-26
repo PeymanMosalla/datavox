@@ -66,3 +66,8 @@ def base_names() -> tuple[tuple[str, ...], tuple[str, ...]]:
     """(نام‌خانوادگی‌های رایج، نام‌های کوچک رایج)."""
     d = _data()
     return tuple(d.get("n", [])), tuple(d.get("f", []))
+
+
+def base_corrections() -> tuple[tuple[str, str, str, int], ...]:
+    """اصلاحات رایج تشخیص نشانی (گروه، اشتباه، درست، تعداد تأیید در منبع)."""
+    return tuple((c[0], c[1], c[2], int(c[3])) for c in _data().get("c", []))

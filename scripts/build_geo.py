@@ -5,13 +5,19 @@
     [out:csv(name,highway;false;"\\t")];area(3605725142)->.a;way(area.a)["highway"]["name"];out tags;
   (3605725142 = محدوده «شهر مشهد»)
 - ستون آدرس فایل‌های اکسل شرکت (فقط نام خیابان‌ها؛ هیچ نام شخص، شماره یا آدرس کاملی وارد نمی‌شود).
+- آموخته‌های استفاده واقعی (--learned): پایگاه داده برنامه (voice2excel.db) یا خروجی واژه‌نامه. فقط خیابان‌ها
+  با شکل‌های دیگرشان و اصلاحات تأییدشده آدرس برداشته می‌شود؛ نام اشخاص، پروژه‌ها و هر رشته عددی ۴ رقمی به بالا نه.
 
-استفاده:
-    .venv\\Scripts\\python.exe scripts\\build_geo.py --osm packaging\\cache\\osm-mashhad.csv --excel a.xlsx b.xlsx
+استفاده (پیش از هر نسخه):
+    .venv\\Scripts\\python.exe scripts\\build_geo.py --osm packaging\\cache\\osm-mashhad.csv --excel ..\\source\\*.xlsx ^
+        --learned dist\\Voice2Excel\\data\\voice2excel.db
 """
 from __future__ import annotations
 
 import argparse
+import json
+import re
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -25,6 +31,8 @@ from voice2excel.lexicon import _common_keys  # noqa: E402
 from voice2excel.normalizer import normalize_text, sound_key, to_ascii_digits  # noqa: E402
 
 EXCEL_WEIGHT = 3  # املای فایل شرکت بر املای نقشه مقدم است
+MIN_CORRECTION_COUNT = 2  # اصلاحی که کاربر دست‌کم دو بار تأیید کرده (نه یک اشتباه تایپی)
+_LONG_NUMBER = re.compile(r"\d{4,}")
 
 
 def osm_names(path: Path) -> list[str]:
@@ -52,9 +60,48 @@ def excel_addresses(path: Path) -> list:
     return values.get("address", [])
 
 
-def build(osm: Path | None, excels: list[Path], min_osm: int) -> list[list]:
+def _safe(text) -> bool:
+    return isinstance(text, str) and 1 < len(text.strip()) <= 40 and not _LONG_NUMBER.search(to_ascii_digits(text))
+
+
+def learned(path: Path, password: str = "") -> tuple[list[tuple[str, list[str]]], list[tuple[str, str, int]]]:
+    """(خیابان‌ها با شکل‌های دیگر، اصلاحات آدرس) از پایگاه داده برنامه یا فایل خروجی واژه‌نامه."""
+    if path.suffix == ".db":
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        con.row_factory = sqlite3.Row
+        aliases: dict[int, list[str]] = {}
+        for r in con.execute("SELECT entity_id, alias FROM aliases"):
+            aliases.setdefault(r["entity_id"], []).append(r["alias"])
+        streets = [(r["canonical"], aliases.get(r["id"], []))
+                   for r in con.execute("SELECT id, canonical FROM entities WHERE type='street'")]
+        corr = [(r["wrong"], r["right"], r["count"]) for r in con.execute(
+            "SELECT wrong, right, count FROM corrections WHERE field_group='address' AND enabled=1")]
+        con.close()
+    else:
+        from voice2excel import vault
+        blob = path.read_bytes()
+        if vault.is_encrypted(blob):
+            if not password:
+                import getpass
+                password = getpass.getpass(f"گذرواژه «{path.name}»: ")
+            blob = vault.decrypt(blob, password)
+        data = json.loads(blob.decode("utf-8"))
+        streets = [(e["c"], e.get("a") or []) for e in data.get("entities", []) if e.get("t") == "street"]
+        corr = [(c["w"], c["r"], int(c.get("n") or 1)) for c in data.get("corrections", [])
+                if c.get("g") == "address" and c.get("e", 1)]
+    streets = [(normalize_text(c), [normalize_text(a) for a in al if _safe(a)]) for c, al in streets if _safe(c)]
+    corr = [(normalize_text(w), normalize_text(r), n) for w, r, n in corr if _safe(w) and _safe(r)]
+    return streets, corr
+
+
+def build(osm: Path | None, excels: list[Path], min_osm: int,
+          learned_streets: list[tuple[str, list[str]]] = ()) -> list[list]:
     h = knowledge.Harvest()
     from_excel: set[str] = set()
+    for canonical, aliases in learned_streets:  # تأییدشده در استفاده واقعی؛ هم‌وزن فایل شرکت
+        for _ in range(EXCEL_WEIGHT):
+            h.add("street", canonical, set(aliases))
+        from_excel.add(sound_key(canonical))
     for p in excels:
         for v in excel_addresses(p):
             for st in knowledge.streets_from_address(v):
@@ -84,15 +131,31 @@ def main() -> int:
     ap.add_argument("--min-osm", type=int, default=2, help="کمینه تکرار نام در نقشه")
     ap.add_argument("--names", type=Path, default=ROOT / "packaging" / "names",
                     help="پوشه surnames.txt و firstnames.txt (نام‌های رایج عمومی)")
+    ap.add_argument("--learned", type=Path, nargs="*", default=[],
+                    help="voice2excel.db یا خروجی واژه‌نامه (.v2xdict/.json) از استفاده واقعی")
+    ap.add_argument("--password", default="", help="گذرواژه خروجی واژه‌نامه رمزدار (وگرنه پرسیده می‌شود)")
+    ap.add_argument("--fresh", action="store_true", help="بدون داده فایل فعلی (پیش‌فرض: داده فعلی حفظ و افزوده می‌شود)")
     ap.add_argument("--city", default="مشهد")
     ap.add_argument("--out", type=Path, default=ROOT / "voice2excel" / "assets" / "geo.dat")
     a = ap.parse_args()
-    streets = build(a.osm, a.excel, a.min_osm)
+    l_streets, counts = [], {}
+    if a.out.exists() and not a.fresh:  # داده پایه در هر نسخه فقط بزرگ‌تر می‌شود، چیزی از آن نمی‌افتد
+        prev = geo.decode(a.out.read_bytes())
+        l_streets += [(s[0], list(s[1])) for s in prev.get("s", [])]
+        counts.update({(c[1], c[2]): int(c[3]) for c in prev.get("c", [])})
+    for p in a.learned:
+        s, c = learned(p, a.password)
+        l_streets += s
+        for w, r, n in c:
+            counts[(w, r)] = max(counts.get((w, r), 0), n)  # همان پایگاه داده دو بار، دو برابر شمرده نشود
+    corrections = sorted(([["address", w, r, n] for (w, r), n in counts.items() if n >= MIN_CORRECTION_COUNT]),
+                         key=lambda c: -c[3])
+    streets = build(a.osm, a.excel, a.min_osm, l_streets)
     surnames, first = (read_list(a.names / f) for f in ("surnames.txt", "firstnames.txt"))
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_bytes(geo.encode({"v": 2, "city": a.city, "s": streets, "n": surnames, "f": first}))
-    print(f"{len(streets)} خیابان، {len(surnames)} نام‌خانوادگی، {len(first)} نام ← {a.out} "
-          f"({a.out.stat().st_size // 1024} کیلوبایت)")
+    a.out.write_bytes(geo.encode({"v": 3, "city": a.city, "s": streets, "n": surnames, "f": first, "c": corrections}))
+    print(f"{len(streets)} خیابان، {len(corrections)} اصلاح آدرس، "
+          f"{len(surnames)} نام‌خانوادگی، {len(first)} نام ← {a.out} ({a.out.stat().st_size // 1024} کیلوبایت)")
     return 0
 
 
