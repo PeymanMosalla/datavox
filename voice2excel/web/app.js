@@ -1985,6 +1985,8 @@ async function renderDictionary(el) {
   el.innerHTML = `<div class="card"><div class="card-h"><div class="tabs" id="dc-tabs"></div>
       <div class="row"><input class="input" id="dc-q" placeholder="جست‌وجو..." style="width:200px">
       <button class="btn" id="dc-seed">${I.table} پرکردن از اکسل شرکت</button><button class="btn primary" id="dc-add">${I.plus} نام جدید</button></div></div>
+    <div class="card-b row small" style="padding:10px 20px; border-bottom:1px solid var(--border)"><span class="muted">انتقال به رایانه دیگر (فقط نام‌ها و اصلاحات؛ بدون رکورد، ویس یا شماره):</span>
+      <button class="btn sm" id="dc-export">${I.down} خروجی واژه‌نامه</button><button class="btn sm" id="dc-import">${I.folder} ورود واژه‌نامه</button></div>
     <div class="card-b" id="dc-note" style="padding:12px 20px; border-bottom:1px solid var(--border)"><div class="muted small">نام‌های این فهرست به‌عنوان «املای تأییدشده» شناخته می‌شوند. نام‌های مشابه هرگز خودکار ادغام نمی‌شوند؛ فقط به‌عنوان پیشنهاد در بازبینی نمایش داده می‌شوند. تغییر املا با ثبت سابقه انجام می‌شود و املای قبلی به‌عنوان «شکل دیگر» حفظ می‌شود.</div></div>
     <div class="table-wrap" id="dc-table"></div></div>`;
   const load = async () => {
@@ -2044,6 +2046,32 @@ async function renderDictionary(el) {
     if (!v || !v.canonical) return;
     try { await api("/api/dictionary", { method: "POST", body: v }); toast("اضافه شد.", "ok"); type = v.type; load(); } catch (e) { toastErr(e); }
   };
+  $("#dc-export").onclick = async () => {
+    try {
+      const enc = await api("/api/backups/encryption");
+      if (!enc.enabled && !(await confirmBox("خروجی واژه‌نامه بدون رمز", "رمزگذاری در «تنظیمات ← پشتیبان‌گیری» خاموش است؛ این فایل نام مهندس‌ها را بدون قفل دارد. ادامه می‌دهید؟", "دریافت", "danger"))) return;
+      await downloadPost("/api/dictionary/export", {});
+    } catch (e) { toastErr(e); }
+  };
+  $("#dc-import").onclick = () => openModal({
+    title: "ورود واژه‌نامه",
+    body: `<div class="stack"><div class="muted small">نام‌ها و اصلاحات فایل به واژه‌نامه همین رایانه اضافه می‌شوند؛ چیزی پاک یا جایگزین نمی‌شود.</div>
+      <label>فایل واژه‌نامه (.v2xdict یا .json)<input type="file" id="di-file" accept=".v2xdict,.json"></label>
+      <label>گذرواژه <span class="muted small">(اگر فایل در رایانه دیگری قفل شده، گذرواژه پشتیبان همان رایانه)</span><input class="input ltr" type="password" id="di-pw" autocomplete="off"></label></div>`,
+    actions: [{ label: "افزودن", cls: "primary", onClick: async (m) => {
+      const f = $("#di-file", m).files[0];
+      if (!f) { toast("فایل واژه‌نامه را انتخاب کنید.", "err"); return false; }
+      const form = new FormData();
+      form.append("file", f);
+      form.append("password", $("#di-pw", m).value);
+      try {
+        const r = await api("/api/dictionary/import", { method: "POST", form });
+        toast(`${fa(r.added.entities)} نام تازه، ${fa(r.added.aliases)} شکل دیگر و ${fa(r.added.corrections)} اصلاح اضافه شد`
+          + (r.reextracted ? `؛ ${fa(r.reextracted)} ویس با واژه‌نامه تازه دوباره استخراج شد.` : "."), "ok");
+        refreshStatus(); load(); return true;
+      } catch (e) { toastErr(e); return false; }
+    } }, { label: "انصراف", cls: "ghost", value: false }],
+  });
   $("#dc-seed").onclick = async () => {
     if (!(await confirmBox("پرکردن واژه‌نامه از اکسل شرکت", "نام مهندس‌ها (ردیف‌هایی که با «مهندس/آقای/خانم» شروع می‌شوند) و نام خیابان‌ها از ستون‌های نگاشت‌شده فایل شرکت خوانده و با منبع «اکسل» به واژه‌نامه اضافه می‌شوند. فایل اکسل تغییر نمی‌کند.", "پرکردن"))) return;
     try {

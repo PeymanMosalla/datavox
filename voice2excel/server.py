@@ -1093,6 +1093,37 @@ def _after_knowledge_change() -> dict:
 _PROFILE_ROLES = {"engineer_name": "engineer", "address": "address", "project_name": "project"}
 
 
+@app.post("/api/dictionary/export")
+def dictionary_export():
+    """واژه‌نامه و اصلاحات برای رایانه دیگر (بدون رکورد و ویس)؛ با رمزگذاری روشن، قفل با گذرواژه تنظیمات."""
+    import json
+    raw = json.dumps(dictionary.export_data(db()), ensure_ascii=False).encode("utf-8")
+    try:
+        data, encrypted = backup.seal(raw)
+    except backup.BackupError as e:
+        err(400, str(e))
+    name = f"vazhenameh-{datetime.now():%Y%m%d}" + (".v2xdict" if encrypted else ".json")
+    return StreamingResponse(io.BytesIO(data), media_type="application/octet-stream",
+                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.post("/api/dictionary/import")
+async def dictionary_import(file: UploadFile = File(...), password: str = Form("")):
+    import json
+    try:
+        data = json.loads(backup.unseal(await _read_upload(file, 100 * 1024 * 1024), password).decode("utf-8"))
+    except backup.BackupError as e:
+        err(400, str(e))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        err(400, "این فایل، واژه‌نامه «ثبت ویس» نیست.")
+    try:
+        res = dictionary.import_data(db(), data)
+    except ValueError as e:
+        err(400, str(e))
+    db().log_event(f"واژه‌نامه از فایل وارد شد: {res['entities']} نام، {res['aliases']} شکل دیگر، {res['corrections']} اصلاح.")
+    return {**_after_knowledge_change(), "added": res}
+
+
 @app.post("/api/dictionary/seed-from-excel")
 def dict_seed():
     """یادگیری از فایل اکسل شرکتِ نگاشت‌شده (همان «آموزش از اکسل» با ستون‌های نگاشت)."""

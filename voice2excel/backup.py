@@ -144,27 +144,39 @@ def set_encryption(enabled: bool, password: str = "") -> dict:
     return encryption_status()
 
 
-def export_backup(name: str) -> tuple[bytes, bool]:
-    """فایل دریافتی: با رمزگذاری روشن، قفل‌شده با گذرواژه تنظیمات؛ وگرنه همان zip. (داده، رمزدار؟)"""
-    data = backup_path(name).read_bytes()
+def seal(data: bytes) -> tuple[bytes, bool]:
+    """فایلی که از برنامه بیرون می‌رود (پشتیبان، واژه‌نامه): با رمزگذاری روشن، قفل‌شده با گذرواژه تنظیمات."""
     k = _load_key()
     if not k.get("enabled", True):
         return data, False
     if not k.get("key"):
-        raise BackupError("رمزگذاری پشتیبان روشن است ولی گذرواژه‌ای تنظیم نشده؛ ابتدا در همین بخش گذرواژه بگذارید.")
+        raise BackupError("رمزگذاری روشن است ولی گذرواژه‌ای تنظیم نشده؛ ابتدا در «تنظیمات ← پشتیبان‌گیری» گذرواژه بگذارید.")
     return vault.encrypt_with(data, k), True
+
+
+def unseal(blob: bytes, password: str = "") -> bytes:
+    """فایل رمزدار با کلید همین رایانه یا گذرواژه داده‌شده باز می‌شود؛ فایل بی‌رمز همان‌طور برمی‌گردد."""
+    if not vault.is_encrypted(blob):
+        return blob
+    try:
+        return vault.decrypt(blob, password, _load_key())
+    except vault.VaultError as e:
+        raise BackupError(str(e)) from None
+
+
+def export_backup(name: str) -> tuple[bytes, bool]:
+    """فایل پشتیبان برای دریافت. (داده، رمزدار؟)"""
+    return seal(backup_path(name).read_bytes())
 
 
 def import_backup(blob: bytes, password: str = "") -> dict:
     """پشتیبان (رمزدار یا zip) به فهرست پشتیبان‌ها افزوده می‌شود (بازگردانی جداگانه و با تأیید کاربر است)."""
     import io
+    data = unseal(blob, password)
     try:
-        data = vault.decrypt(blob, password, _load_key()) if vault.is_encrypted(blob) else blob
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             if json.loads(z.read("manifest.json")).get("app") != "voice2excel":
                 raise BackupError("این فایل، پشتیبان برنامه ثبت ویس نیست.")
-    except vault.VaultError as e:
-        raise BackupError(str(e)) from None
     except (zipfile.BadZipFile, KeyError, ValueError):
         raise BackupError("فایل پشتیبان خراب است یا پشتیبان «ثبت ویس» نیست.") from None
     target = backup_dir() / f"backup-{datetime.now():%Y%m%d-%H%M%S}-imported.zip"

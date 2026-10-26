@@ -167,3 +167,61 @@ def touch_by_name(db: Database, name: str, etype: str) -> None:
         touch(db, row["entity_id"])
 
 
+
+
+# ---------- انتقال واژه‌نامه به رایانه دیگر (بدون هیچ رکورد یا ویسی) ----------
+MAX_TRANSFER_ITEMS = 200_000
+_MAX_TEXT = 200
+
+
+def export_data(db: Database) -> dict:
+    """نام‌ها با همه شکل‌هایشان و اصلاحات یادگرفته‌شده؛ رکورد، متن ویس و شماره تلفن در آن نیست."""
+    from . import __version__
+
+    aliases: dict[int, list[str]] = {}
+    for r in db.q("SELECT entity_id, alias FROM aliases ORDER BY id"):
+        aliases.setdefault(r["entity_id"], []).append(r["alias"])
+    entities = [{"t": e["type"], "c": e["canonical"], "a": [a for a in aliases.get(e["id"], []) if a != e["canonical"]],
+                 "u": e["use_count"]} for e in db.q("SELECT id, type, canonical, use_count FROM entities ORDER BY id")]
+    corrections = [{"g": c["field_group"], "w": c["wrong"], "r": c["right"], "n": c["count"], "e": c["enabled"]}
+                   for c in db.q("SELECT * FROM corrections ORDER BY id")]
+    return {"app": "voice2excel", "type": "dictionary", "version": __version__, "created_at": now(),
+            "entities": entities, "corrections": corrections}
+
+
+def import_data(db: Database, data: dict) -> dict:
+    """افزودن به واژه‌نامه فعلی؛ چیزی پاک یا جایگزین نمی‌شود و نام تکراری دوباره اضافه نمی‌شود."""
+    from .learning import GROUP_LABELS
+
+    if not isinstance(data, dict) or data.get("app") != "voice2excel" or data.get("type") != "dictionary":
+        raise ValueError("این فایل، واژه‌نامه «ثبت ویس» نیست.")
+    entities, corrections = data.get("entities") or [], data.get("corrections") or []
+    if not isinstance(entities, list) or not isinstance(corrections, list) \
+            or len(entities) + len(corrections) > MAX_TRANSFER_ITEMS:
+        raise ValueError("فایل واژه‌نامه نامعتبر یا بیش از حد بزرگ است.")
+    ok = lambda s: isinstance(s, str) and 0 < len(s.strip()) <= _MAX_TEXT  # noqa: E731
+    before_e = db.one("SELECT COUNT(*) n FROM entities")["n"]
+    before_a = db.one("SELECT COUNT(*) n FROM aliases")["n"]
+    for e in entities:
+        if not isinstance(e, dict) or e.get("t") not in ENTITY_TYPES or not ok(e.get("c")):
+            continue
+        try:
+            eid = add_entity(db, e["c"], e["t"], source="import")
+        except ValueError:
+            continue
+        have = {r["alias"] for r in db.q("SELECT alias FROM aliases WHERE entity_id=?", (eid,))}
+        for a in (e.get("a") or [])[:50]:
+            if ok(a) and _clean(a, e["t"]) not in have:  # دوباره وارد کردن همان فایل، سابقه را شلوغ نکند
+                add_alias(db, eid, a, source="import")
+    added_c = 0
+    with db.tx() as c:
+        for x in corrections:
+            if not isinstance(x, dict) or x.get("g") not in GROUP_LABELS or not ok(x.get("w")) or not ok(x.get("r")):
+                continue
+            added_c += c.execute(
+                "INSERT OR IGNORE INTO corrections(field_group, wrong, right, count, enabled, created_at, last_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (x["g"], x["w"], x["r"], max(1, int(x.get("n") or 1)), 1 if x.get("e", 1) else 0, now(), now())).rowcount
+    new_e = db.one("SELECT COUNT(*) n FROM entities")["n"] - before_e
+    new_a = db.one("SELECT COUNT(*) n FROM aliases")["n"] - before_a - new_e  # بدون خود نام اصلی هر مورد تازه
+    return {"entities": new_e, "aliases": new_a, "corrections": added_c}
