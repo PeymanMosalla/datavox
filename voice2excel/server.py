@@ -1959,25 +1959,40 @@ def backups_restore(name: str):
     return res
 
 
-class PasswordIn(BaseModel):
-    password: str
+class BackupEncryptionIn(BaseModel):
+    enabled: bool
+    password: str = ""
+
+
+@app.get("/api/backups/encryption")
+def backups_encryption():
+    return backup.encryption_status()
+
+
+@app.put("/api/backups/encryption")
+def backups_encryption_set(body: BackupEncryptionIn):
+    try:
+        return backup.set_encryption(body.enabled, body.password)
+    except backup.BackupError as e:
+        err(400, str(e))
 
 
 @app.post("/api/backups/{name}/export")
-def backups_export(name: str, body: PasswordIn):
-    """دریافت پشتیبان فقط به‌صورت رمزدار (پیش‌تر فایل zip بی‌رمز با همه اطلاعات مشتریان دانلود می‌شد)."""
+def backups_export(name: str):
+    """دریافت پشتیبان؛ اگر رمزگذاری در تنظیمات روشن باشد با گذرواژه همان‌جا قفل می‌شود."""
     try:
-        data = backup.export_encrypted(name, body.password)
+        data, encrypted = backup.export_backup(name)
     except backup.BackupError as e:
         err(400, str(e))
+    filename = f"{Path(name).stem}.v2xbak" if encrypted else name
     return StreamingResponse(io.BytesIO(data), media_type="application/octet-stream",
-                             headers={"Content-Disposition": f'attachment; filename="{Path(name).stem}.v2xbak"'})
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.post("/api/backups/import")
-async def backups_import(file: UploadFile = File(...), password: str = Form(...)):
+async def backups_import(file: UploadFile = File(...), password: str = Form("")):
     try:
-        return backup.import_encrypted(await _read_upload(file, 1024 ** 3), password)
+        return backup.import_backup(await _read_upload(file, 1024 ** 3), password)
     except backup.BackupError as e:
         err(400, str(e))
 

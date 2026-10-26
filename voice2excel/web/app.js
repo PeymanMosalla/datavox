@@ -31,12 +31,12 @@ async function api(path, { method = "GET", body, form } = {}) {
 }
 
 /** فایلی که سرور در پاسخ یک POST می‌سازد (نمونه اکسل، پشتیبان رمزدار) دانلود می‌شود. */
-async function downloadPost(path, body, filename) {
+async function downloadPost(path, body, filename = "") {
   const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-V2X-Token": TOKEN }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || "ساخت فایل ناموفق بود.");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(await res.blob());
-  a.download = filename;
+  a.download = filename || (res.headers.get("content-disposition") || "").match(/filename="([^"]+)"/)?.[1] || "download";
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
@@ -2258,7 +2258,8 @@ async function renderSettings(el) {
         <div class="card-b" id="s-lan"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.shield} پشتیبان‌گیری</h2>
         <div class="row"><button class="btn" id="s-backup-import">${I.folder} افزودن از فایل</button><button class="btn primary" id="s-backup-now">${I.plus} پشتیبان‌گیری الان</button></div></div>
-        <div class="card-b small muted" style="padding:10px 20px">هر روز یک پشتیبان خودکار از اطلاعات برنامه (رکوردها، متن ویس‌ها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل) گرفته و ۱۴ پشتیبان آخر نگه داشته می‌شود. فایل‌های صوتی به‌خاطر حجم در پشتیبان نیستند. پیش از هر بازگردانی، از وضعیت فعلی هم پشتیبان گرفته می‌شود تا قابل برگشت باشد. پشتیبانی که دریافت می‌کنید (برای فلش یا رایانه دیگر) با گذرواژه قفل می‌شود.</div>
+        <div class="card-b small muted" style="padding:10px 20px">هر روز یک پشتیبان خودکار از اطلاعات برنامه (رکوردها، متن ویس‌ها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل) گرفته و ۱۴ پشتیبان آخر نگه داشته می‌شود. فایل‌های صوتی به‌خاطر حجم در پشتیبان نیستند. پیش از هر بازگردانی، از وضعیت فعلی هم پشتیبان گرفته می‌شود تا قابل برگشت باشد.</div>
+        <div class="card-b" id="s-benc" style="padding:10px 20px;border-top:1px solid var(--border)"></div>
         <div class="table-wrap" id="s-backups"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.trash} نگهداری، گزارش و حریم خصوصی</h2></div><div class="card-b stack">
         <div class="row">
@@ -2322,22 +2323,13 @@ async function renderSettings(el) {
       box.innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>نوع</th><th>محتوا</th><th>حجم</th><th></th></tr></thead><tbody>
         ${backups.map((b) => `<tr><td class="small">${fa((b.created_at || "").replace("T", " "))}</td><td>${esc(b.reason_label || b.reason)}${b.damaged ? " " + chip("err", "خراب") : ""}</td>
           <td class="small muted">${fa(b.counts?.audio_files ?? 0)} ویس، ${fa(b.counts?.records ?? 0)} رکورد، ${fa(b.counts?.entities ?? 0)} نام</td><td class="small">${fmtSize(b.size)}</td>
-          <td class="actions"><button class="btn sm ghost" data-bexport="${esc(b.name)}" title="دریافت با گذرواژه">${I.down}</button>
+          <td class="actions"><button class="btn sm ghost" data-bexport="${esc(b.name)}" title="دریافت فایل پشتیبان">${I.down}</button>
             ${b.damaged ? "" : `<button class="btn sm" data-restore="${esc(b.name)}">بازگردانی</button>`}</td></tr>`).join("")}</tbody></table>`;
       $$("[data-bexport]", box).forEach((btn) => btn.onclick = async () => {
-        const name = btn.dataset.bexport;
-        await openModal({
-          title: "دریافت پشتیبان رمزدار",
-          body: `<div class="stack"><div>این فایل همه اطلاعات مشتریان را دارد و با گذرواژه‌ای که اینجا می‌گذارید قفل می‌شود. بدون این گذرواژه، بازگردانی ممکن نیست؛ آن را جای امن یادداشت کنید.</div>
-            <label>گذرواژه (دست‌کم ۸ نویسه)<input class="input ltr" type="password" id="bx-p1" autocomplete="new-password"></label>
-            <label>تکرار گذرواژه<input class="input ltr" type="password" id="bx-p2" autocomplete="new-password"></label></div>`,
-          actions: [{ label: "دریافت", cls: "primary", onClick: async (m) => {
-            const p1 = $("#bx-p1", m).value, p2 = $("#bx-p2", m).value;
-            if (p1 !== p2) { toast("دو گذرواژه یکی نیستند.", "err"); return false; }
-            try { await downloadPost(`/api/backups/${encodeURIComponent(name)}/export`, { password: p1 }, name.replace(/\.zip$/, ".v2xbak")); return true; }
-            catch (e) { toastErr(e); return false; }
-          } }, { label: "انصراف", cls: "ghost", value: false }],
-        });
+        const enc = await api("/api/backups/encryption");
+        if (!enc.enabled && !(await confirmBox("دریافت پشتیبان بدون رمز", "رمزگذاری پشتیبان خاموش است؛ این فایل همه اطلاعات مشتریان را بدون قفل دارد و هر کس آن را داشته باشد می‌تواند بخواند. ادامه می‌دهید؟", "دریافت", "danger"))) return;
+        try { await downloadPost(`/api/backups/${encodeURIComponent(btn.dataset.bexport)}/export`, {}); }
+        catch (e) { toastErr(e); }
       });
       $$("[data-restore]", box).forEach((btn) => btn.onclick = async () => {
         const ok = await confirmBox("بازگردانی اطلاعات", `<div class="stack"><div class="alert warn">${I.alert}<div class="alert-body">همه رکوردها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل به وضعیت این پشتیبان برمی‌گردند.</div></div>
@@ -2350,10 +2342,35 @@ async function renderSettings(el) {
         } catch (e) { toastErr(e); }
       });
     };
+    const drawEnc = async () => {
+      const E = await api("/api/backups/encryption");
+      const box = $("#s-benc");
+      if (!box) return;
+      box.innerHTML = `<div class="stack">
+        <label class="check"><input type="checkbox" id="benc-on" ${E.enabled ? "checked" : ""}> پشتیبانی که دریافت می‌کنید (برای فلش یا رایانه دیگر) با گذرواژه قفل شود</label>
+        ${E.enabled ? `<div class="small ${E.has_password ? "muted" : ""}" ${E.has_password ? "" : 'style="color:var(--warn)"'}>${E.has_password
+          ? "گذرواژه تنظیم شده است. برای بازگردانی پشتیبان روی رایانه دیگر همین گذرواژه لازم است؛ آن را جای امن یادداشت کنید."
+          : "هنوز گذرواژه‌ای تنظیم نشده است؛ تا تنظیم نکنید، دریافت پشتیبان ممکن نیست."}</div>
+          <div class="row"><input class="input sm ltr" type="password" id="benc-p1" placeholder="${E.has_password ? "گذرواژه جدید" : "گذرواژه"} (دست‌کم ۸ نویسه)" autocomplete="new-password" style="max-width:220px">
+            <input class="input sm ltr" type="password" id="benc-p2" placeholder="تکرار گذرواژه" autocomplete="new-password" style="max-width:220px">
+            <button class="btn sm" id="benc-save">${E.has_password ? "تغییر گذرواژه" : "ذخیره گذرواژه"}</button></div>
+          ${E.has_password ? '<div class="muted small">با تغییر گذرواژه، پشتیبان‌هایی که قبلاً دریافت کرده‌اید همچنان با گذرواژه قبلی باز می‌شوند.</div>' : ""}`
+        : '<div class="small" style="color:var(--warn)">پشتیبان‌های دریافتی بدون رمز ذخیره می‌شوند.</div>'}</div>`;
+      $("#benc-on").onchange = async (e) => {
+        if (!e.target.checked && !(await confirmBox("خاموش کردن رمزگذاری پشتیبان", "از این به بعد فایل پشتیبانی که دریافت می‌کنید بدون قفل است و هر کس آن را داشته باشد، اطلاعات مشتریان را می‌بیند. ادامه می‌دهید؟", "خاموش شود", "danger"))) { e.target.checked = true; return; }
+        try { await api("/api/backups/encryption", { method: "PUT", body: { enabled: e.target.checked } }); drawEnc(); } catch (er) { toastErr(er); }
+      };
+      $("#benc-save")?.addEventListener("click", async () => {
+        const p1 = $("#benc-p1").value, p2 = $("#benc-p2").value;
+        if (p1 !== p2) return toast("دو گذرواژه یکی نیستند.", "err");
+        try { await api("/api/backups/encryption", { method: "PUT", body: { enabled: true, password: p1 } }); toast("گذرواژه پشتیبان ذخیره شد.", "ok"); drawEnc(); } catch (er) { toastErr(er); }
+      });
+    };
+    drawEnc().catch(() => {});
     $("#s-backup-import").onclick = () => openModal({
       title: "افزودن پشتیبان از فایل",
-      body: `<div class="stack"><label>فایل پشتیبان (.v2xbak)<input type="file" id="bi-file" accept=".v2xbak"></label>
-        <label>گذرواژه<input class="input ltr" type="password" id="bi-pw" autocomplete="off"></label></div>`,
+      body: `<div class="stack"><label>فایل پشتیبان (.v2xbak یا .zip)<input type="file" id="bi-file" accept=".v2xbak,.zip"></label>
+        <label>گذرواژه <span class="muted small">(فقط اگر با گذرواژه‌ای غیر از گذرواژه فعلی این رایانه قفل شده)</span><input class="input ltr" type="password" id="bi-pw" autocomplete="off"></label></div>`,
       actions: [{ label: "افزودن", cls: "primary", onClick: async (m) => {
         const f = $("#bi-file", m).files[0];
         if (!f) { toast("فایل پشتیبان را انتخاب کنید.", "err"); return false; }

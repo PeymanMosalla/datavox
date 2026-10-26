@@ -259,28 +259,43 @@ def test_path_traversal_in_names_rejected(db, monkeypatch):
 
 
 # ---------- ۵. پشتیبان رمزدار ----------
-def test_backup_leaves_app_only_encrypted(db, monkeypatch):
+def test_backup_encryption_optional_from_settings(db, monkeypatch, tmp_path):
     from voice2excel import backup, vault
     monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(backup, "_key_file", lambda: tmp_path / "backup-key.json")
     db.log_event("نام مشتری محرمانه")
     made = backup.create_backup(db, "manual")
+    export = f"/api/backups/{made['name']}/export"
+    imp = lambda c, blob, pw="": c.post("/api/backups/import", files={"file": ("b", blob, "application/octet-stream")},  # noqa: E731
+                                        data={"password": pw})
     with _client(**server.auth_headers()) as c:
-        assert c.get(f"/api/backups/{made['name']}/download").status_code in (404, 405)  # دانلود بی‌رمز دیگر نیست
-        assert c.post(f"/api/backups/{made['name']}/export", json={"password": "short"}).status_code == 400
-        r = c.post(f"/api/backups/{made['name']}/export", json={"password": "رمز-خیلی-امن"})
-        assert r.status_code == 200 and vault.is_encrypted(r.content)
+        assert c.get(f"/api/backups/{made['name']}/download").status_code in (404, 405)
+        # پیش‌فرض: روشن ولی بدون گذرواژه ← دریافت ممکن نیست تا گذرواژه تنظیم شود
+        assert c.get("/api/backups/encryption").json() == {"enabled": True, "has_password": False}
+        assert c.post(export).status_code == 400
+        assert c.put("/api/backups/encryption", json={"enabled": True, "password": "short"}).status_code == 400
+        assert c.put("/api/backups/encryption", json={"enabled": True, "password": "رمز-خیلی-امن"}).json()["has_password"]
+        assert "رمز-خیلی-امن" not in (tmp_path / "backup-key.json").read_text(encoding="utf-8")  # خود گذرواژه ذخیره نمی‌شود
+        r = c.post(export)
+        assert r.status_code == 200 and vault.is_encrypted(r.content) and ".v2xbak" in r.headers["content-disposition"]
         assert "محرمانه".encode() not in r.content and b"SQLite format" not in r.content
         blob = r.content
-        bad = c.post("/api/backups/import", files={"file": ("b.v2xbak", blob, "application/octet-stream")},
-                     data={"password": "wrong-password"})
-        assert bad.status_code == 400 and "گذرواژه" in bad.json()["detail"]
+        assert imp(c, blob).json()["reason"] == "imported"  # روی همین رایانه بدون پرسیدن گذرواژه
         tampered = blob[:100] + bytes([blob[100] ^ 1]) + blob[101:]
-        assert c.post("/api/backups/import", files={"file": ("b.v2xbak", tampered, "application/octet-stream")},
-                      data={"password": "رمز-خیلی-امن"}).status_code == 400
-        ok = c.post("/api/backups/import", files={"file": ("b.v2xbak", blob, "application/octet-stream")},
-                    data={"password": "رمز-خیلی-امن"})
-        assert ok.status_code == 200 and ok.json()["reason"] == "imported"
+        assert imp(c, tampered).status_code == 400
+        # گذرواژه عوض شد: فایل قبلی فقط با گذرواژه قبلی باز می‌شود
+        c.put("/api/backups/encryption", json={"enabled": True, "password": "گذرواژه-تازه-۲"})
+        assert "گذرواژه آن را وارد کنید" in imp(c, blob).json()["detail"]
+        assert imp(c, blob, "wrong-password").status_code == 400
+        assert imp(c, blob, "رمز-خیلی-امن").status_code == 200
+        # خاموش: فایل zip بی‌رمز (کاربر آگاهانه خاموش کرده) و همان zip دوباره وارد می‌شود
+        assert c.put("/api/backups/encryption", json={"enabled": False}).json() == {"enabled": False, "has_password": True}
+        plain = c.post(export)
+        assert plain.status_code == 200 and plain.content.startswith(b"PK") and ".zip" in plain.headers["content-disposition"]
+        ok = imp(c, plain.content)
+        assert ok.status_code == 200
         assert c.post(f"/api/backups/{ok.json()['name']}/restore").status_code == 200
+        assert imp(c, b"not a backup").status_code == 400
 
 
 def test_vault_rejects_absurd_iteration_count():

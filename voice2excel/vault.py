@@ -38,27 +38,45 @@ def _xor_stream(key: bytes, nonce: bytes, data: bytes) -> bytes:
     return bytes(out)
 
 
-def encrypt(data: bytes, password: str) -> bytes:
+def derive(password: str) -> dict:
+    """کلید ساخته‌شده از گذرواژه (برای نگه‌داشتن در تنظیمات به‌جای خود گذرواژه)."""
     if len(password) < MIN_PASSWORD:
         raise VaultError(f"گذرواژه باید دست‌کم {MIN_PASSWORD} نویسه باشد.")
-    salt, nonce = os.urandom(16), os.urandom(16)
+    salt = os.urandom(16)
     enc_key, mac_key = _keys(password, salt, ITERATIONS)
-    body = MAGIC + salt + nonce + struct.pack(">I", ITERATIONS) + _xor_stream(enc_key, nonce, data)
-    return body + hmac.new(mac_key, body, hashlib.sha256).digest()
+    return {"salt": salt.hex(), "iterations": ITERATIONS, "key": (enc_key + mac_key).hex()}
+
+
+def encrypt_with(data: bytes, key: dict) -> bytes:
+    salt, raw = bytes.fromhex(key["salt"]), bytes.fromhex(key["key"])
+    nonce = os.urandom(16)
+    body = MAGIC + salt + nonce + struct.pack(">I", key["iterations"]) + _xor_stream(raw[:32], nonce, data)
+    return body + hmac.new(raw[32:], body, hashlib.sha256).digest()
+
+
+def encrypt(data: bytes, password: str) -> bytes:
+    return encrypt_with(data, derive(password))
 
 
 def is_encrypted(head: bytes) -> bool:
     return head.startswith(MAGIC)
 
 
-def decrypt(blob: bytes, password: str) -> bytes:
+def decrypt(blob: bytes, password: str = "", key: dict | None = None) -> bytes:
+    """با کلید ذخیره‌شده (اگر همین فایل با آن قفل شده) یا با گذرواژه."""
     if not is_encrypted(blob) or len(blob) < _HEAD + 32:
         raise VaultError("این فایل، پشتیبان رمزدار «ثبت ویس» نیست.")
     salt, nonce = blob[5:21], blob[21:37]
     (iterations,) = struct.unpack(">I", blob[37:41])
-    if not 100_000 <= iterations <= 10_000_000:  # فایل دست‌کاری‌شده برنامه را با شمارش بی‌پایان معطل نکند
-        raise VaultError("این فایل خراب است.")
-    enc_key, mac_key = _keys(password, salt, iterations)
+    if key and bytes.fromhex(key["salt"]) == salt and key["iterations"] == iterations:
+        raw = bytes.fromhex(key["key"])
+        enc_key, mac_key = raw[:32], raw[32:]
+    elif password:
+        if not 100_000 <= iterations <= 10_000_000:  # فایل دست‌کاری‌شده برنامه را با شمارش بی‌پایان معطل نکند
+            raise VaultError("این فایل خراب است.")
+        enc_key, mac_key = _keys(password, salt, iterations)
+    else:
+        raise VaultError("این پشتیبان با گذرواژه دیگری قفل شده است؛ گذرواژه آن را وارد کنید.")
     body, tag = blob[:-32], blob[-32:]
     if not hmac.compare_digest(hmac.new(mac_key, body, hashlib.sha256).digest(), tag):
         raise VaultError("گذرواژه نادرست است یا فایل تغییر کرده است.")

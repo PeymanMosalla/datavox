@@ -114,26 +114,59 @@ def backup_path(name: str) -> Path:
     return p
 
 
-def export_encrypted(name: str, password: str) -> bytes:
-    """پشتیبانی که از برنامه بیرون برده می‌شود (فلش، ایمیل) همیشه با گذرواژه رمزدار است."""
+# ---------- رمزگذاری پشتیبانِ دریافتی (اختیاری، از تنظیمات) ----------
+# خود گذرواژه جایی ذخیره نمی‌شود؛ فقط کلید ساخته‌شده از آن (برای قفل کردن بدون پرسیدن دوباره)
+def _key_file() -> Path:
+    return DATA_DIR / "backup-key.json"
+
+
+def _load_key() -> dict:
     try:
-        return vault.encrypt(backup_path(name).read_bytes(), password)
-    except vault.VaultError as e:
-        raise BackupError(str(e)) from None
+        return json.loads(_key_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"enabled": True}  # پیش‌فرض: روشن (پشتیبان بی‌رمز فقط با خاموش کردن آگاهانه)
 
 
-def import_encrypted(blob: bytes, password: str) -> dict:
-    """پشتیبان رمزدار به فهرست پشتیبان‌ها افزوده می‌شود (بازگردانی جداگانه و با تأیید کاربر است)."""
+def encryption_status() -> dict:
+    k = _load_key()
+    return {"enabled": bool(k.get("enabled", True)), "has_password": bool(k.get("key"))}
+
+
+def set_encryption(enabled: bool, password: str = "") -> dict:
+    k = _load_key()
+    k["enabled"] = enabled
+    if password:
+        try:
+            k.update(vault.derive(password))
+        except vault.VaultError as e:
+            raise BackupError(str(e)) from None
+    _key_file().write_text(json.dumps(k), encoding="utf-8")
+    return encryption_status()
+
+
+def export_backup(name: str) -> tuple[bytes, bool]:
+    """فایل دریافتی: با رمزگذاری روشن، قفل‌شده با گذرواژه تنظیمات؛ وگرنه همان zip. (داده، رمزدار؟)"""
+    data = backup_path(name).read_bytes()
+    k = _load_key()
+    if not k.get("enabled", True):
+        return data, False
+    if not k.get("key"):
+        raise BackupError("رمزگذاری پشتیبان روشن است ولی گذرواژه‌ای تنظیم نشده؛ ابتدا در همین بخش گذرواژه بگذارید.")
+    return vault.encrypt_with(data, k), True
+
+
+def import_backup(blob: bytes, password: str = "") -> dict:
+    """پشتیبان (رمزدار یا zip) به فهرست پشتیبان‌ها افزوده می‌شود (بازگردانی جداگانه و با تأیید کاربر است)."""
     import io
     try:
-        data = vault.decrypt(blob, password)
+        data = vault.decrypt(blob, password, _load_key()) if vault.is_encrypted(blob) else blob
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             if json.loads(z.read("manifest.json")).get("app") != "voice2excel":
                 raise BackupError("این فایل، پشتیبان برنامه ثبت ویس نیست.")
     except vault.VaultError as e:
         raise BackupError(str(e)) from None
     except (zipfile.BadZipFile, KeyError, ValueError):
-        raise BackupError("فایل پشتیبان خراب است.") from None
+        raise BackupError("فایل پشتیبان خراب است یا پشتیبان «ثبت ویس» نیست.") from None
     target = backup_dir() / f"backup-{datetime.now():%Y%m%d-%H%M%S}-imported.zip"
     target.write_bytes(data)
     return next(b for b in list_backups() if b["name"] == target.name)
