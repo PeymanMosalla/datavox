@@ -98,3 +98,30 @@ def test_trial_then_expired_then_licensed(db, lic, monkeypatch, wav_factory):
         assert up(c).status_code == 200
         trial.record_voice()  # با اشتراک شمرده نمی‌شود (note_processed)، ولی حتی اگر شود، مهم نیست
         assert c.get("/api/license").json()["mode"] == "licensed"
+
+
+def test_subscription_lapse_and_renewal_reminder(db, lic, monkeypatch):
+    """اشتراک یک‌ساله: روزهای مانده گزارش می‌شود؛ پس از پایان، «تمدید» (نه «آزمایشی») و رکوردها باز."""
+    from voice2excel import trial
+    licensing.install(_make(expires=(date.today() + timedelta(days=10)).isoformat()))
+    st = licensing.status()
+    assert st["mode"] == "licensed" and st["days_left"] == 10
+    licensing.LICENSE_FILE.write_text(_make(expires=(date.today() - timedelta(days=1)).isoformat()), encoding="utf-8")
+    licensing._cache["key"] = None
+    trial._write_all({"m": licensing.machine_code(), "s": "2020-01-01", "d": date.today().isoformat(), "v": 0})
+    st = licensing.status()
+    assert st["mode"] == "expired" and st["lapsed"] and not licensing.can_process()
+    assert licensing.install(_make())["mode"] == "licensed"  # مجوز نامحدود تازه
+    assert "days_left" not in licensing.status()
+
+
+def test_contact_info_shown_only_when_set(db, lic, monkeypatch, tmp_path):
+    import json
+    from pathlib import Path
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    real = Path(licensing.__file__).parent / "assets" / "contact.json"
+    assert set(json.loads(real.read_text(encoding="utf-8"))) == {"name", "phone", "telegram", "whatsapp"}
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765",
+                    headers=server.auth_headers()) as c:
+        info = c.get("/api/license").json()
+        assert set(info["contact"]) == {"name", "phone", "telegram", "whatsapp"} and info["version"]

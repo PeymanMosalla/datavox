@@ -411,7 +411,8 @@ def shutdown():
 def _license_out() -> dict:
     st = licensing.status()
     exp = st.get("expires")
-    return {**st, "expires_jalali": format_jalali(from_gregorian(datetime.fromisoformat(exp).date())) if exp else None}
+    return {**st, "expires_jalali": format_jalali(from_gregorian(datetime.fromisoformat(exp).date())) if exp else None,
+            "contact": licensing.contact(), "version": __version__}
 
 
 @app.get("/api/license")

@@ -241,11 +241,13 @@ function renderBanners() {
     out.push(`<div class="alert err">${I.alert}<div class="alert-body"><b>پردازش متوقف شد</b>${esc(s.worker.last_error)}</div></div>`);
   }
   const L = state.lic;
-  if (L && state.page !== "activate" && (L.mode === "trial" || L.mode === "expired")) {
+  if (L && state.page !== "activate") {
     const T = L.trial;
-    out.push(L.mode === "trial"
-      ? `<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است؛ هرکدام زودتر تمام شود.</div><a class="btn sm" href="#/activate">فعال‌سازی</a></div>`
+    if (L.mode === "trial") out.push(`<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است؛ هرکدام زودتر تمام شود.</div><a class="btn sm" href="#/activate">فعال‌سازی</a></div>`);
+    else if (L.mode === "expired") out.push(L.lapsed
+      ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">تمدید اشتراک</a></div>`
       : `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>برای پردازش ویس تازه، برنامه را فعال کنید. رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">فعال‌سازی</a></div>`);
+    else if (L.mode === "licensed" && L.days_left != null && L.days_left <= 15) out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما ${L.days_left <= 0 ? "امروز" : `تا ${fa(L.days_left)} روز دیگر`} تمام می‌شود</b>برای ادامه کار بدون وقفه، اشتراک را تمدید کنید.</div><a class="btn sm" href="#/activate">تمدید اشتراک</a></div>`);
   }
   if (s.pending_replace && state.page === "excel") {
     out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>خروجی اکسل هنوز جایگزین فایل اصلی نشده</b>${fa(s.pending_replace)} خروجی ساخته شده که هنوز روی فایل اصلی شرکت اعمال نشده است. پس از بررسی، از بخش «ثبت در اکسل» جایگزینش کنید.</div><a class="btn sm" href="#/excel">مشاهده</a></div>`);
@@ -2282,7 +2284,7 @@ async function renderSettings(el) {
             <dt>حافظه فعلی برنامه</dt><dd>${d.system.process_mb ? fa(d.system.process_mb) + " مگابایت" : "—"}</dd>
             <dt>بیشینه حافظه در پردازش</dt><dd>${p.peak ? fa(Math.round(p.peak)) + " مگابایت" : "—"}</dd>
             <dt>میانگین زمان هر ویس</dt><dd>${p.avg_s ? fmtSec(p.avg_s) + (p.avg_d ? ` برای ویس ${fmtSec(p.avg_d)}` : "") : "—"} ${p.n ? `<span class="muted">(${fa(p.n)} ویس)</span>` : ""}</dd>
-            <dt>مجوز</dt><dd>${d.license.customer ? esc(d.license.customer) + (d.license.expires_jalali ? ` — تا ${fa(d.license.expires_jalali)}` : "") : "—"} <span class="muted small ltr">${esc(d.license.machine)}</span></dd>
+            <dt>اشتراک</dt><dd>${d.license.mode === "licensed" ? esc(d.license.customer || "فعال") + (d.license.expires_jalali ? ` — تا ${fa(d.license.expires_jalali)}` : " — نامحدود") : d.license.mode === "trial" ? "آزمایشی" : d.license.mode === "expired" ? "تمام‌شده" : "—"} <span class="muted small ltr">${esc(d.license.machine)}</span> <a class="small" href="#/activate">${d.license.mode === "licensed" ? "تمدید" : "فعال‌سازی"}</a></dd>
             <dt>هسته‌های CPU</dt><dd>${fa(d.system.cpu_count)}</dd>
             <dt>پوشه داده‌ها</dt><dd><span class="path">${esc(d.system.data_dir)}</span></dd>
             <dt>پوشه مدل‌ها</dt><dd><span class="path">${esc(d.system.models_dir)}</span></dd></dl>
@@ -2561,27 +2563,69 @@ async function refreshLicense() {
   try { state.lic = await api("/api/license"); renderBanners(); } catch { }
 }
 
+/** پیام آماده درخواست اشتراک یا تمدید برای فروشنده (نام، تلفن، کد رایانه). */
+function requestMessage(lic, name, phone) {
+  const renew = lic.mode === "licensed" || lic.lapsed;
+  return [renew ? "درخواست تمدید اشتراک «ثبت ویس»" : "درخواست اشتراک «ثبت ویس»",
+    `نام: ${name || "—"}`, `تلفن: ${phone || "—"}`, `کد رایانه: ${lic.machine}`, `نسخه: ${lic.version}`].join("\n");
+}
+/** شماره واتس‌اپ به قالب بین‌المللی (۰۹۱۲… ← ۹۸۹۱۲…). */
+function waNumber(n) {
+  const d = String(n || "").replace(/[۰-۹]/g, (c) => "۰۱۲۳۴۵۶۷۸۹".indexOf(c)).replace(/\D/g, "");
+  return d.startsWith("00") ? d.slice(2) : d.startsWith("0") ? "98" + d.slice(1) : d;
+}
+
 async function renderActivation(el) {
   const lic = state.lic = await api("/api/license");
-  const T = lic.trial;
-  el.innerHTML = `<div class="card" style="max-width:640px"><div class="card-b stack">
-    ${lic.mode === "licensed" ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>برنامه فعال است</b>${esc(lic.customer || "")}${lic.expires_jalali ? ` — تا ${fa(lic.expires_jalali)}` : ""}</div></div>` : ""}
+  const T = lic.trial, C = lic.contact || {};
+  const renew = lic.mode === "licensed" || lic.lapsed;
+  const saved = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
+  el.innerHTML = `<div class="stack" style="max-width:680px">
+    ${lic.mode === "licensed" ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>برنامه فعال است</b>${esc(lic.customer || "")}${lic.expires_jalali ? ` — اشتراک تا ${fa(lic.expires_jalali)}` : " — اشتراک نامحدود"}</div></div>` : ""}
     ${lic.mode === "trial" ? `<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است.</div></div>` : ""}
-    ${lic.mode === "expired" ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>${T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است."} رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
+    ${lic.mode === "expired" && lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
+    ${lic.mode === "expired" && !lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>${T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است."} رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
     ${T?.clock_back ? `<div class="alert warn">${I.alert}<div class="alert-body">تاریخ رایانه عقب‌تر از تاریخ‌های قبلی است؛ تاریخ و ساعت ویندوز را درست کنید.</div></div>` : ""}
-    ${lic.error ? `<div class="alert warn">${I.alert}<div class="alert-body">${esc(lic.error)}</div></div>` : ""}
-    <div>برای فعال‌سازی روی این رایانه، کد زیر را برای فروشنده بفرستید تا فایل مجوز را برایتان بفرستد.</div>
-    <div class="row"><b class="ltr" id="act-code" style="font-size:20px;letter-spacing:2px">${esc(lic.machine)}</b>
-      <button class="btn sm" id="act-copy">کپی کد</button></div>
-    <label class="stack" style="gap:6px">فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
-      <textarea class="input ltr" id="act-text" rows="4" placeholder="V2X1...." style="width:100%"></textarea></label>
-    <div class="row"><input type="file" id="act-file" accept=".v2x,.txt" hidden>
-      <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
-      <button class="btn primary" id="act-go">${I.check} فعال‌سازی</button></div>
-  </div></div>`;
-  $("#act-copy").onclick = async () => {
-    try { await navigator.clipboard.writeText(lic.machine); toast("کد کپی شد.", "ok"); } catch { toast("کد را انتخاب و کپی کنید."); }
+    ${lic.error && !lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body">${esc(lic.error)}</div></div>` : ""}
+    <div class="card"><div class="card-h"><h2><span class="n">۱</span> ${renew ? "درخواست تمدید" : "درخواست اشتراک"}</h2></div><div class="card-b stack">
+      <div class="row"><span class="muted small">کد این رایانه:</span><b class="ltr" style="font-size:18px;letter-spacing:2px">${esc(lic.machine)}</b>
+        <button class="btn sm" id="act-copy">کپی کد</button></div>
+      <div class="row"><input class="input" id="act-name" placeholder="نام شما یا نام شرکت" value="${esc(saved("v2x.act.name") || lic.customer || "")}" style="max-width:260px">
+        <input class="input ltr" id="act-phone" placeholder="شماره تماس شما" value="${esc(saved("v2x.act.phone"))}" style="max-width:200px"></div>
+      <div class="muted small">پیام زیر با کد رایانه آماده شده است؛ با یکی از راه‌های زیر برای ${esc(C.name || "فروشنده")} بفرستید:</div>
+      <textarea class="input" id="act-msg" rows="5" readonly style="width:100%"></textarea>
+      <div class="row">
+        ${C.telegram ? `<a class="btn" id="act-tg" target="_blank" rel="noopener">ارسال در تلگرام</a>` : ""}
+        ${C.whatsapp ? `<a class="btn" id="act-wa" target="_blank" rel="noopener">ارسال در واتس‌اپ</a>` : ""}
+        <button class="btn" id="act-copymsg">کپی پیام</button>
+        ${C.phone ? `<span class="small">تلفن: <b class="ltr">${esc(C.phone)}</b></span>` : ""}
+      </div>
+      ${!C.telegram && !C.whatsapp && !C.phone ? `<div class="muted small">پیام را کپی کنید و برای فروشنده بفرستید.</div>` : ""}
+      <div class="muted small">فروشنده پس از پرداخت، یک فایل مجوز (یا یک متن که با V2X1 شروع می‌شود) برایتان می‌فرستد. برای این کار اینترنت لازم نیست.</div>
+    </div></div>
+    <div class="card"><div class="card-h"><h2><span class="n">۲</span> وارد کردن مجوز</h2></div><div class="card-b stack">
+      <label class="stack" style="gap:6px">فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
+        <textarea class="input ltr" id="act-text" rows="3" placeholder="V2X1...." style="width:100%"></textarea></label>
+      <div class="row"><input type="file" id="act-file" accept=".v2x,.txt" hidden>
+        <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
+        <button class="btn primary" id="act-go">${I.check} فعال‌سازی</button></div>
+    </div></div>
+  </div>`;
+  const update = () => {
+    const name = $("#act-name").value.trim(), phone = $("#act-phone").value.trim();
+    try { localStorage.setItem("v2x.act.name", name); localStorage.setItem("v2x.act.phone", phone); } catch { }
+    const msg = requestMessage(lic, name, phone);
+    $("#act-msg").value = msg;
+    if ($("#act-tg")) $("#act-tg").href = `https://t.me/${encodeURIComponent(C.telegram.replace(/^@/, ""))}?text=${encodeURIComponent(msg)}`;
+    if ($("#act-wa")) $("#act-wa").href = `https://wa.me/${waNumber(C.whatsapp)}?text=${encodeURIComponent(msg)}`;
   };
+  $("#act-name").oninput = $("#act-phone").oninput = update;
+  update();
+  const copy = async (text, ok) => {
+    try { await navigator.clipboard.writeText(text); toast(ok, "ok"); } catch { toast("متن را انتخاب و کپی کنید."); }
+  };
+  $("#act-copy").onclick = () => copy(lic.machine, "کد کپی شد.");
+  $("#act-copymsg").onclick = () => copy($("#act-msg").value, "پیام کپی شد.");
   $("#act-pick").onclick = () => $("#act-file").click();
   $("#act-file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("#act-text").value = (await f.text()).trim(); };
   $("#act-go").onclick = async () => {

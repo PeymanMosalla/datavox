@@ -35,6 +35,10 @@ class LicenseError(Exception):
     """پیام قابل فهم برای کاربر."""
 
 
+class LicenseLapsed(LicenseError):
+    """مجوز درست است ولی مهلت اشتراک گذشته (برای پیام «تمدید» به‌جای «فعال‌سازی»)."""
+
+
 def _machine_guid() -> str:
     try:
         import winreg
@@ -100,7 +104,7 @@ def evaluate(text: str) -> dict:
         if (seen - today).days > 2:
             raise LicenseError("تاریخ رایانه به عقب برگشته است؛ تاریخ را درست کنید.")
         if today > date.fromisoformat(exp):
-            raise LicenseError("مهلت این مجوز تمام شده است؛ برای تمدید با فروشنده تماس بگیرید.")
+            raise LicenseLapsed("مهلت اشتراک تمام شده است؛ برای تمدید با فروشنده تماس بگیرید.")
         if today > seen:
             try:
                 SEEN_FILE.write_text(today.isoformat(), encoding="utf-8")
@@ -130,7 +134,7 @@ def _license() -> dict:
                 lic = {"licensed": True, "customer": data.get("customer", ""), "expires": data.get("expires"),
                        "features": data.get("features", [])}
             except LicenseError as e:
-                lic = {"licensed": False, "error": str(e)}
+                lic = {"licensed": False, "error": str(e), "lapsed": isinstance(e, LicenseLapsed)}
         _cache.update(key=key, at=time.time(), status=lic)
         return lic
 
@@ -153,11 +157,22 @@ def status() -> dict:
     st = {"required": REQUIRED, "machine": machine_code(), **lic}
     if not REQUIRED or lic["licensed"]:
         st.update(ok=True, mode="licensed" if lic["licensed"] else "dev")
+        if lic.get("expires"):
+            st["days_left"] = (date.fromisoformat(lic["expires"]) - _today()).days
         return st
     from . import trial
     t = trial.info()
     st.update(ok=t["active"], mode="trial" if t["active"] else "expired", trial=t)
     return st
+
+
+def contact() -> dict:
+    """راه‌های تماس فروشنده (از پنل فروشنده در بسته قرار می‌گیرد؛ خالی‌ها نمایش داده نمی‌شوند)."""
+    try:
+        data = json.loads((Path(__file__).resolve().parent / "assets" / "contact.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: str(data.get(k) or "").strip()[:80] for k in ("name", "phone", "telegram", "whatsapp")}
 
 
 def install(text: str) -> dict:
