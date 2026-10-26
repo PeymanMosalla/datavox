@@ -21,7 +21,7 @@ async function api(path, { method = "GET", body, form } = {}) {
   catch { throw new Error("ارتباط با برنامه برقرار نشد. آیا پنجره برنامه (run.bat) باز است؟"); }
   const ct = res.headers.get("content-type") || "";
   const data = ct.includes("json") ? await res.json() : await res.text();
-  if (res.status === 402 && data?.license && !path.startsWith("/api/license")) location.reload();  // مجوز در میانه کار تمام شد
+  if (res.status === 402 && data?.license) refreshLicense();  // دوره آزمایشی در میانه کار تمام شد: نوار وضعیت به‌روز شود
   if (!res.ok) {
     let msg = data && data.detail ? data.detail : "خطا در انجام درخواست";
     if (Array.isArray(msg)) msg = "اطلاعات ارسالی نامعتبر است.";
@@ -240,6 +240,13 @@ function renderBanners() {
   if (s.worker.last_error && !s.worker.running) {
     out.push(`<div class="alert err">${I.alert}<div class="alert-body"><b>پردازش متوقف شد</b>${esc(s.worker.last_error)}</div></div>`);
   }
+  const L = state.lic;
+  if (L && state.page !== "activate" && (L.mode === "trial" || L.mode === "expired")) {
+    const T = L.trial;
+    out.push(L.mode === "trial"
+      ? `<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است؛ هرکدام زودتر تمام شود.</div><a class="btn sm" href="#/activate">فعال‌سازی</a></div>`
+      : `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>برای پردازش ویس تازه، برنامه را فعال کنید. رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">فعال‌سازی</a></div>`);
+  }
   if (s.pending_replace && state.page === "excel") {
     out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>خروجی اکسل هنوز جایگزین فایل اصلی نشده</b>${fa(s.pending_replace)} خروجی ساخته شده که هنوز روی فایل اصلی شرکت اعمال نشده است. پس از بررسی، از بخش «ثبت در اکسل» جایگزینش کنید.</div><a class="btn sm" href="#/excel">مشاهده</a></div>`);
   }
@@ -256,6 +263,7 @@ const PAGES = {
   excel: { title: "ثبت در اکسل", sub: "اتصال امن به فایل اکسل شرکت، پیش‌نمایش و ثبت روی کپی", render: renderExcel },
   dictionary: { title: "واژه‌نامه", sub: "نام‌های تأییدشده مهندس‌ها، پروژه‌ها و خیابان‌ها", render: renderDictionary },
   settings: { title: "تنظیمات", sub: "مدل گفتار، قواعد اعتبارسنجی و نگهداری", render: renderSettings },
+  activate: { title: "فعال‌سازی برنامه", sub: "مجوز این رایانه", render: (el) => renderActivation(el) },
 };
 let pageHooks = {};
 let routeSeq = 0;
@@ -2549,17 +2557,24 @@ async function importSamples() {
 
 // ---------------- شروع ----------------
 // ---------- فعال‌سازی (مجوز آفلاین) ----------
-function renderActivation(lic) {
-  document.documentElement.classList.add("activation");
-  $("#page-title").textContent = "فعال‌سازی برنامه";
-  $("#page-sub").textContent = "";
-  $("#page").innerHTML = `<div class="card" style="max-width:640px"><div class="card-b stack">
+async function refreshLicense() {
+  try { state.lic = await api("/api/license"); renderBanners(); } catch { }
+}
+
+async function renderActivation(el) {
+  const lic = state.lic = await api("/api/license");
+  const T = lic.trial;
+  el.innerHTML = `<div class="card" style="max-width:640px"><div class="card-b stack">
+    ${lic.mode === "licensed" ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>برنامه فعال است</b>${esc(lic.customer || "")}${lic.expires_jalali ? ` — تا ${fa(lic.expires_jalali)}` : ""}</div></div>` : ""}
+    ${lic.mode === "trial" ? `<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است.</div></div>` : ""}
+    ${lic.mode === "expired" ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>${T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است."} رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
+    ${T?.clock_back ? `<div class="alert warn">${I.alert}<div class="alert-body">تاریخ رایانه عقب‌تر از تاریخ‌های قبلی است؛ تاریخ و ساعت ویندوز را درست کنید.</div></div>` : ""}
     ${lic.error ? `<div class="alert warn">${I.alert}<div class="alert-body">${esc(lic.error)}</div></div>` : ""}
-    <div>برای استفاده از برنامه روی این رایانه، کد زیر را برای فروشنده بفرستید تا فایل مجوز را برایتان بفرستد.</div>
+    <div>برای فعال‌سازی روی این رایانه، کد زیر را برای فروشنده بفرستید تا فایل مجوز را برایتان بفرستد.</div>
     <div class="row"><b class="ltr" id="act-code" style="font-size:20px;letter-spacing:2px">${esc(lic.machine)}</b>
       <button class="btn sm" id="act-copy">کپی کد</button></div>
-    <label>فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
-      <textarea class="input ltr" id="act-text" rows="4" placeholder="V2X1...."></textarea></label>
+    <label class="stack" style="gap:6px">فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
+      <textarea class="input ltr" id="act-text" rows="4" placeholder="V2X1...." style="width:100%"></textarea></label>
     <div class="row"><input type="file" id="act-file" accept=".v2x,.txt" hidden>
       <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
       <button class="btn primary" id="act-go">${I.check} فعال‌سازی</button></div>
@@ -2570,18 +2585,16 @@ function renderActivation(lic) {
   $("#act-pick").onclick = () => $("#act-file").click();
   $("#act-file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("#act-text").value = (await f.text()).trim(); };
   $("#act-go").onclick = async () => {
-    try { await api("/api/license", { method: "POST", body: { text: $("#act-text").value } }); toast("برنامه فعال شد.", "ok"); setTimeout(() => location.reload(), 600); }
+    try { await api("/api/license", { method: "POST", body: { text: $("#act-text").value } }); toast("برنامه فعال شد.", "ok"); location.hash = "#/today"; setTimeout(() => location.reload(), 600); }
     catch (e) { toastErr(e); }
   };
 }
 
 (async function init() {
-  try {
-    const lic = await api("/api/license");
-    if (!lic.ok) return renderActivation(lic);
-  } catch (e) { toastErr(e); }
+  await refreshLicense();
   try { state.meta = await api("/api/meta"); } catch (e) { toastErr(e); }
   await refreshStatus();
   route();
   setInterval(refreshStatus, 1500);
+  setInterval(refreshLicense, 30000);  // شمار ویس و روز آزمایشی
 })();

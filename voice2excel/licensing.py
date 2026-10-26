@@ -113,8 +113,8 @@ _cache = {"key": None, "at": 0.0, "status": None}
 _lock = threading.Lock()
 
 
-def status() -> dict:
-    """وضعیت مجوز (با حافظه کوتاه، چون بررسی امضا در هر درخواست لازم نیست)."""
+def _license() -> dict:
+    """نتیجه بررسی فایل مجوز (با حافظه کوتاه، چون بررسی امضا در هر درخواست لازم نیست)."""
     try:
         mtime = LICENSE_FILE.stat().st_mtime
     except OSError:
@@ -123,18 +123,41 @@ def status() -> dict:
     with _lock:
         if _cache["key"] == key and time.time() - _cache["at"] < 600:
             return _cache["status"]
-        st = {"required": REQUIRED, "machine": machine_code(), "ok": not REQUIRED}
+        lic: dict = {"licensed": False}
         if mtime is not None:
             try:
                 data = evaluate(LICENSE_FILE.read_text(encoding="utf-8"))
-                st.update(ok=True, customer=data.get("customer", ""), expires=data.get("expires"),
-                          features=data.get("features", []))
+                lic = {"licensed": True, "customer": data.get("customer", ""), "expires": data.get("expires"),
+                       "features": data.get("features", [])}
             except LicenseError as e:
-                st.update(ok=not REQUIRED, error=str(e))
-        elif REQUIRED:
-            st["error"] = "برنامه هنوز فعال نشده است."
-        _cache.update(key=key, at=time.time(), status=st)
+                lic = {"licensed": False, "error": str(e)}
+        _cache.update(key=key, at=time.time(), status=lic)
+        return lic
+
+
+def licensed() -> bool:
+    """مجوز معتبر (اشتراک). در اجرای توسعه همیشه درست."""
+    return not REQUIRED or _license()["licensed"]
+
+
+def can_process() -> bool:
+    """پردازش ویس تازه: با مجوز، یا در دوره آزمایشی فعال. رکوردهای قبلی همیشه در دسترس‌اند."""
+    if licensed():
+        return True
+    from . import trial
+    return trial.info()["active"]
+
+
+def status() -> dict:
+    lic = _license()
+    st = {"required": REQUIRED, "machine": machine_code(), **lic}
+    if not REQUIRED or lic["licensed"]:
+        st.update(ok=True, mode="licensed" if lic["licensed"] else "dev")
         return st
+    from . import trial
+    t = trial.info()
+    st.update(ok=t["active"], mode="trial" if t["active"] else "expired", trial=t)
+    return st
 
 
 def install(text: str) -> dict:
@@ -145,3 +168,10 @@ def install(text: str) -> dict:
     tmp.replace(LICENSE_FILE)
     _cache["key"] = None
     return status()
+
+
+def note_processed() -> None:
+    """هر ویس پردازش‌شده در دوره آزمایشی شمرده می‌شود (با اشتراک نه)."""
+    if REQUIRED and not _license()["licensed"]:
+        from . import trial
+        trial.record_voice()

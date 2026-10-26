@@ -17,6 +17,18 @@ from voice2excel import config  # noqa: E402
 from voice2excel.database import Database, set_db  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _isolated_trial(tmp_path, monkeypatch):
+    """آزمون‌ها هرگز وضعیت دوره آزمایشی این رایانه (AppData، ProgramData، رجیستری) را لمس نکنند."""
+    from voice2excel import trial
+    reg: dict = {}
+    stores = [tmp_path / "trial" / n for n in ("data", "appdata", "local", "programdata")]
+    monkeypatch.setattr(trial, "_store_paths", lambda: stores)
+    monkeypatch.setattr(trial, "_read_registry", lambda: trial._decode(reg["s"]) if "s" in reg else None)
+    monkeypatch.setattr(trial, "_write_registry", lambda text: reg.__setitem__("s", text))
+    return stores, reg
+
+
 @pytest.fixture()
 def db(tmp_path):
     from voice2excel import pipeline

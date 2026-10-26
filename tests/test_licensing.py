@@ -31,9 +31,9 @@ def test_machine_code_is_stable_and_readable():
 
 
 def test_valid_license_accepted(lic):
-    assert not licensing.status()["ok"]
+    assert licensing.status()["mode"] == "trial" and not licensing.licensed()  # بدون مجوز: دوره آزمایشی
     st = licensing.install(_make())
-    assert st["ok"] and st["customer"] == "شرکت آزمون"
+    assert st["ok"] and st["mode"] == "licensed" and st["customer"] == "شرکت آزمون" and "trial" not in st
 
 
 @pytest.mark.parametrize("text, msg", [
@@ -66,19 +66,35 @@ def test_clock_rollback_detected(lic, monkeypatch):
     licensing.SEEN_FILE.write_text((date.today() + timedelta(days=10)).isoformat())
     licensing._cache["key"] = None
     st = licensing.status()
-    assert not st["ok"] and "عقب" in st["error"]
+    assert not st["licensed"] and "عقب" in st["error"] and st["mode"] == "trial"  # مجوز نامعتبر؛ برمی‌گردد به آزمایشی
 
 
-def test_server_locked_until_activated(db, lic, monkeypatch):
+def test_trial_then_expired_then_licensed(db, lic, monkeypatch, wav_factory):
+    """آزمایشی: همه چیز باز. پس از پایان: فقط ویس تازه بسته، رکوردها و اکسل باز. با مجوز: دوباره همه باز."""
+    from voice2excel import trial
     monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    monkeypatch.setattr(server, "model_available", lambda name: False)
+    wav = wav_factory("a.wav", 0.5).read_bytes()
+    up = lambda c: c.post("/api/upload", files=[("files", ("a.wav", wav, "audio/wav"))],  # noqa: E731
+                          data={"visit_date": "1405/08/04"})
     with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765",
                     headers=server.auth_headers()) as c:
-        assert c.get("/api/records").status_code == 402
-        assert c.post("/api/files/retry-failed").status_code == 402
-        assert c.get("/api/status").status_code == 200  # Voice2Excel.exe با همین، آماده بودن برنامه را می‌سنجد
         info = c.get("/api/license").json()
-        assert not info["ok"] and info["machine"] == licensing.machine_code()
+        assert info["ok"] and info["mode"] == "trial" and info["trial"]["voices_left"] == 10
+        assert up(c).status_code == 200 and c.get("/api/records").status_code == 200
+        assert c.post("/api/update").status_code == 402  # به‌روزرسانی فقط با اشتراک
+        for _ in range(10):
+            trial.record_voice()
+        info = c.get("/api/license").json()
+        assert not info["ok"] and info["mode"] == "expired" and info["trial"]["reason"] == "ویس"
+        assert up(c).status_code == 402 and c.post("/api/queue/start").status_code == 402
+        assert c.post("/api/files/1/retry").status_code == 402 and c.post("/api/import-folder", json={"path": "x"}).status_code == 402
+        for path in ("/api/records", "/api/status", "/api/backups", "/api/dictionary"):  # رکوردهای قبلی باز
+            assert c.get(path).status_code == 200, path
+        assert c.post("/api/excel/commit", json={}).status_code != 402
         assert c.post("/api/license", json={"text": "V2X1.bad.bad"}).status_code == 400
         r = c.post("/api/license", json={"text": _make(expires="2099-03-20")})
         assert r.status_code == 200 and r.json()["ok"] and r.json()["expires_jalali"] == "1478/01/01"
-        assert c.get("/api/records").status_code == 200
+        assert up(c).status_code == 200
+        trial.record_voice()  # با اشتراک شمرده نمی‌شود (note_processed)، ولی حتی اگر شود، مهم نیست
+        assert c.get("/api/license").json()["mode"] == "licensed"

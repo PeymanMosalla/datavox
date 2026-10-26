@@ -118,9 +118,13 @@ async def _security_guard(request, call_next):
     if (request.method not in _SAFE_METHODS and path.startswith("/api/") and not path.startswith("/api/m/")
             and not secrets.compare_digest(request.headers.get(TOKEN_HEADER, ""), API_TOKEN)):
         return JSONResponse(status_code=403, content={"detail": "نشست برنامه منقضی شده است؛ صفحه را دوباره باز کنید (F5)."})
-    if (licensing.REQUIRED and path.startswith("/api/") and not path.startswith(_LICENSE_FREE)
-            and not licensing.status()["ok"]):
-        return JSONResponse(status_code=402, content={"detail": "برنامه فعال نیست؛ ابتدا مجوز را وارد کنید.", "license": True})
+    if licensing.REQUIRED and request.method == "POST":
+        # پس از دوره آزمایشی فقط پذیرش و پردازش ویس تازه بسته است؛ رکوردها، اکسل و پشتیبان باز می‌مانند
+        if _is_intake(path) and not licensing.can_process():
+            return JSONResponse(status_code=402, content={"detail": _TRIAL_OVER, "license": True})
+        if path == "/api/update" and not licensing.licensed():
+            return JSONResponse(status_code=402, content={"detail": "به‌روزرسانی فقط برای نسخه دارای اشتراک است.",
+                                                          "license": True})
     response = await call_next(request)
     response.headers.update(_SECURITY_HEADERS)
     if path in _APP_PAGES:
@@ -133,7 +137,12 @@ async def _security_guard(request, call_next):
 _SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer"}
 _APP_PAGES = {"/", "/m", "/m/"}
 MAX_REQUEST_BYTES = 4 * 1024 ** 3
-_LICENSE_FREE = ("/api/license", "/api/shutdown", "/api/status")  # status: سنجش آماده بودن برنامه در Voice2Excel.exe
+_INTAKE = {"/api/upload", "/api/m/upload", "/api/import-folder", "/api/queue/start", "/api/files/retry-failed"}
+_TRIAL_OVER = "دوره آزمایشی تمام شده است؛ برای پردازش ویس تازه، برنامه را فعال کنید. رکوردهای قبلی در دسترس‌اند."
+
+
+def _is_intake(path: str) -> bool:
+    return path in _INTAKE or (path.startswith("/api/files/") and path.endswith("/retry"))
 _CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
         "media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; "
         "frame-ancestors 'none'")
@@ -258,7 +267,7 @@ def _startup() -> None:
 def inbox_poll_once(box: Inbox) -> int:
     """یک دور بررسی پوشه ورودی: ثبت ویس‌های تازه و شروع پردازش. خروجی: تعداد ویس‌های افزوده."""
     s = load_settings()
-    if not s.inbox_dir:
+    if not s.inbox_dir or not licensing.can_process():
         return 0
     files = box.poll(s.inbox_dir, float(db().get_meta("inbox_since") or 0))
     if not files:

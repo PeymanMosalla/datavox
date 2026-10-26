@@ -11,7 +11,7 @@ import threading
 import time
 import traceback
 
-from . import dictionary
+from . import dictionary, licensing
 from .audio_processor import AudioError, check_audio, load_audio
 from .config import DATA_DIR, load_settings
 from .database import Database
@@ -138,6 +138,9 @@ class Worker:
     def _loop(self) -> None:
         try:
             while not self._stop.is_set():
+                if not licensing.can_process():  # ویس‌های صف می‌مانند و پس از فعال‌سازی پردازش می‌شوند
+                    self.last_error = "دوره آزمایشی تمام شده است؛ برای پردازش ویس تازه، برنامه را فعال کنید."
+                    break
                 item = self.db.next_queued()
                 if item is None:
                     break
@@ -185,6 +188,7 @@ class Worker:
                 "language": tr.language, "language_prob": tr.language_prob,
                 "avg_logprob": tr.avg_logprob, "model": tr.model,
             }, records)
+            licensing.note_processed()
             _, peak = _rss_mb()
             for w in audio_warnings:
                 self.db.log_event(w, "warning", aid)
