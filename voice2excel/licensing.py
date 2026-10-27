@@ -172,7 +172,7 @@ def contact() -> dict:
         data = json.loads((Path(__file__).resolve().parent / "assets" / "contact.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    return {k: str(data.get(k) or "").strip()[:80] for k in ("name", "phone", "telegram", "whatsapp")}
+    return {k: str(data.get(k) or "").strip()[:80] for k in ("name", "phone", "telegram", "whatsapp", "bale", "email")}
 
 
 def install(text: str) -> dict:

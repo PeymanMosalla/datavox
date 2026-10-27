@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from datetime import date
 from pathlib import Path
@@ -176,7 +177,7 @@ def _contact() -> dict:
         data = json.loads(CONTACT_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
-    return {k: str(data.get(k) or "") for k in ("name", "phone", "telegram", "whatsapp")}
+    return {k: str(data.get(k) or "") for k in ("name", "phone", "telegram", "whatsapp", "bale", "email")}
 
 
 class ContactIn(BaseModel):
@@ -184,11 +185,16 @@ class ContactIn(BaseModel):
     phone: str = ""
     telegram: str = ""
     whatsapp: str = ""
+    bale: str = ""   # شماره یا نام کاربری بله
+    email: str = ""
 
 
 @app.put("/api/contact")
 def contact_save(body: ContactIn):
     data = {k: v.strip()[:80] for k, v in body.model_dump().items()}
     data["telegram"] = data["telegram"].lstrip("@").replace("https://t.me/", "")
+    data["bale"] = data["bale"].lstrip("@").replace("https://ble.ir/", "")
+    if data["email"] and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", data["email"]):
+        err(400, "نشانی ایمیل درست نیست.")
     CONTACT_FILE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return _contact()

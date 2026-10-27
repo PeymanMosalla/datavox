@@ -63,7 +63,7 @@ async function drawTop() {
   $("#sub").textContent = `نسخه برنامه ${fa(o.version)} — اطلاعات این پنل و کلیدها: ${o.keys_dir}`;
   const alerts = [];
   if (!o.key_ok) alerts.push(`<div class="alert err"><div class="alert-body"><b>کلید امضا در دسترس نیست</b>${esc(o.key_error)}</div></div>`);
-  if (!o.contact.phone && !o.contact.telegram && !o.contact.whatsapp)
+  if (!o.contact.phone && !o.contact.telegram && !o.contact.whatsapp && !o.contact.bale && !o.contact.email)
     alerts.push(`<div class="alert warn"><div class="alert-body"><b>راه تماس شما هنوز وارد نشده</b>در زبانه «تنظیمات» شماره تلفن، تلگرام و واتس‌اپ خود را وارد کنید تا در صفحه فعال‌سازی برنامه مشتری نمایش داده شود.</div></div>`);
   $("#alerts").innerHTML = alerts.join("");
   $("#stats").innerHTML = [["مشتری", fa(o.customers)], ["اشتراک یک‌ساله فعال", fa(o.active)], ["نامحدود", fa(o.forever)],
@@ -187,11 +187,15 @@ async function drawSettings(box) {
   const C = o.contact;
   box.innerHTML = `<div class="stack" style="max-width:640px">
     <b>راه‌های تماس شما (در صفحه فعال‌سازی برنامه مشتری)</b>
+    <div class="small">نمایش فعلی در برنامه مشتری: ${["phone", "telegram", "whatsapp", "bale", "email"].filter((k) => C[k]).map((k) => ({ phone: "تلفن", telegram: "تلگرام", whatsapp: "واتس‌اپ", bale: "بله", email: "ایمیل" })[k]).join("، ") || "هیچ"}</div>
     <div class="muted small">هر کدام خالی بماند، در برنامه مشتری نمایش داده نمی‌شود. تغییرات در بسته کامل یا به‌روزرسانی بعدی که می‌سازید قرار می‌گیرد.</div>
     <div class="row"><input class="input" id="s-name" placeholder="نام شما یا نام فروشنده" value="${esc(C.name)}" style="max-width:240px">
       <input class="input" dir="auto" id="s-phone" placeholder="تلفن (مثلاً ۰۹۱۲…)" value="${esc(C.phone)}" style="max-width:220px"></div>
     <div class="row"><input class="input" dir="auto" id="s-tg" placeholder="آیدی تلگرام (بدون @)" value="${esc(C.telegram)}" style="max-width:240px">
       <input class="input" dir="auto" id="s-wa" placeholder="شماره واتس‌اپ" value="${esc(C.whatsapp)}" style="max-width:220px"></div>
+    <div class="row"><input class="input" dir="auto" id="s-bale" placeholder="بله: شماره یا آیدی" value="${esc(C.bale)}" style="max-width:240px">
+      <input class="input" dir="auto" id="s-email" placeholder="ایمیل" value="${esc(C.email)}" style="max-width:260px"></div>
+    <div class="muted small">بله: اگر آیدی بله بنویسید، دکمه «بله» صفحه شما را باز می‌کند؛ با شماره، پیام کپی می‌شود تا مشتری در بله به همان شماره بفرستد.</div>
     <div class="row"><button class="btn primary" id="s-save">ذخیره</button></div>
     <hr style="width:100%;border:0;border-top:1px solid var(--border)">
     <b>نگهداری</b>
@@ -200,7 +204,8 @@ async function drawSettings(box) {
   </div>`;
   $("#s-save").onclick = async () => {
     try {
-      await api("/api/contact", { method: "PUT", body: { name: $("#s-name").value, phone: $("#s-phone").value, telegram: $("#s-tg").value, whatsapp: $("#s-wa").value } });
+      await api("/api/contact", { method: "PUT", body: { name: $("#s-name").value, phone: $("#s-phone").value, telegram: $("#s-tg").value,
+        whatsapp: $("#s-wa").value, bale: $("#s-bale").value, email: $("#s-email").value } });
       toast("ذخیره شد؛ در بسته یا به‌روزرسانی بعدی قرار می‌گیرد.", "ok"); drawTop();
     } catch (e) { toastErr(e); }
   };

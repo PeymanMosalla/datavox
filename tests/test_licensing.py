@@ -120,8 +120,8 @@ def test_contact_info_shown_only_when_set(db, lic, monkeypatch, tmp_path):
     from pathlib import Path
     monkeypatch.setattr(server, "_inbox_loop", lambda: None)
     real = Path(licensing.__file__).parent / "assets" / "contact.json"
-    assert set(json.loads(real.read_text(encoding="utf-8"))) == {"name", "phone", "telegram", "whatsapp"}
+    assert set(json.loads(real.read_text(encoding="utf-8"))) <= {"name", "phone", "telegram", "whatsapp", "bale", "email"}
     with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765",
                     headers=server.auth_headers()) as c:
         info = c.get("/api/license").json()
-        assert set(info["contact"]) == {"name", "phone", "telegram", "whatsapp"} and info["version"]
+        assert set(info["contact"]) == {"name", "phone", "telegram", "whatsapp", "bale", "email"} and info["version"]

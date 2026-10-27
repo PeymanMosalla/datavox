@@ -2597,10 +2597,14 @@ async function renderActivation(el) {
       <div class="row">
         ${C.telegram ? `<a class="btn" id="act-tg" target="_blank" rel="noopener">ارسال در تلگرام</a>` : ""}
         ${C.whatsapp ? `<a class="btn" id="act-wa" target="_blank" rel="noopener">ارسال در واتس‌اپ</a>` : ""}
+        ${C.bale ? `<button class="btn" id="act-bale">ارسال در بله</button>` : ""}
+        ${C.email ? `<a class="btn" id="act-mail">ارسال ایمیل</a>` : ""}
         <button class="btn" id="act-copymsg">کپی پیام</button>
-        ${C.phone ? `<span class="small">تلفن: <b class="ltr">${esc(C.phone)}</b></span>` : ""}
       </div>
-      ${!C.telegram && !C.whatsapp && !C.phone ? `<div class="muted small">پیام را کپی کنید و برای فروشنده بفرستید.</div>` : ""}
+      ${C.phone || C.email ? `<div class="row small">
+        ${C.phone ? `<span>تلفن: <a class="ltr" href="tel:${esc(C.phone)}">${esc(C.phone)}</a></span> <button class="btn sm ghost" id="act-copyphone">کپی شماره</button>` : ""}
+        ${C.email ? `<span>ایمیل: <span class="ltr">${esc(C.email)}</span></span>` : ""}</div>` : ""}
+      ${!C.telegram && !C.whatsapp && !C.phone && !C.bale && !C.email ? `<div class="muted small">پیام را کپی کنید و برای فروشنده بفرستید.</div>` : ""}
       <div class="muted small">فروشنده پس از پرداخت، یک فایل مجوز (یا یک متن که با V2X1 شروع می‌شود) برایتان می‌فرستد. برای این کار اینترنت لازم نیست.</div>
     </div></div>
     <div class="card"><div class="card-h"><h2><span class="n">۲</span> وارد کردن مجوز</h2></div><div class="card-b stack">
@@ -2618,6 +2622,7 @@ async function renderActivation(el) {
     $("#act-msg").value = msg;
     if ($("#act-tg")) $("#act-tg").href = `https://t.me/${encodeURIComponent(C.telegram.replace(/^@/, ""))}?text=${encodeURIComponent(msg)}`;
     if ($("#act-wa")) $("#act-wa").href = `https://wa.me/${waNumber(C.whatsapp)}?text=${encodeURIComponent(msg)}`;
+    if ($("#act-mail")) $("#act-mail").href = `mailto:${C.email}?subject=${encodeURIComponent(msg.split("\n")[0])}&body=${encodeURIComponent(msg)}`;
   };
   $("#act-name").oninput = $("#act-phone").oninput = update;
   update();
@@ -2626,6 +2631,13 @@ async function renderActivation(el) {
   };
   $("#act-copy").onclick = () => copy(lic.machine, "کد کپی شد.");
   $("#act-copymsg").onclick = () => copy($("#act-msg").value, "پیام کپی شد.");
+  $("#act-copyphone")?.addEventListener("click", () => copy(C.phone, "شماره کپی شد."));
+  $("#act-bale")?.addEventListener("click", async () => {
+    // پیوند مستقیم بله فقط با آیدی کار می‌کند و متن آماده نمی‌پذیرد؛ پس پیام کپی می‌شود
+    const isId = /[a-z_]/i.test(C.bale);
+    await copy($("#act-msg").value, isId ? "پیام کپی شد؛ در بله بچسبانید و بفرستید." : `پیام کپی شد؛ در بله به شماره ${C.bale} بفرستید.`);
+    if (isId) window.open(`https://ble.ir/${encodeURIComponent(C.bale)}`, "_blank", "noopener");
+  });
   $("#act-pick").onclick = () => $("#act-file").click();
   $("#act-file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("#act-text").value = (await f.text()).trim(); };
   $("#act-go").onclick = async () => {

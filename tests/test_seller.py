@@ -72,8 +72,10 @@ def test_bad_input_and_security(env):
 
 def test_contact_saved_for_customer_app(env):
     c, tmp = env
-    r = c.put("/api/contact", json={"name": "فروشنده", "phone": "0912", "telegram": "@seller_id", "whatsapp": "0912"}).json()
-    assert r["telegram"] == "seller_id"
+    r = c.put("/api/contact", json={"name": "فروشنده", "phone": "0912", "telegram": "@seller_id", "whatsapp": "0912",
+                                    "bale": "@bale_id", "email": "a@b.com"}).json()
+    assert r["telegram"] == "seller_id" and r["bale"] == "bale_id" and r["email"] == "a@b.com"
+    assert c.put("/api/contact", json={"email": "not-an-email"}).status_code == 400
     assert json.loads((tmp / "contact.json").read_text(encoding="utf-8"))["name"] == "فروشنده"
 
 
