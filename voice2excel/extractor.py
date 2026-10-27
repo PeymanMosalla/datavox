@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import jdatetime
 
 from . import phone as phone_mod
+from . import repairs
 from .asr_fixes import fix_asr_text
 from .dates_fa import find_followup_time, format_jalali
 from .normalizer import normalize_text
@@ -20,7 +21,7 @@ from .numbers_fa import NumberRun, convert_number_words
 from .schema import ExtractedRecord, ExtractionResult, FieldValue, PhoneInfo, Segment
 
 # با هر تغییر در قواعد استخراج افزایش می‌یابد؛ برنامه پس از به‌روزرسانی، رکوردهای دست‌نخورده را دوباره استخراج می‌کند
-EXTRACTOR_VERSION = "6"
+EXTRACTOR_VERSION = "7"
 
 W = r"[\w‌]"  # نویسه‌ی واژه (شامل نیم‌فاصله)
 B_START = rf"(?<!{W})"
@@ -546,8 +547,9 @@ def extract(raw_or_normalized: str, base_date: jdatetime.date | None = None, lex
 
     lexicon: خیابان‌ها و نام‌های شناخته‌شده (lexicon.Lexicon)؛ بدون آن فقط قواعد عمومی به کار می‌روند.
     """
-    normalized = fix_asr_text(normalize_text(raw_or_normalized))
+    normalized = repairs.prepare(fix_asr_text(normalize_text(raw_or_normalized)))
     text, runs = convert_number_words(normalized)
+    text, runs, fixes = repairs.apply(text, runs)  # «… نه ببخشید …»: فقط مقدار دوم
     all_phones = phone_mod.phones_from_runs(text, runs)
     # شماره تلفن، بند مستقل است؛ مرزهایش حتی بدون واژه «شماره» یا «آدرس» نام و آدرس را جدا می‌کنند
     cuts = [x for p in all_phones if len(p.normalized) >= 10 for x in (p.start, p.end)]
@@ -570,8 +572,26 @@ def extract(raw_or_normalized: str, base_date: jdatetime.date | None = None, lex
     if nblocks > 1:
         for r in records:
             r.ambiguities.append(f"در این ویس {nblocks} ساختمان تشخیص داده شد؛ جداسازی را بررسی کنید.")
+    _note_repairs(records, clauses, fixes)
     segments = [Segment(text=c.text, category=c.category, block=c.block) for c in clauses]
     return ExtractionResult(records=records, segments=segments, text=text)
+
+
+def _note_repairs(records: list[ExtractedRecord], clauses: list[Clause], fixes: list) -> None:
+    """هر اصلاح وسط ویس کنار همان فیلد نوشته می‌شود؛ اصلاح مبهم، رکورد را برای بازبینی علامت می‌زند."""
+    for fx in fixes:
+        block = next((c.block for c in clauses if c.start <= fx.pos <= c.end), 0)
+        rec = records[min(block, len(records) - 1)]
+        if not fx.applied:
+            rec.ambiguities.append(f"وسط ویس اصلاحی گفته شد («{fx.old}» و سپس «{fx.new}») که خودکار قابل تشخیص نبود؛ بررسی کنید.")
+            continue
+        note = f"اصلاح وسط ویس: اول «{fx.old}» گفته شد و بعد «{fx.new}»؛ مقدار دوم برداشته شد."
+        hit = [fv for fv in rec.fields.values() if fv.span and fv.span[0] <= fx.pos <= fv.span[1] and fv.value]
+        for fv in hit[:1] or [None]:
+            if fv is None:
+                rec.ambiguities.append(note)
+            elif note not in fv.notes:
+                fv.notes.append(note)
 
 
 def _extract_block(bc, all_phones, text, base_date, index, count, prev) -> ExtractedRecord:
