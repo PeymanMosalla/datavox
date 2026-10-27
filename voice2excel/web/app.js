@@ -265,7 +265,7 @@ const PAGES = {
   excel: { title: "ثبت در اکسل", sub: "اتصال امن به فایل اکسل شرکت، پیش‌نمایش و ثبت روی کپی", render: renderExcel },
   dictionary: { title: "واژه‌نامه", sub: "نام‌های تأییدشده مهندس‌ها، پروژه‌ها و خیابان‌ها", render: renderDictionary },
   settings: { title: "تنظیمات", sub: "مدل گفتار، قواعد اعتبارسنجی و نگهداری", render: renderSettings },
-  activate: { title: "فعال‌سازی برنامه", sub: "مجوز این رایانه", render: (el) => renderActivation(el) },
+  activate: { title: "اشتراک و پشتیبانی", sub: "وضعیت اشتراک، تماس با فروشنده و وارد کردن مجوز", render: (el) => renderActivation(el) },
 };
 let pageHooks = {};
 let routeSeq = 0;
@@ -2564,9 +2564,15 @@ async function refreshLicense() {
 }
 
 /** پیام آماده درخواست اشتراک یا تمدید برای فروشنده (نام، تلفن، کد رایانه). */
+/** نوع درخواست: اشتراک (آزمایشی/فعال‌نشده)، تمدید (یک‌ساله یا تمام‌شده)، پشتیبانی (نامحدود). */
+function requestKind(lic) {
+  if (lic.lapsed || (lic.mode === "licensed" && lic.expires)) return "renew";
+  return lic.mode === "licensed" ? "support" : "subscribe";
+}
+const REQUEST_TITLE = { subscribe: "درخواست اشتراک", renew: "درخواست تمدید", support: "تماس با پشتیبانی" };
 function requestMessage(lic, name, phone) {
-  const renew = lic.mode === "licensed" || lic.lapsed;
-  return [renew ? "درخواست تمدید اشتراک «ثبت ویس»" : "درخواست اشتراک «ثبت ویس»",
+  const kind = requestKind(lic);
+  return [{ subscribe: "درخواست اشتراک «ثبت ویس»", renew: "درخواست تمدید اشتراک «ثبت ویس»", support: "درخواست پشتیبانی «ثبت ویس»" }[kind],
     `نام: ${name || "—"}`, `تلفن: ${phone || "—"}`, `کد رایانه: ${lic.machine}`, `نسخه: ${lic.version}`].join("\n");
 }
 /** شماره واتس‌اپ به قالب بین‌المللی (۰۹۱۲… ← ۹۸۹۱۲…). */
@@ -2578,7 +2584,6 @@ function waNumber(n) {
 async function renderActivation(el) {
   const lic = state.lic = await api("/api/license");
   const T = lic.trial, C = lic.contact || {};
-  const renew = lic.mode === "licensed" || lic.lapsed;
   const saved = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
   el.innerHTML = `<div class="stack" style="max-width:680px">
     ${lic.mode === "licensed" ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>برنامه فعال است</b>${esc(lic.customer || "")}${lic.expires_jalali ? ` — اشتراک تا ${fa(lic.expires_jalali)}` : " — اشتراک نامحدود"}</div></div>` : ""}
@@ -2587,7 +2592,7 @@ async function renderActivation(el) {
     ${lic.mode === "expired" && !lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>${T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است."} رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
     ${T?.clock_back ? `<div class="alert warn">${I.alert}<div class="alert-body">تاریخ رایانه عقب‌تر از تاریخ‌های قبلی است؛ تاریخ و ساعت ویندوز را درست کنید.</div></div>` : ""}
     ${lic.error && !lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body">${esc(lic.error)}</div></div>` : ""}
-    <div class="card"><div class="card-h"><h2><span class="n">۱</span> ${renew ? "درخواست تمدید" : "درخواست اشتراک"}</h2></div><div class="card-b stack">
+    <div class="card"><div class="card-h"><h2><span class="n">۱</span> ${REQUEST_TITLE[requestKind(lic)]}</h2></div><div class="card-b stack">
       <div class="row"><span class="muted small">کد این رایانه:</span><b class="ltr" style="font-size:18px;letter-spacing:2px">${esc(lic.machine)}</b>
         <button class="btn sm" id="act-copy">کپی کد</button></div>
       <div class="row"><input class="input" id="act-name" placeholder="نام شما یا نام شرکت" value="${esc(saved("v2x.act.name") || lic.customer || "")}" style="max-width:260px">
@@ -2605,15 +2610,15 @@ async function renderActivation(el) {
         ${C.phone ? `<span>تلفن: <a class="ltr" href="tel:${esc(C.phone)}">${esc(C.phone)}</a></span> <button class="btn sm ghost" id="act-copyphone">کپی شماره</button>` : ""}
         ${C.email ? `<span>ایمیل: <span class="ltr">${esc(C.email)}</span></span>` : ""}</div>` : ""}
       ${!C.telegram && !C.whatsapp && !C.phone && !C.bale && !C.email ? `<div class="muted small">پیام را کپی کنید و برای فروشنده بفرستید.</div>` : ""}
-      <div class="muted small">فروشنده پس از پرداخت، یک فایل مجوز (یا یک متن که با V2X1 شروع می‌شود) برایتان می‌فرستد. برای این کار اینترنت لازم نیست.</div>
+      ${requestKind(lic) === "support" ? "" : `<div class="muted small">فروشنده پس از پرداخت، یک فایل مجوز (یا یک متن که با V2X1 شروع می‌شود) برایتان می‌فرستد. برای این کار اینترنت لازم نیست.</div>`}
     </div></div>
-    <div class="card"><div class="card-h"><h2><span class="n">۲</span> وارد کردن مجوز</h2></div><div class="card-b stack">
+    <${lic.mode === "licensed" ? "details" : "div"} class="card"><${lic.mode === "licensed" ? "summary" : "div"} class="card-h"><h2><span class="n">۲</span> ${lic.mode === "licensed" ? "وارد کردن مجوز تازه" : "وارد کردن مجوز"}</h2></${lic.mode === "licensed" ? "summary" : "div"}><div class="card-b stack">
       <label class="stack" style="gap:6px">فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
         <textarea class="input ltr" id="act-text" rows="3" placeholder="V2X1...." style="width:100%"></textarea></label>
       <div class="row"><input type="file" id="act-file" accept=".v2x,.txt" hidden>
         <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
         <button class="btn primary" id="act-go">${I.check} فعال‌سازی</button></div>
-    </div></div>
+    </div></${lic.mode === "licensed" ? "details" : "div"}>
   </div>`;
   const update = () => {
     const name = $("#act-name").value.trim(), phone = $("#act-phone").value.trim();
