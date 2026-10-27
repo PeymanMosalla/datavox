@@ -88,7 +88,7 @@ async function loadRecent() {
   try {
     const d = await call("/api/m/recent");
     $("#recent").innerHTML = d.files.length ? d.files.map((f) => { const [c, l] = STATUS[f.status] || ["info", f.status];
-      return `<li><span class="n">${esc(f.original_name)}</span><span class="chip ${c}">${l}</span></li>`; }).join("") : '<li class="muted">هنوز ویسی نفرستاده‌اید.</li>';
+      return `<li><span class="n">${esc(f.original_name)}${f.tip ? `<br><span class="muted" style="font-size:12px">${esc(f.tip)}</span>` : ""}</span><span class="chip ${c}">${l}</span></li>`; }).join("") : '<li class="muted">هنوز ویسی نفرستاده‌اید.</li>';
   } catch { }
 }
 setInterval(() => { if (!$("#app").hidden && !document.hidden) loadRecent(); }, 5000);

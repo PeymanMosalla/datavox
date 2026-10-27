@@ -562,9 +562,11 @@ async def mobile_upload(request: Request, files: list[UploadFile] = File(...), v
 @app.get("/api/m/recent")
 def mobile_recent(request: Request, sender: str = ""):
     """وضعیت آخرین ویس‌های فرستاده‌شده از همین گوشی (فقط نام فایل و وضعیت پردازش؛ نه ویس دیگران)."""
-    rows = db().q("""SELECT a.original_name, a.status, a.created_at FROM audio_files a JOIN batches b ON b.id=a.batch_id
+    rows = db().q("""SELECT a.original_name, a.status, a.created_at, a.error FROM audio_files a JOIN batches b ON b.id=a.batch_id
                      WHERE b.name=? ORDER BY a.id DESC LIMIT 20""", (_PHONE_BATCH + _sender(request, sender),))
-    return {"files": rows}
+    # راهنمای کیفیت ضبط (نویز، صدای ضعیف) فقط برای ویس پردازش‌شده؛ خطای داخلی برنامه به گوشی نمی‌رود
+    return {"files": [{**{k: r[k] for k in ("original_name", "status", "created_at")},
+                       "tip": r["error"] if r["status"] == "done" and r["error"] else ""} for r in rows]}
 
 
 class LanIn(BaseModel):

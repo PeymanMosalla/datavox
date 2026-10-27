@@ -12,7 +12,7 @@ import time
 import traceback
 
 from . import dictionary, licensing
-from .audio_processor import AudioError, check_audio, load_audio
+from .audio_processor import AudioError, check_audio, load_audio, quality_tips
 from .config import DATA_DIR, load_settings
 from .database import Database
 from .logger import get_logger
@@ -172,6 +172,7 @@ class Worker:
             audio_warnings: list[str] = []
             audio = load_audio(path, audio_warnings)
             info = check_audio(audio, settings)
+            tips = quality_tips(audio)  # فقط راهنمای ضبط؛ پردازش ادامه می‌یابد
             self.db.set_audio(aid, duration=round(info.duration, 2))
             hot = dictionary.hotwords(self.db, settings.hotwords_limit) if settings.use_dictionary_hotwords else None
             tr = self.transcriber.transcribe(audio, hotwords=hot or None, should_stop=self._stop.is_set)
@@ -192,7 +193,7 @@ class Worker:
             _, peak = _rss_mb()
             for w in audio_warnings:
                 self.db.log_event(w, "warning", aid)
-            self.db.set_audio(aid, status="done", error=" ".join(audio_warnings) or None, model=tr.model,
+            self.db.set_audio(aid, status="done", error=" ".join(audio_warnings + tips) or None, model=tr.model,
                               processing_seconds=round(time.time() - t0, 1), peak_rss_mb=round(peak, 1))
             log.info("فایل %s پردازش شد (%.1f ثانیه)", aid, time.time() - t0)
             return False

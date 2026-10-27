@@ -90,6 +90,35 @@ def load_audio(path: Path, warnings: list[str] | None = None) -> np.ndarray:
     return audio
 
 
+# راهنمای کیفیت ضبط، فقط برای اطلاع (پردازش را متوقف نمی‌کند و ضبط دوباره نمی‌خواهد). آستانه‌ها عمداً
+# سخت‌گیرانه نیستند: فقط حالتی گزارش می‌شود که در آزمون با نویز افزوده، استخراج واقعاً خراب شد.
+NOISY_SNR_DB = 11.5  # برآورد ~۲ تا ۳dB بالاتر از واقعی است؛ یعنی هشدار برای نویز واقعی ۸dB و بدتر (آنجا در آزمون دو فیلد از سه خراب شد)
+QUIET_DBFS = -40.0
+CLIPPED_RATIO = 0.01
+_FRAME = 800  # ۵۰ میلی‌ثانیه
+_DIGITAL_SILENCE = 1e-4  # فاصله‌های کاملاً بی‌صدای ویس پیام‌رسان‌ها در برآورد نویز حساب نمی‌شوند
+
+
+def quality_tips(audio: np.ndarray) -> list[str]:
+    """توصیه به ضبط‌کننده؛ خالی برای ویس معمولی (حتی در ماشین یا خیابان)."""
+    if len(audio) < _FRAME * 10:
+        return []
+    frames = audio[: len(audio) // _FRAME * _FRAME].reshape(-1, _FRAME).astype(np.float64)
+    rms = np.sqrt((frames ** 2).mean(1))
+    rms = rms[rms > _DIGITAL_SILENCE]
+    if len(rms) < 10:
+        return []
+    speech, noise = np.percentile(rms, 90), np.percentile(rms, 10)
+    tips = []
+    if float(np.mean(np.abs(audio) >= 0.98)) > CLIPPED_RATIO:
+        tips.append("صدا بیش از حد بلند و خش‌دار ضبط شده است؛ گوشی را کمی دورتر از دهان بگیرید.")
+    if 20 * np.log10(speech) < QUIET_DBFS:
+        tips.append("صدای گوینده ضعیف ضبط شده است؛ گوشی را نزدیک‌تر بگیرید.")
+    elif 20 * np.log10(speech / max(noise, 1e-9)) < NOISY_SNR_DB:
+        tips.append("نویز زمینه زیاد بود؛ اگر ممکن است در جای آرام‌تر (مثلاً ماشین با شیشه بالا) ضبط کنید.")
+    return tips
+
+
 def check_audio(audio: np.ndarray, settings: Settings) -> AudioInfo:
     duration = len(audio) / SAMPLE_RATE
     rms = float(np.sqrt(np.mean(np.square(audio, dtype=np.float64)))) if len(audio) else 0.0
