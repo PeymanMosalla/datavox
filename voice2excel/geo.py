@@ -71,3 +71,8 @@ def base_names() -> tuple[tuple[str, ...], tuple[str, ...]]:
 def base_corrections() -> tuple[tuple[str, str, str, int], ...]:
     """اصلاحات رایج تشخیص نشانی (گروه، اشتباه، درست، تعداد تأیید در منبع)."""
     return tuple((c[0], c[1], c[2], int(c[3])) for c in _data().get("c", []))
+
+
+def base_points() -> tuple[tuple[str, tuple[tuple[float, float], ...]], ...]:
+    """(نام خیابان، نقطه‌های روی نقشه) برای بررسی کنار هم بودن خیابان‌های یک آدرس."""
+    return tuple((p[0], tuple(tuple(x) for x in p[1])) for p in _data().get("p", []))

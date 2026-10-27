@@ -131,6 +131,15 @@ def _check_address(db: Database, value: str, street: str, edited: bool, settings
                 suggestions = [value.replace(name_only, m.canonical, 1) for m in matches[:3]]
                 status = "review"
                 reasons.append(f"نام خیابان «{name_only}» در واژه‌نامه نیست ولی املای مشابه دارد.")
+    if not edited and settings.kb_base_pack:
+        from .address_check import check as map_check
+        for f in map_check(value):  # خیابان دومِ دور، وقتی هم‌آوایش کنار خیابان اول است
+            status = "review"
+            reasons.append(f"«{f['heard']}» حدود {f['km']} کیلومتر از «{f['main']}» دور است، ولی «{f['suggestion']}» با تلفظ "
+                           f"مشابه همان نزدیکی است؛ احتمالاً «{f['suggestion']}» گفته شده.")
+            fixed = value.replace(f["heard"], f["suggestion"], 1)
+            if fixed != value and fixed not in suggestions:
+                suggestions.insert(0, fixed)
     if status == "valid":
         reasons.append("اصلاح یا تأییدشده توسط کاربر." if edited else "آدرس ثبت شد؛ اعتبار جغرافیایی آن بررسی نشده است.")
     return FieldCheck(status=status, reasons=reasons, suggestions=suggestions)

@@ -5,6 +5,8 @@
     [out:csv(name,highway;false;"\\t")];area(3605725142)->.a;way(area.a)["highway"]["name"];out tags;
   (3605725142 = محدوده «شهر مشهد»)
 - ستون آدرس فایل‌های اکسل شرکت (فقط نام خیابان‌ها؛ هیچ نام شخص، شماره یا آدرس کاملی وارد نمی‌شود).
+- مختصات خیابان‌ها (--osm-geo، از همان Overpass با «out tags center;»): برای بررسی اینکه خیابان‌های یک آدرس
+  روی نقشه کنار هم‌اند (address_check.py).
 - آموخته‌های استفاده واقعی (--learned): پایگاه داده برنامه (voice2excel.db) یا خروجی واژه‌نامه. فقط خیابان‌ها
   با شکل‌های دیگرشان و اصلاحات تأییدشده آدرس برداشته می‌شود؛ نام اشخاص، پروژه‌ها و هر رشته عددی ۴ رقمی به بالا نه.
 
@@ -124,6 +126,19 @@ def build(osm: Path | None, excels: list[Path], min_osm: int,
     return out
 
 
+def osm_points(path: Path) -> list[list]:
+    """[[نام خیابان، [[عرض، طول]، ...]]]: مرکز هر تکه از هر خیابان، با دقت حدود ۱۰ متر."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    pts: dict[str, list] = {}
+    for e in data.get("elements", []):
+        c, name = e.get("center"), (e.get("tags") or {}).get("name")
+        if not c or not name:
+            continue
+        for st in knowledge.streets_from_address(to_ascii_digits(normalize_text(name))):
+            pts.setdefault(st.canonical, []).append([round(c["lat"], 4), round(c["lon"], 4)])
+    return [[n, sorted({tuple(x) for x in v})] for n, v in sorted(pts.items())]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--osm", type=Path)
@@ -131,6 +146,8 @@ def main() -> int:
     ap.add_argument("--min-osm", type=int, default=2, help="کمینه تکرار نام در نقشه")
     ap.add_argument("--names", type=Path, default=ROOT / "packaging" / "names",
                     help="پوشه surnames.txt و firstnames.txt (نام‌های رایج عمومی)")
+    ap.add_argument("--osm-geo", type=Path, default=ROOT / "packaging" / "cache" / "osm-mashhad-geo.json",
+                    help="خیابان‌ها با مختصات (اگر نباشد، مختصات نسخه فعلی می‌ماند)")
     ap.add_argument("--learned", type=Path, nargs="*", default=[],
                     help="voice2excel.db یا خروجی واژه‌نامه (.v2xdict/.json) از استفاده واقعی")
     ap.add_argument("--password", default="", help="گذرواژه خروجی واژه‌نامه رمزدار (وگرنه پرسیده می‌شود)")
@@ -138,11 +155,12 @@ def main() -> int:
     ap.add_argument("--city", default="مشهد")
     ap.add_argument("--out", type=Path, default=ROOT / "voice2excel" / "assets" / "geo.dat")
     a = ap.parse_args()
-    l_streets, counts = [], {}
+    l_streets, counts, points = [], {}, []
     if a.out.exists() and not a.fresh:  # داده پایه در هر نسخه فقط بزرگ‌تر می‌شود، چیزی از آن نمی‌افتد
         prev = geo.decode(a.out.read_bytes())
         l_streets += [(s[0], list(s[1])) for s in prev.get("s", [])]
         counts.update({(c[1], c[2]): int(c[3]) for c in prev.get("c", [])})
+        points = prev.get("p", [])
     for p in a.learned:
         s, c = learned(p, a.password)
         l_streets += s
@@ -150,11 +168,14 @@ def main() -> int:
             counts[(w, r)] = max(counts.get((w, r), 0), n)  # همان پایگاه داده دو بار، دو برابر شمرده نشود
     corrections = sorted(([["address", w, r, n] for (w, r), n in counts.items() if n >= MIN_CORRECTION_COUNT]),
                          key=lambda c: -c[3])
+    if a.osm_geo and a.osm_geo.exists():
+        points = osm_points(a.osm_geo)
     streets = build(a.osm, a.excel, a.min_osm, l_streets)
     surnames, first = (read_list(a.names / f) for f in ("surnames.txt", "firstnames.txt"))
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_bytes(geo.encode({"v": 3, "city": a.city, "s": streets, "n": surnames, "f": first, "c": corrections}))
-    print(f"{len(streets)} خیابان، {len(corrections)} اصلاح آدرس، "
+    a.out.write_bytes(geo.encode({"v": 4, "city": a.city, "s": streets, "n": surnames, "f": first, "c": corrections,
+                                  "p": points}))
+    print(f"{len(streets)} خیابان، {len(points)} خیابان با مختصات، {len(corrections)} اصلاح آدرس، "
           f"{len(surnames)} نام‌خانوادگی، {len(first)} نام ← {a.out} ({a.out.stat().st_size // 1024} کیلوبایت)")
     return 0
 
