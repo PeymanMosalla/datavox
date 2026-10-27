@@ -47,3 +47,31 @@ def test_validator_suggests_fixed_address_and_respects_user(db, settings, case):
     assert not validate(db, {"address": heard}, {}, settings, edited={"address"}).fields["address"].suggestions
     settings.kb_base_pack = False
     assert not any("کیلومتر" in r for r in validate(db, {"address": heard}, {}, settings).fields["address"].reasons)
+
+
+def test_guess_goes_in_row_original_is_one_click_and_not_learned(db, settings, case, monkeypatch):
+    """حدس محتمل‌تر در ردیف؛ برگرداندن به آنچه شنیده شد با یک کلیک و بدون «یادگیری» اصلاح همیشگی."""
+    from fastapi.testclient import TestClient
+
+    from voice2excel import pipeline, server
+    main, side, far = case
+    text = f"مهندس کاظمی شماره 09151112233 آدرس {main} 12، {far} 5"
+    _, clauses, out = pipeline.build_records(db, settings, text, "1405/08/04")
+    rec = out[0]
+    heard = rec["extracted"]["meta"]["map_fix"]["from"]
+    assert far in heard and rec["values"]["address"] == heard.replace(far, side, 1)
+    fc = rec["validation"]["fields"]["address"]
+    assert rec["validation"]["status"] != "ready" and fc["suggestions"][0] == heard and "کیلومتر" in fc["reasons"][0]
+
+    batch = db.create_batch("آزمون", "1405/08/04")
+    aid = db.add_audio(batch, "a.wav", "a.wav", "x" * 64, 1, "1405/08/04", "user")
+    db.save_results(aid, {"raw_text": text, "normalized_text": text, "processed_text": text, "segments": [],
+                          "words": [], "clauses": clauses, "language": "fa", "language_prob": 1, "avg_logprob": 0,
+                          "model": "t"}, out)
+    rid = db.q("SELECT id FROM records WHERE audio_id=?", (aid,))[0]["id"]
+    monkeypatch.setattr(server, "_inbox_loop", lambda: None)
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765",
+                    headers=server.auth_headers()) as c:
+        r = c.post(f"/api/records/{rid}/accept", json={"field": "address", "value": heard}).json()
+    assert r["values"]["address"] == heard and r["validation"]["fields"]["address"]["status"] != "review"
+    assert db.q("SELECT * FROM corrections") == []  # «حسنی ← حسینیه» یاد گرفته نشد

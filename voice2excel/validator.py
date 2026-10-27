@@ -113,7 +113,8 @@ def _check_name(db: Database, value: str, etype: str, meta_notes: list[str], inh
     return FieldCheck(status=status, reasons=reasons, suggestions=suggestions)
 
 
-def _check_address(db: Database, value: str, street: str, edited: bool, settings: Settings) -> FieldCheck:
+def _check_address(db: Database, value: str, street: str, edited: bool, settings: Settings,
+                   map_fix: dict | None = None) -> FieldCheck:
     if not value.strip():
         return FieldCheck(status="missing", reasons=["آدرس در ویس پیدا نشد."])
     reasons = []
@@ -131,7 +132,14 @@ def _check_address(db: Database, value: str, street: str, edited: bool, settings
                 suggestions = [value.replace(name_only, m.canonical, 1) for m in matches[:3]]
                 status = "review"
                 reasons.append(f"نام خیابان «{name_only}» در واژه‌نامه نیست ولی املای مشابه دارد.")
-    if not edited and settings.kb_base_pack:
+    if map_fix and not edited and value == map_fix["to"]:
+        # حدس برنامه در ردیف است؛ کاربر فقط تأیید می‌کند یا با یک کلیک به آنچه شنیده شد برمی‌گردد
+        status = "review"
+        reasons.append(f"برنامه «{map_fix['heard']}» را «{map_fix['suggestion']}» کرد: «{map_fix['heard']}» حدود "
+                       f"{map_fix['km']} کیلومتر از «{map_fix['main']}» دور است و «{map_fix['suggestion']}» با تلفظ مشابه "
+                       f"همان نزدیکی است. اگر «{map_fix['heard']}» درست بود، گزینه زیر را بزنید.")
+        suggestions = [map_fix["from"]] + [s for s in suggestions if s != map_fix["from"]]
+    elif not edited and settings.kb_base_pack:
         from .address_check import check as map_check
         for f in map_check(value):  # خیابان دومِ دور، وقتی هم‌آوایش کنار خیابان اول است
             status = "review"
@@ -160,7 +168,7 @@ def validate(db: Database, values: dict, meta: dict, settings: Settings, edited:
     fields["phone"] = _check_phone(values.get("phone", ""), {**meta, "phone_inherited": "phone" in inherited},
                                    "phone" in edited, settings)
     fields["address"] = _check_address(db, values.get("address", ""), values.get("street", ""),
-                                       "address" in edited, settings)
+                                       "address" in edited, settings, meta.get("map_fix"))
     vd = values.get("visit_date", "")
     if not vd:
         fields["visit_date"] = FieldCheck(status="missing", reasons=["تاریخ بازدید مشخص نیست."])

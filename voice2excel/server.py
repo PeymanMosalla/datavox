@@ -835,7 +835,8 @@ def patch_record(rid: int, body: RecordPatch):
             v = "\n".join(to_ascii_digits(x).replace(" ", "").replace("-", "") for x in v.replace("،", "\n").split("\n") if x.strip())
         if values.get(k, "") != v:
             db().log_edit(rid, k, values.get(k, ""), v, "edit")
-            learning.learn_from_edit(db(), k, values.get(k, ""), v)
+            if not _is_map_revert(r, k, v):
+                learning.learn_from_edit(db(), k, values.get(k, ""), v)
             values[k] = v
             changed = True
     if changed:
@@ -897,6 +898,12 @@ def _add_values_to_dictionary(values: dict, source: str) -> list[str]:
     return added
 
 
+def _is_map_revert(r: dict, field: str, value: str) -> bool:
+    """برگرداندن حدسِ نقشه به آنچه شنیده شد، تصمیم همان آدرس است؛ «اصلاح همیشگی» یاد گرفته نمی‌شود."""
+    fix = r["extracted"].get("meta", {}).get("map_fix")
+    return bool(fix) and field == "address" and value == fix["from"]
+
+
 class AcceptSuggestion(BaseModel):
     field: str
     value: str
@@ -909,7 +916,8 @@ def accept_suggestion(rid: int, body: AcceptSuggestion):
         err(409, "این رکورد در اکسل ثبت شده است.")
     values = dict(r["values"])
     db().log_edit(rid, body.field, values.get(body.field, ""), body.value, "accept")
-    learning.learn_from_edit(db(), body.field, values.get(body.field, ""), body.value)
+    if not _is_map_revert(r, body.field, body.value):
+        learning.learn_from_edit(db(), body.field, values.get(body.field, ""), body.value)
     values[body.field] = body.value
     db().update_record(rid, values_json=values, manually_edited=1)
     pipeline.revalidate(db(), load_settings(), rid)
