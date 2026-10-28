@@ -18,7 +18,7 @@ import time
 
 LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 REMOTE_PAGES = {"/m", "/m/", "/static/m.js", "/static/recording-guide.html"}
-REMOTE_PREFIXES = ("/api/m/", "/static/fonts/")
+REMOTE_PREFIXES = ("/api/m/", "/static/fonts/", "/static/brand/")
 MAX_FAILURES = 8
 WINDOW_SECONDS = 600
 

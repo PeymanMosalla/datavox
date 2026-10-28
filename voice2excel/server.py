@@ -48,7 +48,7 @@ async def _lifespan(_app):
     yield
 
 
-app = FastAPI(title="ثبت ویس", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
+app = FastAPI(title="DataVox", version=__version__, docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 
 
 _last_request = {"t": time.time()}
@@ -398,7 +398,7 @@ def meta():
 def shutdown():
     """خروج از برنامه (دکمه «خروج» در رابط). پردازش در جریان متوقف و فایل به صف برمی‌گردد."""
     worker().cancel()
-    try:  # Voice2Excel.exe با دیدن این نشانه، پنجره را می‌بندد (به‌جای راه‌اندازی دوباره موتور)
+    try:  # DataVox.exe با دیدن این نشانه، پنجره را می‌بندد (به‌جای راه‌اندازی دوباره موتور)
         (DATA_DIR / ".quit").write_text("1")
     except OSError:
         pass
@@ -431,7 +431,7 @@ class LicenseIn(BaseModel):
 @app.post("/api/license")
 def license_install(body: LicenseIn):
     if len(body.text) > 4000:
-        err(400, "این متن، مجوز «ثبت ویس» نیست.")
+        err(400, "این متن، مجوز «DataVox» نیست.")
     try:
         licensing.install(body.text)
     except licensing.LicenseError as e:
@@ -1139,7 +1139,7 @@ async def dictionary_import(file: UploadFile = File(...), password: str = Form("
     except backup.BackupError as e:
         err(400, str(e))
     except (json.JSONDecodeError, UnicodeDecodeError):
-        err(400, "این فایل، واژه‌نامه «ثبت ویس» نیست.")
+        err(400, "این فایل، واژه‌نامه «DataVox» نیست.")
     try:
         res = dictionary.import_data(db(), data)
     except ValueError as e:
@@ -1616,7 +1616,7 @@ async def template_import(file: UploadFile = File(...)):
     try:
         data = json.loads((await _read_upload(file, 1024 * 1024)).decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
-        err(400, "این فایل، قالب «ثبت ویس» نیست.")
+        err(400, "این فایل، قالب «DataVox» نیست.")
     name = "t_" + uuid.uuid4().hex[:8]
     folder = Path.home() / "Documents"
     try:
@@ -2052,7 +2052,7 @@ async def backups_import(file: UploadFile = File(...), password: str = Form(""))
         err(400, str(e))
 
 
-# Voice2Excel.exe نسخه جدید این متغیر را می‌گذارد و با دیدن کد خروج RESTART_FOR_UPDATE، به‌روزرسانی را اعمال و
+# DataVox.exe نسخه جدید این متغیر را می‌گذارد و با دیدن کد خروج RESTART_FOR_UPDATE، به‌روزرسانی را اعمال و
 # موتور را دوباره راه‌اندازی می‌کند (پنجره برنامه باز می‌ماند و خودش دوباره بارگذاری می‌شود)
 RESTART_FOR_UPDATE = 75
 

@@ -37,7 +37,7 @@ def test_valid_license_accepted(lic):
 
 
 @pytest.mark.parametrize("text, msg", [
-    ("hello", "مجوز «ثبت ویس» نیست"),
+    ("hello", "مجوز «DataVox» نیست"),
     (lambda: _make(machine="AAAA-BBBB-CCCC-DDDD"), "رایانه دیگری"),
     (lambda: _make(expires=(date.today() - timedelta(days=1)).isoformat()), "مهلت"),
     (lambda: licensing.encode({"customer": "x", "machine": licensing.machine_code()}, bytes(32)), "امضای"),

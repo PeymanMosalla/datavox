@@ -194,7 +194,7 @@ def import_data(db: Database, data: dict) -> dict:
     from .learning import GROUP_LABELS
 
     if not isinstance(data, dict) or data.get("app") != "voice2excel" or data.get("type") != "dictionary":
-        raise ValueError("این فایل، واژه‌نامه «ثبت ویس» نیست.")
+        raise ValueError("این فایل، واژه‌نامه «DataVox» نیست.")
     entities, corrections = data.get("entities") or [], data.get("corrections") or []
     if not isinstance(entities, list) or not isinstance(corrections, list) \
             or len(entities) + len(corrections) > MAX_TRANSFER_ITEMS:

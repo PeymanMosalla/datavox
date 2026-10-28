@@ -56,7 +56,7 @@ def main() -> int:
         return 0
     if "--auto-exit" in sys.argv:
         os.environ["V2X_AUTO_EXIT"] = "1"
-    print(f"برنامه ثبت ویس اجرا شد: {url}")
+    print(f"برنامه DataVox اجرا شد: {url}")
     print("برای بستن برنامه این پنجره را ببندید یا Ctrl+C بزنید.")
     if s.open_browser and "--no-browser" not in sys.argv:
         threading.Timer(1.5, lambda: webbrowser.open(url)).start()

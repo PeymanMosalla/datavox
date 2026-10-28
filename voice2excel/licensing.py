@@ -75,7 +75,7 @@ def encode(data: dict, secret: bytes) -> str:
 def decode(text: str) -> dict:
     parts = "".join((text or "").split()).split(".")
     if len(parts) != 3 or parts[0] != PREFIX:
-        raise LicenseError("این متن، مجوز «ثبت ویس» نیست.")
+        raise LicenseError("این متن، مجوز «DataVox» نیست.")
     try:
         raw, sig = _unb64(parts[1]), _unb64(parts[2])
     except ValueError:

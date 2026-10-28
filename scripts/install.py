@@ -34,7 +34,7 @@ def main() -> int:
     if "--model" in sys.argv:
         model = sys.argv[sys.argv.index("--model") + 1]
     say("============================================")
-    say("  نصب برنامه ثبت ویس (فقط یک بار، با اینترنت)")
+    say("  نصب برنامه DataVox (فقط یک بار، با اینترنت)")
     say("============================================")
     say(f"[1/4] Python {sys.version.split()[0]}")
     if sys.version_info[:2] not in ((3, 11), (3, 12), (3, 13)):

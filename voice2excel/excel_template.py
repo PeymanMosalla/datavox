@@ -112,7 +112,7 @@ def clean(tpl: dict) -> dict:
         "rtl": bool(s.get("rtl", True)), "freeze": bool(s.get("freeze", True)), "filter": bool(s.get("filter", True)),
     }
     out = tpl.get("output") or {}
-    file = re.sub(r'[\\/:*?"<>|]+', " ", str(out.get("file") or tpl.get("title") or "ثبت ویس")).strip()[:80] or "ثبت ویس"
+    file = re.sub(r'[\\/:*?"<>|]+', " ", str(out.get("file") or tpl.get("title") or "DataVox")).strip()[:80] or "DataVox"
     policy = dict(tpl.get("policy") or {})
     if "highlights" in policy:
         policy["highlights"] = clean_highlights(policy["highlights"])
@@ -419,7 +419,7 @@ def to_export(tpl: dict) -> dict:
 
 def from_export(data: dict, name: str, folder: str) -> dict:
     if not isinstance(data, dict) or data.get("v2x_template") != 1:
-        raise ValueError("این فایل، قالب «ثبت ویس» نیست.")
+        raise ValueError("این فایل، قالب «DataVox» نیست.")
     tpl = {k: data[k] for k in EXPORT_KEYS if k in data}
     return clean({**tpl, "name": name, "title": str(tpl.get("title") or "قالب واردشده")[:60],
                   "output": {**(data.get("output") or {}), "folder": folder}})

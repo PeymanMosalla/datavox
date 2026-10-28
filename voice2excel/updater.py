@@ -3,7 +3,7 @@
 روند:
 1. scripts/build_update.py یک zip با کد برنامه و manifest می‌سازد (نسخه، شناسه محیط اجرا، هش هر فایل).
 2. کاربر فایل را در «تنظیمات» انتخاب می‌کند؛ اینجا اعتبارسنجی و در پوشه update-staged آماده می‌شود.
-3. Voice2Excel.exe در اجرای بعدی نسخه آماده را جایگزین می‌کند و اگر برنامه بالا نیامد، نسخه قبلی را برمی‌گرداند.
+3. DataVox.exe در اجرای بعدی نسخه آماده را جایگزین می‌کند و اگر برنامه بالا نیامد، نسخه قبلی را برمی‌گرداند.
 
 اگر کتابخانه‌ها یا Python تغییر کرده باشند (شناسه محیط اجرا متفاوت)، به‌روزرسانی سبک پذیرفته نمی‌شود و بسته کامل لازم است.
 
@@ -32,7 +32,7 @@ UPDATE_PUBLIC_KEY = bytes.fromhex("4abcac16343d36a4e002cec3ef9a6052fa539fc12a786
 # امضا در «توضیح» فایل zip است، نه یک فایل داخل آن، تا نسخه‌های پیش از ۲٫۰ (که هر فایلِ بیرون از
 # فهرست را رد می‌کنند) هم بتوانند همین بسته را نصب کنند
 SIG_PREFIX = b"V2X-SIG1:"
-ROOT_EXTRAS = {"Guide.html", "Recording-Guide.html"}  # فایل‌های کنار Voice2Excel.exe که با به‌روزرسانی عوض می‌شوند
+ROOT_EXTRAS = {"Guide.html", "Recording-Guide.html"}  # فایل‌های کنار DataVox.exe که با به‌روزرسانی عوض می‌شوند
 
 
 class UpdateError(Exception):
@@ -97,13 +97,13 @@ def inspect_update(zip_path: Path) -> dict:
             raise UpdateError("این بسته امضای معتبر سازنده برنامه را ندارد و پذیرفته نمی‌شود "
                               "(ممکن است دست‌کاری یا از منبع نامعتبر گرفته شده باشد).")
         if manifest.get("app") != "voice2excel" or manifest.get("type") != "update":
-            raise UpdateError("این فایل، بسته به‌روزرسانی برنامه ثبت ویس نیست.")
+            raise UpdateError("این فایل، بسته به‌روزرسانی برنامه DataVox نیست.")
         new_v = manifest.get("version", "")
         if parse_version(new_v) <= parse_version(__version__):
             raise UpdateError(f"نسخه این بسته ({new_v}) از نسخه فعلی ({__version__}) جدیدتر نیست.")
         rid = current_runtime_id()
         if rid is None:
-            raise UpdateError("به‌روزرسانی سبک فقط در نسخه قابل‌حمل (Voice2Excel.exe) پشتیبانی می‌شود.")
+            raise UpdateError("به‌روزرسانی سبک فقط در نسخه قابل‌حمل (DataVox.exe) پشتیبانی می‌شود.")
         if manifest.get("runtime_id") != rid:
             raise UpdateError("این نسخه به کتابخانه‌های تازه نیاز دارد؛ بسته کامل برنامه را نصب کنید.")
         files: dict = manifest.get("files") or {}
@@ -125,7 +125,7 @@ def inspect_update(zip_path: Path) -> dict:
 
 
 def stage_update(zip_path: Path) -> dict:
-    """آماده‌سازی به‌روزرسانی برای اعمال در اجرای بعدی Voice2Excel.exe."""
+    """آماده‌سازی به‌روزرسانی برای اعمال در اجرای بعدی DataVox.exe."""
     manifest = inspect_update(zip_path)
     tmp = STAGE_DIR.with_name(STAGE_DIR.name + ".partial")
     shutil.rmtree(tmp, ignore_errors=True)

@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#3355d6">
-<title>ارسال ویس</title>
+<title>ارسال ویس — DataVox</title>
+<link rel="icon" type="image/png" href="/static/brand/mark.png">
 <style>
   @font-face { font-family: "Vazirmatn"; src: url("/static/fonts/Vazirmatn.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
   :root { --bg: #f4f6fb; --card: #fff; --text: #1b2236; --muted: #6b7385; --border: #e3e7f0; --primary: #3355d6; --soft: #e9eefc;
@@ -15,8 +16,8 @@
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Vazirmatn", Tahoma, sans-serif; font-size: 16px; line-height: 1.8;
     padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
   header { display: flex; align-items: center; gap: 12px; padding: 18px 0 8px; }
-  .logo { width: 44px; height: 44px; border-radius: 13px; background: linear-gradient(135deg, #3355d6, #6d4fd8); display: grid; place-items: center; flex: none; }
-  .logo svg { width: 24px; height: 24px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; }
+  .logo { width: 48px; height: 48px; border-radius: 13px; background: #fff; border: 1px solid #e3e7f0; display: grid; place-items: center; flex: none; }
+  .logo img { width: 40px; height: 40px; object-fit: contain; }
   h1 { font-size: 19px; margin: 0; } .sub { color: var(--muted); font-size: 13px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-top: 14px; }
   label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; color: var(--muted); }
@@ -47,8 +48,8 @@
 </head>
 <body>
   <header>
-    <div class="logo"><svg viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Zm-6 8a6 6 0 0 0 12 0M12 18v2.5"/></svg></div>
-    <div><h1>ارسال ویس بازدید</h1><div class="sub">ویس‌ها مستقیم به برنامه «ثبت ویس» در دفتر می‌رسند</div></div>
+    <div class="logo"><img src="/static/brand/mark.png" alt="" draggable="false"></div>
+    <div><h1>ارسال ویس بازدید</h1><div class="sub">ویس‌ها مستقیم به برنامه «DataVox» در دفتر می‌رسند</div></div>
   </header>
 
   <section class="card stack" id="login" hidden>

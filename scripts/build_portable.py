@@ -1,8 +1,8 @@
 """ساخت نسخه قابل‌حمل ویندوز: یک پوشه/zip که بدون نصب Python و بدون اینترنت اجرا می‌شود.
 
-خروجی: dist/Voice2Excel/  و  dist/Voice2Excel-<نسخه>.zip
+خروجی: dist/DataVox/  و  dist/DataVox-<نسخه>.zip
 ساختار:
-    Voice2Excel.exe      اجراکننده (بدون پنجره کنسول)
+    DataVox.exe          اجراکننده (بدون پنجره کنسول)
     Guide.html           راهنمای فارسی
     python/              Python جاسازی‌شده + کتابخانه‌ها + کتابخانه‌های زمان‌اجرای VC++
     app/voice2excel/     کد برنامه
@@ -18,12 +18,10 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-import struct
 import subprocess
 import sys
 import urllib.request
 import zipfile
-import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,56 +48,6 @@ def runtime_requirements() -> list[str]:
         if line and not line.startswith("#") and line.split("==")[0].lower() in RUNTIME_REQS:
             reqs.append(line)
     return reqs
-
-
-# ---------- آیکون (بدون کتابخانه تصویر؛ PNG داخل ICO) ----------
-def _png(rgba, w: int, h: int) -> bytes:
-    raw = b"".join(b"\x00" + rgba[y * w * 4:(y + 1) * w * 4] for y in range(h))
-
-    def chunk(t, d):
-        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
-
-
-def _draw_icon(n: int) -> bytes:
-    import numpy as np
-
-    s = 4  # فرانمونه‌برداری برای لبه نرم
-    N = n * s
-    yy, xx = np.mgrid[0:N, 0:N].astype(np.float32) / N
-    # پس‌زمینه مربع گرد با گرادیان آبی-بنفش
-    r = 0.22
-    dx = np.maximum(np.abs(xx - 0.5) - (0.5 - r), 0)
-    dy = np.maximum(np.abs(yy - 0.5) - (0.5 - r), 0)
-    bg = (np.sqrt(dx ** 2 + dy ** 2) <= r).astype(np.float32)
-    t = (xx + yy) / 2
-    col = np.stack([0x33 + (0x6d - 0x33) * t, 0x55 + (0x4f - 0x55) * t, 0xd6 + (0xd8 - 0xd6) * t], -1)
-    # میکروفون سفید: کپسول + کمان + پایه
-    cap = ((np.abs(xx - 0.5) <= 0.11) & (yy >= 0.24) & (yy <= 0.52)) | \
-          ((xx - 0.5) ** 2 + (yy - 0.24) ** 2 <= 0.11 ** 2) | ((xx - 0.5) ** 2 + (yy - 0.52) ** 2 <= 0.11 ** 2)
-    d = np.sqrt((xx - 0.5) ** 2 + (yy - 0.50) ** 2)
-    arc = (np.abs(d - 0.20) <= 0.03) & (yy >= 0.50)
-    stem = (np.abs(xx - 0.5) <= 0.03) & (yy >= 0.70) & (yy <= 0.80)
-    base = (np.abs(xx - 0.5) <= 0.13) & (np.abs(yy - 0.80) <= 0.03)
-    fg = (cap | arc | stem | base).astype(np.float32) * bg
-    rgb = col * (1 - fg[..., None]) + 255 * fg[..., None]
-    rgba = np.concatenate([rgb, (bg * 255)[..., None]], -1)
-    rgba = rgba.reshape(n, s, n, s, 4).mean(axis=(1, 3))
-    return _png(rgba.clip(0, 255).astype(np.uint8).tobytes(), n, n)
-
-
-def make_icon(path: Path) -> None:
-    sizes = [256, 64, 48, 32, 16]
-    pngs = [_draw_icon(n) for n in sizes]
-    header = struct.pack("<HHH", 0, 1, len(sizes))
-    offset = 6 + 16 * len(sizes)
-    entries, data = b"", b""
-    for n, p in zip(sizes, pngs):
-        entries += struct.pack("<BBBBHHII", n % 256, n % 256, 0, 0, 1, 32, len(p), offset + len(data))
-        data += p
-    path.write_bytes(header + entries + data)
 
 
 # ---------- مراحل ساخت ----------
@@ -187,7 +135,7 @@ def webview2_sdk() -> Path:
 
 
 def build_launcher(dest_exe: Path, icon: Path) -> None:
-    """Voice2Excel.exe و کتابخانه‌های WebView2 کنار آن."""
+    """DataVox.exe و کتابخانه‌های WebView2 کنار آن."""
     if not CSC.exists():
         raise SystemExit("کامپایلر C# (.NET Framework 4) پیدا نشد.")
     sdk = webview2_sdk()
@@ -246,9 +194,14 @@ def main() -> int:
     model_dir = ROOT / "models" / a.model
     if not (model_dir / "model.bin").exists():
         raise SystemExit(f"مدل {a.model} در پوشه models نیست؛ ابتدا download_model.bat را اجرا کنید.")
-    out = DIST / "Voice2Excel"
+    out = DIST / "DataVox"
     # اطلاعات کاربری که با همین پوشه کار کرده حفظ می‌شود (ولی هرگز داخل zip نمی‌رود)
     kept_data = DIST / "_kept_user_data"
+    legacy = DIST / "Voice2Excel"  # نام پیشین برنامه: اطلاعاتش یک بار به پوشه جدید می‌آید
+    if not (out / "data").exists() and (legacy / "data").exists():
+        step("انتقال اطلاعات کاربر از پوشه نام قبلی (Voice2Excel)")
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy / "data"), str(out / "data"))
     if (out / "data").exists():
         step("نگه‌داشتن اطلاعات کاربر (data) در کنار ساخت")
         shutil.rmtree(kept_data, ignore_errors=True)
@@ -274,10 +227,8 @@ def main() -> int:
     step("نمونه‌ها")
     make_samples(out / "samples")
     step("آیکون و اجراکننده")
-    icon = PKG / "cache" / "icon.ico"
-    icon.parent.mkdir(parents=True, exist_ok=True)
-    make_icon(icon)
-    build_launcher(out / "Voice2Excel.exe", icon)
+    icon = PKG / "brand" / "icon.ico"  # نشان DataVox (scripts/build_brand.py)
+    build_launcher(out / "DataVox.exe", icon)
     shutil.copy2(ROOT / "voice2excel" / "web" / "guide.html", out / "Guide.html")
     shutil.copy2(PKG / "THIRD-PARTY-NOTICES.txt", out / "THIRD-PARTY-NOTICES.txt")
     shutil.copy2(ROOT / "voice2excel" / "web" / "recording-guide.html", out / "Recording-Guide.html")
@@ -290,7 +241,7 @@ def main() -> int:
     if len(longest) > 150:
         raise SystemExit("مسیرهای داخلی بسته بیش از حد طولانی‌اند (سقف ۲۶۰ نویسه ویندوز).")
     if not a.no_zip:
-        zp = DIST / f"Voice2Excel-{__version__}.zip"
+        zp = DIST / f"DataVox-{__version__}.zip"
         step(f"ساخت {zp.name}")
         make_zip(out, zp)
         print(f"حجم zip: {zp.stat().st_size / 1e9:.2f} گیگابایت")

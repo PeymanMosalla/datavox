@@ -3,7 +3,7 @@
 استفاده:
     .venv\\Scripts\\python.exe scripts\\build_update.py [--notes "تغییرات این نسخه"]
 
-خروجی: dist/Voice2Excel-update-<نسخه>.zip
+خروجی: dist/DataVox-update-<نسخه>.zip
 شرط: کتابخانه‌ها (requirements.txt) و نسخه Python با بسته کاملِ نصب‌شده یکی باشد؛ وگرنه برنامه
 بسته را رد می‌کند و باید بسته کامل (build_portable.py) ساخته شود.
 """
@@ -49,7 +49,7 @@ def main() -> int:
     ap.add_argument("--version", default=__version__, help="نسخه (برای آزمون)")
     ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون)")
     a = ap.parse_args()
-    out = ROOT / "dist" / f"Voice2Excel-update-{a.version}.zip"
+    out = ROOT / "dist" / f"DataVox-update-{a.version}.zip"
     # راهنماها کنار exe با نام‌های Guide.html و Recording-Guide.html قرار دارند (منبع: صفحه‌های داخل برنامه)
     web = ROOT / "voice2excel" / "web"
     extras = []

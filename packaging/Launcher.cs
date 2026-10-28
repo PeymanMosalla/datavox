@@ -1,4 +1,4 @@
-// Voice2Excel.exe: اجراکننده نسخه قابل‌حمل.
+// DataVox.exe: اجراکننده نسخه قابل‌حمل.
 // - صفحه شروع طراحی‌شده (لوگو، نسخه، نوار پیشرفت) تا موتور برنامه آماده شود.
 // - برنامه در پنجره اختصاصی خودش (WebView2، بدون قاب ویندوز، با نوار عنوان طراحی‌شده در خود صفحه) باز می‌شود؛
 //   اگر WebView2 روی رایانه نباشد، مثل قبل در مرورگر پیش‌فرض.
@@ -22,7 +22,7 @@ using Microsoft.Web.WebView2.WinForms;
 static class Launcher
 {
     public const string Url = "http://127.0.0.1:8765/";
-    public const string Title = "ثبت ویس";
+    public const string Title = "DataVox";
     static readonly string[] RootExtras = { "Guide.html", "Recording-Guide.html" };
 
     public static string baseDir;
@@ -82,6 +82,7 @@ static class Launcher
         {
             string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             string lnk = Path.Combine(desktop, Title + ".lnk");
+            RemoveLegacyShortcut(desktop);
             if (File.Exists(lnk)) return;
             // WScript.Shell نام فایل فارسی را ذخیره نمی‌کند: ابتدا با نام انگلیسی ساخته و سپس تغییر نام داده می‌شود
             string tmp = Path.Combine(desktop, "Voice2Excel-shortcut.lnk");
@@ -91,11 +92,26 @@ static class Launcher
             sc.TargetPath = exePath;
             sc.WorkingDirectory = baseDir;
             sc.IconLocation = exePath + ",0";
-            sc.Description = "Voice2Excel";
+            sc.Description = "DataVox";
             sc.Save();
             if (File.Exists(tmp)) File.Move(tmp, lnk);
         }
         catch (Exception e) { Log("shortcut: " + e.Message); }
+    }
+
+    /// <summary>میان‌بر نام قبلی برنامه («ثبت ویس») اگر به همین برنامه اشاره کند، برداشته می‌شود.</summary>
+    static void RemoveLegacyShortcut(string desktop)
+    {
+        try
+        {
+            string old = Path.Combine(desktop, "ثبت ویس.lnk");
+            if (!File.Exists(old)) return;
+            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
+            string target = shell.CreateShortcut(old).TargetPath;
+            if (target.EndsWith("Voice2Excel.exe", StringComparison.OrdinalIgnoreCase) || target.EndsWith("DataVox.exe", StringComparison.OrdinalIgnoreCase))
+                File.Delete(old);
+        }
+        catch (Exception e) { Log("legacy shortcut: " + e.Message); }
     }
 
     public static string Version()
@@ -227,7 +243,7 @@ static class Launcher
     static int Main()
     {
         baseDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\');
-        string exePath = Path.Combine(baseDir, "Voice2Excel.exe");
+        string exePath = Path.Combine(baseDir, "DataVox.exe");
         Native.EnableDpiAwareness();  // پیش از ساخت هر پنجره؛ وگرنه در نمایشگرهای ۱۲۵٪ و بیشتر، صفحه از پنجره بزرگ‌تر می‌شود
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -314,8 +330,9 @@ sealed class Splash : Form
     readonly float scale = Native.Scale();
     const int W = 460, H = 270;
     readonly System.Windows.Forms.Timer anim = new System.Windows.Forms.Timer();
-    static readonly Color Bg1 = Color.FromArgb(19, 24, 40), Bg2 = Color.FromArgb(28, 34, 58);
-    static readonly Color Accent1 = Color.FromArgb(51, 85, 214), Accent2 = Color.FromArgb(123, 92, 255);
+    // رنگ‌های نشان DataVox: سبز و سرمه‌ای روی زمینه سفید
+    static readonly Color Accent1 = Color.FromArgb(29, 180, 110), Accent2 = Color.FromArgb(13, 120, 110);
+    readonly Image logo;
 
     public Splash(string version)
     {
@@ -328,7 +345,8 @@ sealed class Splash : Form
         Text = Launcher.Title;
         DoubleBuffered = true;
         Opacity = 0;
-        try { Icon = Icon.ExtractAssociatedIcon(Path.Combine(Launcher.baseDir, "Voice2Excel.exe")); } catch { }
+        try { Icon = Icon.ExtractAssociatedIcon(Path.Combine(Launcher.baseDir, "DataVox.exe")); } catch { }
+        try { logo = Image.FromFile(Path.Combine(Launcher.baseDir, "app", "voice2excel", "web", "brand", "logo.png")); } catch { }
         anim.Interval = 15;
         anim.Tick += delegate
         {
@@ -362,21 +380,32 @@ sealed class Splash : Form
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         g.ScaleTransform(scale, scale);  // رسم با اندازه‌های منطقی، نمایش به اندازه واقعی نمایشگر
         var rc = new Rectangle(0, 0, W, H);
-        using (var bg = new LinearGradientBrush(rc, Bg1, Bg2, 60f)) g.FillRectangle(bg, rc);
-        Logo.Draw(g, new Rectangle(rc.Width / 2 - 36, 34, 72, 72));
-        using (var f = new Font("Segoe UI", 17, FontStyle.Bold, GraphicsUnit.Point))
-        using (var sf = new StringFormat { Alignment = StringAlignment.Center, FormatFlags = StringFormatFlags.DirectionRightToLeft })
-            g.DrawString(Launcher.Title, f, Brushes.White, new RectangleF(0, 118, rc.Width, 40), sf);
+        g.Clear(Color.White);
+        g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        if (logo != null)
+        {
+            int lh = 140, lw = (int)(lh * logo.Width / (float)logo.Height);
+            g.DrawImage(logo, new Rectangle((rc.Width - lw) / 2, 22, lw, lh));
+        }
+        else
+        {
+            Logo.Draw(g, new Rectangle(rc.Width / 2 - 36, 34, 72, 72));
+            using (var f = new Font("Segoe UI", 17, FontStyle.Bold, GraphicsUnit.Point))
+            using (var b = new SolidBrush(Color.FromArgb(13, 43, 82)))
+            using (var sf = new StringFormat { Alignment = StringAlignment.Center })
+                g.DrawString(Launcher.Title, f, b, new RectangleF(0, 118, rc.Width, 40), sf);
+        }
+        using (var pen = new Pen(Color.FromArgb(226, 231, 240))) g.DrawRectangle(pen, 0, 0, rc.Width - 1, rc.Height - 1);
         using (var f = new Font("Segoe UI", 9.5f))
-        using (var b = new SolidBrush(Color.FromArgb(150, 160, 190)))
+        using (var b = new SolidBrush(Color.FromArgb(91, 100, 120)))
         using (var sf = new StringFormat { Alignment = StringAlignment.Center, FormatFlags = StringFormatFlags.DirectionRightToLeft })
         {
-            if (!string.IsNullOrEmpty(version)) g.DrawString("نسخه " + version, f, b, new RectangleF(0, 156, rc.Width, 22), sf);
+            if (!string.IsNullOrEmpty(version)) g.DrawString("نسخه " + version, f, b, new RectangleF(0, 172, rc.Width, 22), sf);
             g.DrawString(status, f, b, new RectangleF(0, 224, rc.Width, 22), sf);
         }
         // نوار پیشرفت نامعین با حرکت نرم
         var track = new Rectangle(80, 200, rc.Width - 160, 6);
-        using (var p = Native.Pill(track)) using (var b = new SolidBrush(Color.FromArgb(42, 49, 80))) g.FillPath(b, p);
+        using (var p = Native.Pill(track)) using (var b = new SolidBrush(Color.FromArgb(230, 234, 242))) g.FillPath(b, p);
         float w = track.Width * 0.35f, x = track.X - w + (track.Width + w) * (phase / 1.4f);
         var seg = RectangleF.Intersect(new RectangleF(x, track.Y, w, track.Height), track);
         if (seg.Width > 1)
@@ -384,7 +413,7 @@ sealed class Splash : Form
             using (var b = new LinearGradientBrush(seg, Accent1, Accent2, 0f)) g.FillPath(b, p);
     }
 
-    protected override void OnFormClosed(FormClosedEventArgs e) { anim.Stop(); base.OnFormClosed(e); }
+    protected override void OnFormClosed(FormClosedEventArgs e) { anim.Stop(); if (logo != null) logo.Dispose(); base.OnFormClosed(e); }
 }
 
 static class Logo

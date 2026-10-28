@@ -84,7 +84,7 @@ try {
   await send("Page.navigate", { url: APP });
   await sleep(3000);
 
-  check("صفحه بارگذاری شد", (await evaluate("document.title")) === "ثبت ویس");
+  check("صفحه بارگذاری شد", (await evaluate("document.title")) === "DataVox");
   const overlay = await evaluate(`(() => { const e = document.elementFromPoint(700, 450); return e ? (e.id || e.className || e.tagName) : ""; })()`);
   check("لایه‌ای روی صفحه نیست", !/backdrop/.test(overlay), "عنصر بالایی وسط صفحه: " + overlay);
 

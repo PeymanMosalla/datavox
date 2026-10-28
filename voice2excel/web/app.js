@@ -1,4 +1,4 @@
-/* رابط کاربری «ثبت ویس» — بدون وابستگی خارجی، کاملاً محلی */
+/* رابط کاربری «DataVox» — بدون وابستگی خارجی، کاملاً محلی */
 "use strict";
 
 // ---------------- ابزارها ----------------
@@ -210,7 +210,7 @@ function notifyDone(s, n) {
   toast(msg, "ok", s.records.review && state.page !== "today" ? { label: "بازبینی", onClick: () => { location.hash = "#/today"; } } : null);
   if (localStorage.getItem("v2x.sound") !== "0") chime();
   if (document.hidden && "Notification" in window && Notification.permission === "granted") {
-    try { new Notification("ثبت ویس", { body: msg, lang: "fa", dir: "rtl" }); } catch { }
+    try { new Notification("DataVox", { body: msg, lang: "fa", dir: "rtl" }); } catch { }
   }
 }
 function chime() {
@@ -2468,12 +2468,12 @@ async function renderSettings(el) {
       if (!box) return;
       box.innerHTML = `<div class="stack">
         <dl class="kv"><dt>نسخه فعلی</dt><dd>${fa(U.version)}</dd></dl>
-        ${!U.supported ? `<div class="muted small">به‌روزرسانی سبک فقط در نسخه قابل‌حمل (Voice2Excel.exe) در دسترس است.</div>` : U.staged
+        ${!U.supported ? `<div class="muted small">به‌روزرسانی سبک فقط در نسخه قابل‌حمل (DataVox.exe) در دسترس است.</div>` : U.staged
           ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>نسخه ${fa(U.staged.version)} آماده نصب است</b>${U.one_click
               ? "با «نصب به‌روزرسانی»، برنامه چند ثانیه بسته و با نسخه جدید دوباره باز می‌شود؛ لازم نیست کاری بکنید."
               : "برنامه را با «خروج از برنامه» ببندید و دوباره باز کنید تا نسخه جدید جایگزین شود."} اگر نسخه جدید اجرا نشود، برنامه خودکار به نسخه فعلی برمی‌گردد.${U.staged.notes ? `<div class="small">${esc(U.staged.notes)}</div>` : ""}</div>
               ${U.one_click ? `<button class="btn sm primary" id="up-install">${I.check} نصب به‌روزرسانی</button>` : ""}<button class="btn sm ghost" id="up-cancel">لغو</button></div>`
-          : `<div class="muted small">بسته به‌روزرسانی (فایل Voice2Excel-update-….zip، حدود ۱ مگابایت) را انتخاب کنید. فقط بسته‌ای را نصب کنید که از سازنده برنامه گرفته‌اید. اطلاعات شما (پوشه data) دست نمی‌خورد.</div>
+          : `<div class="muted small">بسته به‌روزرسانی (فایل DataVox-update-….zip، حدود ۱ مگابایت) را انتخاب کنید. فقط بسته‌ای را نصب کنید که از سازنده برنامه گرفته‌اید. اطلاعات شما (پوشه data) دست نمی‌خورد.</div>
              <div class="row"><input type="file" id="up-file" accept=".zip" hidden><button class="btn" id="up-pick">${I.upload} انتخاب بسته به‌روزرسانی</button></div>`}
       </div>`;
       $("#up-pick")?.addEventListener("click", () => $("#up-file").click());
@@ -2547,7 +2547,7 @@ $("#btn-exit").addEventListener("click", async () => {
   if (!ok) return;
   try { await api("/api/shutdown", { method: "POST" }); } catch { }
   document.body.innerHTML = `<div class="empty" style="min-height:100vh;justify-content:center">${I.ok}
-    <h2 style="margin:0">برنامه بسته شد</h2><div>برای اجرای دوباره، روی «ثبت ویس» در دسکتاپ یا Voice2Excel.exe دوبار کلیک کنید.</div>
+    <h2 style="margin:0">برنامه بسته شد</h2><div>برای اجرای دوباره، روی «DataVox» در دسکتاپ یا DataVox.exe دوبار کلیک کنید.</div>
     <div class="muted small">می‌توانید این صفحه را ببندید.</div></div>`;
 });
 
@@ -2576,7 +2576,7 @@ function requestKind(lic) {
 const REQUEST_TITLE = { subscribe: "درخواست اشتراک", renew: "درخواست تمدید", support: "تماس با پشتیبانی" };
 function requestMessage(lic, name, phone) {
   const kind = requestKind(lic);
-  return [{ subscribe: "درخواست اشتراک «ثبت ویس»", renew: "درخواست تمدید اشتراک «ثبت ویس»", support: "درخواست پشتیبانی «ثبت ویس»" }[kind],
+  return [{ subscribe: "درخواست اشتراک «DataVox»", renew: "درخواست تمدید اشتراک «DataVox»", support: "درخواست پشتیبانی «DataVox»" }[kind],
     `نام: ${name || "—"}`, `تلفن: ${phone || "—"}`, `کد رایانه: ${lic.machine}`, `نسخه: ${lic.version}`].join("\n");
 }
 /** شماره واتس‌اپ به قالب بین‌المللی (۰۹۱۲… ← ۹۸۹۱۲…). */
@@ -2655,7 +2655,7 @@ async function renderActivation(el) {
   };
 }
 
-// ---------- پنجره اختصاصی (Voice2Excel.exe) ----------
+// ---------- پنجره اختصاصی (DataVox.exe) ----------
 const WIN = window.chrome && window.chrome.webview;
 if (WIN) {
   // کشیدن و دوبار کلیک روی نوار عنوان: با «app-region: drag» خود ویندوز انجام می‌دهد و این رویدادها اصلاً به صفحه

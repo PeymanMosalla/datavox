@@ -140,10 +140,10 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 }
 .brand { display: flex; gap: 12px; align-items: center; padding: 4px 8px 22px; }
 .brand-logo {
-  width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--primary), #6d4fd8); color: #fff; box-shadow: 0 6px 16px rgba(51, 85, 214, .35);
+  width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; flex: none;
+  background: #fff; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(13, 43, 82, .12);
 }
-.brand-logo svg { width: 24px; height: 24px; stroke-width: 2; }
+.brand-logo img { width: 38px; height: 38px; object-fit: contain; }
 .brand-name { font-weight: 800; font-size: 17px; }
 .brand-sub { font-size: 11.5px; color: var(--muted); }
 .nav { display: flex; flex-direction: column; gap: 3px; }
@@ -567,11 +567,8 @@ html.in-app .titlebar {
 html.in-app .tb-title { display: flex; align-items: center; gap: 8px; direction: rtl; font-size: 13px; color: var(--text-2); }
 html.in-app .tb-title b { color: var(--text); font-weight: 700; }
 html.in-app .tb-page:not(:empty)::before { content: "—"; margin-inline-end: 8px; opacity: .6; }
-html.in-app .tb-logo {
-  width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--primary), #6d4fd8); color: #fff;
-}
-html.in-app .tb-logo svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+html.in-app .tb-logo { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; background: #fff; }
+html.in-app .tb-logo img { width: 19px; height: 19px; object-fit: contain; }
 html.in-app .tb-btns { position: absolute; right: 0; top: 0; display: flex; height: 100%; app-region: no-drag; -webkit-app-region: no-drag; }
 html.in-app .tb-btn {
   width: 46px; height: 100%; border: 0; background: transparent; color: var(--text-2); display: grid; place-items: center;

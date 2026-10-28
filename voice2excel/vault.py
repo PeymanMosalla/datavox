@@ -65,7 +65,7 @@ def is_encrypted(head: bytes) -> bool:
 def decrypt(blob: bytes, password: str = "", key: dict | None = None) -> bytes:
     """با کلید ذخیره‌شده (اگر همین فایل با آن قفل شده) یا با گذرواژه."""
     if not is_encrypted(blob) or len(blob) < _HEAD + 32:
-        raise VaultError("این فایل، پشتیبان رمزدار «ثبت ویس» نیست.")
+        raise VaultError("این فایل، پشتیبان رمزدار «DataVox» نیست.")
     salt, nonce = blob[5:21], blob[21:37]
     (iterations,) = struct.unpack(">I", blob[37:41])
     if key and bytes.fromhex(key["salt"]) == salt and key["iterations"] == iterations:

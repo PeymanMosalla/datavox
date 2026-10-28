@@ -176,9 +176,9 @@ def import_backup(blob: bytes, password: str = "") -> dict:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             if json.loads(z.read("manifest.json")).get("app") != "voice2excel":
-                raise BackupError("این فایل، پشتیبان برنامه ثبت ویس نیست.")
+                raise BackupError("این فایل، پشتیبان برنامه DataVox نیست.")
     except (zipfile.BadZipFile, KeyError, ValueError):
-        raise BackupError("فایل پشتیبان خراب است یا پشتیبان «ثبت ویس» نیست.") from None
+        raise BackupError("فایل پشتیبان خراب است یا پشتیبان «DataVox» نیست.") from None
     target = backup_dir() / f"backup-{datetime.now():%Y%m%d-%H%M%S}-imported.zip"
     target.write_bytes(data)
     return next(b for b in list_backups() if b["name"] == target.name)
@@ -207,7 +207,7 @@ def restore_backup(db: Database, name: str) -> dict:
             with zipfile.ZipFile(src_zip) as z:
                 manifest = json.loads(z.read("manifest.json"))
                 if manifest.get("app") != "voice2excel":
-                    raise BackupError("این فایل، پشتیبان برنامه ثبت ویس نیست.")
+                    raise BackupError("این فایل، پشتیبان برنامه DataVox نیست.")
                 # فقط بخش‌های شناخته‌شده و با اندازه معقول باز می‌شوند (نه هر فایلی که در زیپ گذاشته شده)
                 members = [i for i in z.infolist() if _MEMBER_RE.match(i.filename)]
                 if sum(i.file_size for i in members) > MAX_RESTORE_BYTES:

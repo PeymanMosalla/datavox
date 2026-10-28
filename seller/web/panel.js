@@ -36,14 +36,14 @@ const validity = (l) => l.expires ? `یک‌ساله تا ${fa(l.expires_j)}` : 
 
 /** پیامی که همراه مجوز برای مشتری فرستاده می‌شود. */
 function customerMessage(l) {
-  return [`مجوز «ثبت ویس» — ${l.customer}`, `اشتراک: ${validity(l)}`, "",
+  return [`مجوز «DataVox» — ${l.customer}`, `اشتراک: ${validity(l)}`, "",
     "برای فعال‌سازی: در برنامه دکمه «فعال‌سازی» (یا تنظیمات ← اشتراک) را بزنید، متن زیر را در بخش «وارد کردن مجوز» بچسبانید و «فعال‌سازی» را بزنید:",
     "", l.text].join("\n");
 }
 function reminderMessage(l) {
   return l.days_left < 0
-    ? `سلام ${l.customer}، اشتراک «ثبت ویس» شما از ${fa(l.expires_j)} تمام شده است. برای تمدید با من در تماس باشید.`
-    : `سلام ${l.customer}، اشتراک «ثبت ویس» شما ${fa(l.days_left)} روز دیگر (${fa(l.expires_j)}) تمام می‌شود. برای تمدید با من در تماس باشید.`;
+    ? `سلام ${l.customer}، اشتراک «DataVox» شما از ${fa(l.expires_j)} تمام شده است. برای تمدید با من در تماس باشید.`
+    : `سلام ${l.customer}، اشتراک «DataVox» شما ${fa(l.days_left)} روز دیگر (${fa(l.expires_j)}) تمام می‌شود. برای تمدید با من در تماس باشید.`;
 }
 /** دکمه‌های ارسال یک مجوز: کپی متن، کپی پیام کامل، دانلود فایل، واتس‌اپ مشتری. */
 function shareButtons(l) {
@@ -82,7 +82,7 @@ function parseRequest(text) {
 function drawIssue(box) {
   box.innerHTML = `<div class="stack" style="max-width:720px">
     <label class="stack" style="gap:6px">پیامی که مشتری از برنامه فرستاده را اینجا بچسبانید (نام، تلفن و کد رایانه خودکار پر می‌شوند):
-      <textarea class="input" id="i-msg" rows="5" placeholder="درخواست اشتراک «ثبت ویس»&#10;نام: ...&#10;تلفن: ...&#10;کد رایانه: ABCD-EFGH-IJKL-MNOP"></textarea></label>
+      <textarea class="input" id="i-msg" rows="5" placeholder="درخواست اشتراک «DataVox»&#10;نام: ...&#10;تلفن: ...&#10;کد رایانه: ABCD-EFGH-IJKL-MNOP"></textarea></label>
     <div class="row"><input class="input" id="i-name" placeholder="نام مشتری یا شرکت" style="max-width:260px">
       <input class="input" dir="auto" id="i-phone" placeholder="تلفن مشتری" style="max-width:180px">
       <input class="input ltr" id="i-code" placeholder="ABCD-EFGH-IJKL-MNOP" style="max-width:240px"></div>
