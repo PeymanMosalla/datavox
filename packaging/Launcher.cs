@@ -106,9 +106,10 @@ static class Launcher
         {
             string old = Path.Combine(desktop, "ثبت ویس.lnk");
             if (!File.Exists(old)) return;
-            dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell"));
-            string target = shell.CreateShortcut(old).TargetPath;
-            if (target.EndsWith("Voice2Excel.exe", StringComparison.OrdinalIgnoreCase) || target.EndsWith("DataVox.exe", StringComparison.OrdinalIgnoreCase))
+            // WScript.Shell فایل با نام فارسی را باز نمی‌کند؛ مسیر مقصد مستقیم از محتوای فایل میان‌بر خوانده می‌شود
+            byte[] raw = File.ReadAllBytes(old);
+            string text = (System.Text.Encoding.Default.GetString(raw) + System.Text.Encoding.Unicode.GetString(raw)).ToLowerInvariant();
+            if (text.Contains("\\voice2excel.exe") || text.Contains("\\datavox.exe"))
                 File.Delete(old);
         }
         catch (Exception e) { Log("legacy shortcut: " + e.Message); }
