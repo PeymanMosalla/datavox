@@ -555,3 +555,42 @@ body.no-scroll .toasts { bottom: 86px; }
 .tp-hl .check { min-width: 140px; }
 .tp-hl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .tp-hl .check { min-width: 140px; }
+
+/* ---------- پنجره اختصاصی (Voice2Excel.exe): نوار عنوان ---------- */
+.titlebar { display: none; }
+html.in-app { --tb: 36px; }
+html.in-app .titlebar {
+  display: flex; position: fixed; top: 0; inset-inline: 0; height: var(--tb); z-index: 1000; direction: ltr;
+  align-items: center; justify-content: center; background: var(--surface); border-bottom: 1px solid var(--border);
+  user-select: none; app-region: drag; -webkit-app-region: drag;
+}
+html.in-app .tb-title { display: flex; align-items: center; gap: 8px; direction: rtl; font-size: 13px; color: var(--text-2); }
+html.in-app .tb-title b { color: var(--text); font-weight: 700; }
+html.in-app .tb-page:not(:empty)::before { content: "—"; margin-inline-end: 8px; opacity: .6; }
+html.in-app .tb-logo {
+  width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--primary), #6d4fd8); color: #fff;
+}
+html.in-app .tb-logo svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+html.in-app .tb-btns { position: absolute; right: 0; top: 0; display: flex; height: 100%; app-region: no-drag; -webkit-app-region: no-drag; }
+html.in-app .tb-btn {
+  width: 46px; height: 100%; border: 0; background: transparent; color: var(--text-2); display: grid; place-items: center;
+  cursor: default; transition: background .12s;
+}
+html.in-app .tb-btn svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+html.in-app .tb-btn:hover { background: var(--surface-2); color: var(--text); }
+html.in-app .tb-close:hover { background: #e81123; color: #fff; }
+html.in-app .tb-btn .i-restore, html.in-app.win-max .tb-btn .i-max { display: none; }
+html.in-app.win-max .tb-btn .i-restore { display: block; }
+html.in-app body { padding-top: var(--tb); }
+html.in-app .app { min-height: calc(100vh - var(--tb)); }
+html.in-app .sidebar { top: var(--tb); height: calc(100vh - var(--tb)); }
+
+/* نصب به‌روزرسانی: پوشش تمام‌صفحه تا موتور با نسخه جدید برگردد */
+.update-overlay {
+  position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(4px);
+}
+.update-overlay .card { padding: 28px 36px; text-align: center; min-width: 320px; }
+.update-overlay .spinner { width: 34px; height: 34px; margin: 0 auto 14px; }
+html.in-app .drawer, html.in-app .drawer-backdrop, html.in-app .modal-backdrop { top: var(--tb); }

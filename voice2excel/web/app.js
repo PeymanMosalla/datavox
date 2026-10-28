@@ -279,6 +279,7 @@ function route() {
   $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === state.page));
   renderBanners();
   $("#page-title").textContent = p.title;
+  $("#tb-page").textContent = p.title;
   $("#page-sub").textContent = p.sub;
   pageHooks = {};
   reviewState.reload = reviewState.updateRow = null;  // قلاب‌های صفحه بازبینیِ قبلی به DOM حذف‌شده اشاره دارند
@@ -2468,8 +2469,10 @@ async function renderSettings(el) {
       box.innerHTML = `<div class="stack">
         <dl class="kv"><dt>نسخه فعلی</dt><dd>${fa(U.version)}</dd></dl>
         ${!U.supported ? `<div class="muted small">به‌روزرسانی سبک فقط در نسخه قابل‌حمل (Voice2Excel.exe) در دسترس است.</div>` : U.staged
-          ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>نسخه ${fa(U.staged.version)} آماده نصب است</b>برنامه را با «خروج از برنامه» ببندید و دوباره باز کنید تا نسخه جدید جایگزین شود. اگر نسخه جدید اجرا نشود، برنامه خودکار به نسخه فعلی برمی‌گردد.${U.staged.notes ? `<div class="small">${esc(U.staged.notes)}</div>` : ""}</div>
-              <button class="btn sm ghost" id="up-cancel">لغو</button></div>`
+          ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>نسخه ${fa(U.staged.version)} آماده نصب است</b>${U.one_click
+              ? "با «نصب به‌روزرسانی»، برنامه چند ثانیه بسته و با نسخه جدید دوباره باز می‌شود؛ لازم نیست کاری بکنید."
+              : "برنامه را با «خروج از برنامه» ببندید و دوباره باز کنید تا نسخه جدید جایگزین شود."} اگر نسخه جدید اجرا نشود، برنامه خودکار به نسخه فعلی برمی‌گردد.${U.staged.notes ? `<div class="small">${esc(U.staged.notes)}</div>` : ""}</div>
+              ${U.one_click ? `<button class="btn sm primary" id="up-install">${I.check} نصب به‌روزرسانی</button>` : ""}<button class="btn sm ghost" id="up-cancel">لغو</button></div>`
           : `<div class="muted small">بسته به‌روزرسانی (فایل Voice2Excel-update-….zip، حدود ۱ مگابایت) را انتخاب کنید. فقط بسته‌ای را نصب کنید که از سازنده برنامه گرفته‌اید. اطلاعات شما (پوشه data) دست نمی‌خورد.</div>
              <div class="row"><input type="file" id="up-file" accept=".zip" hidden><button class="btn" id="up-pick">${I.upload} انتخاب بسته به‌روزرسانی</button></div>`}
       </div>`;
@@ -2479,9 +2482,10 @@ async function renderSettings(el) {
         if (!f) return;
         const fd = new FormData();
         fd.append("file", f, f.name);
-        try { const r = await api("/api/update", { method: "POST", form: fd }); toast(`نسخه ${fa(r.version)} آماده شد؛ برنامه را ببندید و دوباره باز کنید.`, "ok"); drawUpdate(); }
+        try { const r = await api("/api/update", { method: "POST", form: fd }); toast(U.one_click ? `نسخه ${fa(r.version)} آماده نصب است.` : `نسخه ${fa(r.version)} آماده شد؛ برنامه را ببندید و دوباره باز کنید.`, "ok"); drawUpdate(); }
         catch (er) { toastErr(er); }
       });
+      $("#up-install")?.addEventListener("click", () => installUpdate(U.version, U.staged.version));
       $("#up-cancel")?.addEventListener("click", async () => { try { await api("/api/update", { method: "DELETE" }); drawUpdate(); } catch (er) { toastErr(er); } });
     };
     drawUpdate().catch(() => {});
@@ -2651,7 +2655,64 @@ async function renderActivation(el) {
   };
 }
 
+// ---------- پنجره اختصاصی (Voice2Excel.exe) ----------
+const WIN = window.chrome && window.chrome.webview;
+if (WIN) {
+  // کشیدن و دوبار کلیک روی نوار عنوان: با «app-region: drag» خود ویندوز انجام می‌دهد و این رویدادها اصلاً به صفحه
+  // نمی‌رسند؛ اگر WebView2 آن را پشتیبانی نکند، همین رویدادها می‌رسند و کار به پنجره سپرده می‌شود
+  WIN.addEventListener("message", (e) => {
+    const m = String(e.data);
+    if (m === "state:max" || m === "state:normal") {
+      document.documentElement.classList.toggle("win-max", m === "state:max");
+      const b = $('[data-win="max"]');
+      if (b) b.title = m === "state:max" ? "بازگرداندن" : "بزرگ کردن";
+    }
+  });
+  $$("[data-win]").forEach((b) => b.onclick = () => WIN.postMessage(b.dataset.win));
+  const bar = $("#titlebar");
+  bar.addEventListener("mousedown", (e) => { if (e.button === 0 && e.detail === 1 && !e.target.closest(".tb-btn")) WIN.postMessage("drag"); });
+  bar.addEventListener("dblclick", (e) => { if (!e.target.closest(".tb-btn")) WIN.postMessage("max"); });
+}
+
+/** نصب به‌روزرسانی آماده بدون بستن دستی: موتور خاموش، نسخه جدید جایگزین و روشن، صفحه خودش بارگذاری می‌شود. */
+async function installUpdate(from, to) {
+  try { sessionStorage.setItem("v2x.updating", JSON.stringify({ from, to })); } catch { }
+  if (WIN) WIN.postMessage("updating");
+  const ov = document.createElement("div");
+  ov.className = "update-overlay";
+  ov.innerHTML = `<div class="card"><div class="spinner"></div><b>در حال نصب نسخه ${fa(to)}…</b>
+    <div class="muted small" style="margin-top:6px">برنامه چند ثانیه دیگر خودش با نسخه جدید باز می‌شود؛ پنجره را نبندید.</div></div>`;
+  document.body.appendChild(ov);
+  try { await api("/api/update/apply", { method: "POST" }); }
+  catch (e) { ov.remove(); try { sessionStorage.removeItem("v2x.updating"); } catch { } toastErr(e); return; }
+  const t0 = Date.now();
+  let wentDown = false;
+  while (Date.now() - t0 < 180000) {
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const r = await fetch("/api/update", { cache: "no-store" });
+      if (!r.ok) throw new Error();
+      const u = await r.json();
+      if (wentDown || u.version !== from) { location.reload(); return; }
+    } catch { wentDown = true; }
+  }
+  $("b", ov).textContent = "نصب بیش از حد طول کشید؛ برنامه را ببندید و دوباره باز کنید.";
+}
+
+/** پس از بارگذاری دوباره: نتیجه به‌روزرسانی یک‌کلیکی گزارش می‌شود. */
+async function reportUpdate() {
+  let job = null;
+  try { job = JSON.parse(sessionStorage.getItem("v2x.updating") || "null"); sessionStorage.removeItem("v2x.updating"); } catch { }
+  if (!job) return;
+  try {
+    const u = await api("/api/update");
+    if (u.version === job.to) toast(`برنامه به نسخه ${fa(job.to)} به‌روز شد.`, "ok");
+    else toast("نسخه جدید اجرا نشد و برنامه به نسخه قبلی برگشت؛ اطلاعات شما دست نخورده است.", "err");
+  } catch { }
+}
+
 (async function init() {
+  reportUpdate();
   await refreshLicense();
   try { state.meta = await api("/api/meta"); } catch (e) { toastErr(e); }
   await refreshStatus();

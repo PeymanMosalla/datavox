@@ -165,12 +165,39 @@ def make_samples(dest: Path) -> None:
     make_company_like(dest / "sample-company.xlsx")
 
 
+WEBVIEW2_VERSION = "1.0.4314.35"  # کتابخانه رسمی مایکروسافت (مجوز BSD) برای پنجره اختصاصی برنامه
+WEBVIEW2_FILES = {"Microsoft.Web.WebView2.Core.dll": "lib/net462/", "Microsoft.Web.WebView2.WinForms.dll": "lib/net462/",
+                  "WebView2Loader.dll": "runtimes/win-x64/native/"}
+
+
+def webview2_sdk() -> Path:
+    """کتابخانه WebView2 (یک بار از nuget.org دریافت و در packaging/cache نگه داشته می‌شود)."""
+    d = PKG / "cache" / f"webview2-{WEBVIEW2_VERSION}"
+    if all((d / f).exists() for f in WEBVIEW2_FILES):
+        return d
+    d.mkdir(parents=True, exist_ok=True)
+    url = f"https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/{WEBVIEW2_VERSION}/microsoft.web.webview2.{WEBVIEW2_VERSION}.nupkg"
+    pkg = d / "pkg.zip"
+    urllib.request.urlretrieve(url, pkg)
+    with zipfile.ZipFile(pkg) as z:
+        for name, folder in WEBVIEW2_FILES.items():
+            (d / name).write_bytes(z.read(folder + name))
+    pkg.unlink()
+    return d
+
+
 def build_launcher(dest_exe: Path, icon: Path) -> None:
+    """Voice2Excel.exe و کتابخانه‌های WebView2 کنار آن."""
     if not CSC.exists():
         raise SystemExit("کامپایلر C# (.NET Framework 4) پیدا نشد.")
-    subprocess.check_call([str(CSC), "/nologo", "/target:winexe", "/optimize+", "/codepage:65001",
+    sdk = webview2_sdk()
+    subprocess.check_call([str(CSC), "/nologo", "/target:winexe", "/optimize+", "/codepage:65001", "/platform:x64",
                            f"/win32icon:{icon}", "/r:System.Windows.Forms.dll", "/r:System.Drawing.dll",
-                           "/r:Microsoft.CSharp.dll", "/r:System.Core.dll", f"/out:{dest_exe}", str(PKG / "Launcher.cs")])
+                           "/r:Microsoft.CSharp.dll", "/r:System.Core.dll",
+                           f"/r:{sdk / 'Microsoft.Web.WebView2.Core.dll'}", f"/r:{sdk / 'Microsoft.Web.WebView2.WinForms.dll'}",
+                           f"/out:{dest_exe}", str(PKG / "Launcher.cs")])
+    for name in WEBVIEW2_FILES:
+        shutil.copy2(sdk / name, dest_exe.parent / name)
 
 
 def smoke_test(dist: Path) -> None:

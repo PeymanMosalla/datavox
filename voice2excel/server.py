@@ -398,6 +398,10 @@ def meta():
 def shutdown():
     """خروج از برنامه (دکمه «خروج» در رابط). پردازش در جریان متوقف و فایل به صف برمی‌گردد."""
     worker().cancel()
+    try:  # Voice2Excel.exe با دیدن این نشانه، پنجره را می‌بندد (به‌جای راه‌اندازی دوباره موتور)
+        (DATA_DIR / ".quit").write_text("1")
+    except OSError:
+        pass
 
     def bye():
         worker().join(20)
@@ -2048,10 +2052,37 @@ async def backups_import(file: UploadFile = File(...), password: str = Form(""))
         err(400, str(e))
 
 
+# Voice2Excel.exe نسخه جدید این متغیر را می‌گذارد و با دیدن کد خروج RESTART_FOR_UPDATE، به‌روزرسانی را اعمال و
+# موتور را دوباره راه‌اندازی می‌کند (پنجره برنامه باز می‌ماند و خودش دوباره بارگذاری می‌شود)
+RESTART_FOR_UPDATE = 75
+
+
+def _one_click_update() -> bool:
+    return os.environ.get("V2X_LAUNCHER") == "2"
+
+
 @app.get("/api/update")
 def update_info():
     return {"version": __version__, "supported": updater.current_runtime_id() is not None,
-            "staged": updater.staged_info()}
+            "staged": updater.staged_info(), "one_click": _one_click_update()}
+
+
+@app.post("/api/update/apply")
+def update_apply():
+    """نصب بسته آماده بدون بستن دستی: موتور خاموش می‌شود و اجراکننده نسخه جدید را جایگزین و روشن می‌کند."""
+    if not updater.staged_info():
+        err(409, "بسته به‌روزرسانی آماده‌ای نیست.")
+    if not _one_click_update():
+        err(409, "این نسخه از برنامه نصب خودکار ندارد؛ برنامه را با «خروج از برنامه» ببندید و دوباره باز کنید.")
+    db().log_event("نصب به‌روزرسانی شروع شد؛ برنامه چند ثانیه دیگر با نسخه جدید باز می‌شود.")
+    worker().cancel()
+
+    def restart():
+        worker().join(20)  # ویس در حال پردازش به صف برمی‌گردد
+        os._exit(RESTART_FOR_UPDATE)
+
+    threading.Timer(0.5, restart).start()
+    return {"restarting": True, "from": __version__, "to": updater.staged_info()["version"]}
 
 
 @app.post("/api/update")

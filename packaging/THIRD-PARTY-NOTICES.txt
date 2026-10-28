@@ -34,3 +34,19 @@ Map data
 - Contains information from OpenStreetMap, which is made available under
   the Open Database License (ODbL) 1.0.
   (c) OpenStreetMap contributors — https://www.openstreetmap.org/copyright
+
+Application window
+------------------
+- Microsoft Edge WebView2 SDK (Microsoft.Web.WebView2.Core.dll, Microsoft.Web.WebView2.WinForms.dll,
+  WebView2Loader.dll), Copyright (C) Microsoft Corporation. All rights reserved.
+  Redistribution and use in source and binary forms, with or without modification, are permitted provided
+  that: redistributions of source code retain the above copyright notice, this list of conditions and the
+  following disclaimer; redistributions in binary form reproduce the above copyright notice, this list of
+  conditions and the following disclaimer in the documentation and/or other materials provided with the
+  distribution; and the name of Microsoft Corporation or the names of its contributors may not be used to
+  endorse or promote products derived from this software without specific prior written permission.
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+  WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+  PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY
+  DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES ARISING IN ANY WAY OUT OF THE USE
+  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
