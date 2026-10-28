@@ -223,6 +223,11 @@ try {
       return false;
     };
     const setInput = (sel, v) => evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event("input")); })()`);
+    const clickIn = async (sel) => {
+      await evaluate(`document.querySelector(${JSON.stringify(sel)})?.scrollIntoView({block: "center"})`);
+      await sleep(250);
+      return click(sel);
+    };
     // «خروجی اکسل»: جمله مقصد، انتخاب «فایل موجود» و ستون‌ها
     await click(`#nav a[data-page="templates"]`);
     await sleep(1500);
@@ -231,46 +236,47 @@ try {
     if (hasSample) {
       if (await evaluate(`!!document.querySelector('[data-choice="append"]')`)) {
         check("بدون مقصد: دو انتخاب «فایل موجود / فایل تازه» به جای پیام", await evaluate(`!!document.querySelector('[data-choice="new"]')`));
-        await click('[data-choice="append"]');
+        await clickIn('[data-choice="append"]');
         // پنجره انتخاب فایل خودکار باز می‌شود؛ به جایش فایل نمونه
         check("انتخاب «فایل موجود» پنجره انتخاب فایل را باز می‌کند", await waitFor("#modal-backdrop:not([hidden]) .fs-list, #modal-backdrop:not([hidden]) .modal-f", 6000));
-        await click("#modal .modal-f .btn.ghost");
+        await clickIn("#modal .modal-f .btn.ghost");
         await sleep(400);
       } else {
-        await click('[data-dest="default"]');
+        await clickIn('[data-dest="default"]');
         await sleep(1200);
-        await click('[data-tt="output"]');
+        await clickIn('[data-tt="output"]');
       }
       await waitFor("#x-sample", 6000);
-      await click("#x-sample");
-      check("فایل نمونه خوانده شد و زبانه «ستون‌ها» با پیشنهاد باز شد", await waitFor('[data-tt="columns"].active') && await waitFor(".map-select"));
+      await clickIn("#x-sample");
+      const colsOk = await waitFor('[data-tt="columns"].active') && await waitFor(".map-select");
+      await shot("06-excel-columns");
+      check("فایل نمونه خوانده شد و زبانه «ستون‌ها» با پیشنهاد باز شد", colsOk,
+        await evaluate(`[document.querySelector("#tp-tab")?.innerText.slice(0, 160), ...[...document.querySelectorAll("#toasts .toast")].map((x) => x.innerText)].join(" | ")`));
       check("نوار ذخیره «تغییرات ذخیره نشده» را نشان می‌دهد", await evaluate("document.querySelector('#dv-savebar').classList.contains('dirty') && !document.querySelector('#tp-save').disabled"));
       check("توضیح «؟» کنار مفهوم‌ها", (await evaluate("document.querySelectorAll('.help[data-tip]').length")) >= 2);
-      await click("#tp-save");
+      await clickIn("#tp-save");
       check("ذخیره فایل موجود؛ کارتش مقصد ثبت فعلی است", await waitFor('[data-dest="default"] .dc-active:not(.warn)'));
       check("پس از ذخیره نوار ذخیره عادی است", await evaluate("!document.querySelector('#dv-savebar').classList.contains('dirty')"));
-      await click("#tp-show");
+      await clickIn("#tp-show");
       check("پیش‌نمایش جدول شبیه اکسل", await waitFor(".modal.xwide .xl-letters"));
-      await click("#modal .modal-f .btn.primary");
+      await clickIn("#modal .modal-f .btn.primary");
       await sleep(400);
       // مقصد تازه ← فایل جداگانه، و تأیید روشن هنگام تغییر مقصد
-      await click("#dv-new");
+      await clickIn("#dv-new");
       check("«مقصد تازه» اول فقط می‌پرسد ردیف‌ها کجا ثبت شوند", await waitFor('#modal [data-choice="new"]'));
-      await click('#modal [data-choice="new"]');
+      await clickIn('#modal [data-choice="new"]');
       await waitFor("#m-in");
       await setInput("#m-in", "گزارش آزمون");
-      await click('#modal [data-mi="0"]');
+      await clickIn('#modal [data-mi="0"]');
       check("فایل جداگانه ساخته شد و کارتش آمد", await waitFor(".tp-col") && (await evaluate("document.querySelectorAll('.dest-card[data-dest]').length")) === 2);
-      await click(".dest-card:not(.on) [data-activate]");
+      await clickIn(".dest-card:not(.on) [data-activate]");
       check("تغییر مقصد: «تا الان» و «از این پس» نشان داده می‌شود", await waitFor("#modal .dest-switch .ds-box.on"));
-      await click("#modal .modal-f .btn.ghost");
+      await clickIn("#modal .modal-f .btn.ghost");
       await sleep(500);
       check("انصراف: مقصد ثبت عوض نشد", (await getJSON(APP + "api/status")).setup.template_mode !== "new");
-      await evaluate("document.querySelector('#tp-del').scrollIntoView({block: 'center'})");
-      await sleep(300);
-      const rdel = await click("#tp-del");
+      const rdel = await clickIn("#tp-del");
       check("دکمه حذف مقصد", rdel.hit && await waitFor("#modal .modal-f .btn.danger", 5000), "کلیک به " + rdel.top);
-      await click("#modal .modal-f .btn.danger");
+      await clickIn("#modal .modal-f .btn.danger");
       let left = 0;
       for (let i = 0; i < 30 && (left = await evaluate("document.querySelectorAll('.dest-card[data-dest]').length")) !== 1; i++) await sleep(300);
       check("حذف فایل جداگانه", left === 1, `${left} کارت`);
