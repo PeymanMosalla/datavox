@@ -41,7 +41,7 @@ _PROTECT_RULES = r"پیگیری|تاریخ\s*تماس|نتیجه|وضعیت"
 
 # قالب «افزودن به فایل شرکت» (نگاشت ستون‌های فایل موجود)؛ قالب‌های دیگر «فایل جدید»اند
 COMPANY = "default"
-# تنظیمات «قالب مقادیر» که در صفحه «قالب اکسل» برای هر دو نوع قالب قابل تغییرند
+# تنظیمات «شکل نوشتن مقادیر» که در صفحه «خروجی اکسل» برای هر دو نوع مقصد قابل تغییرند
 VALUE_FORMAT_KEYS = {"date_format", "phone_format", "phone_group", "multi_phone_separator", "name_title",
                      "text_style", "notes_parts", "blank_row_between_dates", "date_first_row_only", "highlights",
                      "autofit"}

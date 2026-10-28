@@ -258,11 +258,11 @@ function renderBanners() {
 // ---------------- مسیریابی ----------------
 const PAGES = {
   today: { title: "کار امروز", sub: "ویس بدهید، موارد مشکوک را ببینید، در اکسل ثبت کنید", render: renderToday },
-  templates: { title: "قالب اکسل", sub: "ستون‌ها، قالب مقادیر و ظاهر فایل خروجی", render: renderTemplates },
+  templates: { title: "خروجی اکسل", sub: "ثبت‌ها کجا بروند و هر ستون چه اطلاعاتی بگیرد", render: renderTemplates },
   dashboard: { title: "داشبورد", sub: "نمای کلی ویس‌ها، پردازش و رکوردها", render: renderDashboard },
   voices: { title: "ویس‌ها و پردازش", sub: "افزودن ویس، صف پردازش و وضعیت هر فایل", render: renderVoices },
   review: { title: "بازبینی اطلاعات", sub: "بررسی، اصلاح و تأیید اطلاعات استخراج‌شده پیش از ثبت", render: renderReview },
-  excel: { title: "ثبت در اکسل", sub: "اتصال امن به فایل اکسل شرکت، پیش‌نمایش و ثبت روی کپی", render: renderExcel },
+  excel: { title: "ثبت در اکسل", sub: "پیش‌نمایش ردیف‌های آماده، ثبت روی کپی و سوابق ثبت", render: renderExcel },
   dictionary: { title: "واژه‌نامه", sub: "نام‌های تأییدشده مهندس‌ها، پروژه‌ها و خیابان‌ها", render: renderDictionary },
   settings: { title: "تنظیمات", sub: "مدل گفتار، قواعد اعتبارسنجی و نگهداری", render: renderSettings },
   activate: { title: "اشتراک و پشتیبانی", sub: "وضعیت اشتراک، تماس با فروشنده و وارد کردن مجوز", render: (el) => renderActivation(el) },
@@ -434,12 +434,12 @@ async function renderToday(el) {
         : `<div class="alert warn">${I.alert}<div class="alert-body">${esc(last.message)}</div><a class="btn sm" href="#/excel">مشاهده</a></div>`;
     }
     if (!s.setup.excel_ready) {
-      html += `<div class="row">فایل اکسل شرکت هنوز وصل نشده است. <a class="btn primary" href="#/excel">${I.table} اتصال فایل اکسل</a></div>`;
+      html += destSentence(s);
     } else if (n) {
-      html += `<div class="row"><button class="btn primary lg" id="t-commit">${I.table} ثبت ${fa(n)} ردیف در اکسل</button>
-        <span class="muted small">در «${esc(s.setup.excel_name)}»</span><a class="btn sm ghost" href="#/excel">پیش‌نمایش</a></div>`;
+      html += `${destSentence(s)}<div class="row" style="margin-top:12px"><button class="btn primary lg" id="t-commit">${I.table} ثبت ${fa(n)} ردیف در اکسل</button>
+        <a class="btn sm ghost" href="#/excel">پیش‌نمایش ردیف‌ها</a></div>`;
     } else if (!last) {
-      html += `<div class="muted">${s.records.review ? "پس از بررسی موارد بالا، ردیف‌ها اینجا آماده ثبت می‌شوند." : "ردیفی برای ثبت نیست."}</div>`;
+      html += `${destSentence(s)}<div class="muted small" style="margin-top:8px">${s.records.review ? "پس از بررسی موارد بالا، ردیف‌ها اینجا آماده ثبت می‌شوند." : "فعلاً ردیفی برای ثبت نیست."}</div>`;
     }
     if (s.pending_replace) html += `<div class="small muted" style="margin-top:8px">${fa(s.pending_replace)} خروجی قدیمی هنوز روی فایل اصلی اعمال نشده است. <a href="#/excel">مشاهده</a></div>`;
     box.innerHTML = html;
@@ -549,8 +549,8 @@ function onboardingCard(s) {
   const st = s.setup || {};
   const guideSeen = localStorage.getItem("v2x.guide.opened") === "1";
   const steps = [
-    { done: st.excel_ready, title: "فایل اکسل شرکت", text: st.excel_ready ? `متصل: ${esc(st.excel_name)}` : "فایل اکسل را انتخاب و نگاشت ستون‌ها را ذخیره کنید.", btn: `<a class="btn sm" href="#/excel">ثبت در اکسل</a>` },
-    { done: st.dictionary > 0, title: "واژه‌نامه", text: st.dictionary > 0 ? `${fa(st.dictionary)} نام و خیابان؛ برای تشخیص نام و آدرس و املای درست. فایل‌های اکسل قدیمی بیشتر = تشخیص بهتر.` : "با ذخیره نگاشت اکسل خودکار پر می‌شود؛ فایل‌های اکسل قدیمی را هم می‌توانید یاد بدهید.", btn: `<a class="btn sm" href="#/dictionary?kb">آموزش از اکسل</a>` },
+    { done: st.excel_ready, title: "مقصد ثبت در اکسل", text: st.excel_ready ? `${st.template_mode === "new" ? "فایل جداگانه" : "اضافه به فایل موجود"}: ${fname(st.excel_name)}` : "مشخص کنید ردیف‌ها به فایل اکسل موجود شرکت اضافه شوند یا در یک فایل تازه نوشته شوند.", btn: `<a class="btn sm" href="#/templates">${st.excel_ready ? "تغییر مقصد" : "انتخاب مقصد"}</a>` },
+    { done: st.dictionary > 0, title: "واژه‌نامه", text: st.dictionary > 0 ? `${fa(st.dictionary)} نام و خیابان؛ برای تشخیص نام و آدرس و املای درست. فایل‌های اکسل قدیمی بیشتر = تشخیص بهتر.` : "با وصل کردن فایل موجود شرکت خودکار پر می‌شود؛ فایل‌های اکسل قدیمی را هم می‌توانید یاد بدهید.", btn: `<a class="btn sm" href="#/dictionary?kb">آموزش از اکسل</a>` },
     { done: guideSeen, title: "راهنمای ضبط ویس", text: "یک صفحه قابل چاپ برای بازاریاب‌ها تا ویس‌ها دقیق‌تر خوانده شوند.", btn: `<a class="btn sm" href="/static/recording-guide.html" target="_blank" id="ob-guide">مشاهده و چاپ</a>` },
     { done: s.files.total > 0, title: "اولین ویس", text: "ویس‌ها را اضافه کنید؛ پردازش خودکار شروع می‌شود.", btn: `<a class="btn sm" href="#/voices">افزودن ویس</a>${state.meta?.samples?.voices && !s.files.total ? ` <button class="btn sm ghost" id="ob-samples">ویس نمونه</button>` : ""}` },
   ];
@@ -1460,153 +1460,15 @@ document.addEventListener("keydown", (e) => {
 });
 
 // ================= اکسل =================
-const excelState = { report: null, profile: null, lastExport: null };
+const excelState = { lastExport: null };
 
 async function renderExcel(el) {
-  const { profile } = await api("/api/excel/profile");
-  excelState.profile = profile;
-  const setup = state.status?.setup || {};
-  el.innerHTML = `${setup.template_mode === "new" ? `<div class="alert warn" style="margin-bottom:16px">${I.alert}<div class="alert-body">
-      <b>ثبت فعلاً در قالب «${esc(setup.template_title)}» انجام می‌شود، نه در فایل شرکت.</b>این صفحه نگاشت فایل شرکت است. برای ثبت در فایل شرکت، در «قالب اکسل» قالب فایل شرکت را فعال کنید.</div>
-      <a class="btn sm" href="#/templates">قالب اکسل</a></div>` : ""}
-    <div class="card"><div class="card-h"><h2>${I.table} ۱. فایل اکسل مقصد</h2>${profile?.confirmed ? chip("ok", "نگاشت ذخیره شده") : ""}</div>
-      <div class="card-b stack">
-        <div class="row" style="flex-wrap:nowrap">
-          <input class="input ltr" id="x-path" style="flex:1; text-align:right" placeholder="C:\\...\\فایل شرکت.xlsx" value="${esc(profile?.excel_path || "")}">
-          <button class="btn" id="x-browse">${I.folder} انتخاب...</button>
-          <button class="btn primary" id="x-inspect">${I.search} بررسی فایل</button>
-        </div>
-        ${state.meta?.samples?.excel ? `<div class="row small"><span class="muted">فایل اکسل شرکت را ندارید؟</span>
-          <button class="btn sm ghost" id="x-sample">${I.table} استفاده از فایل اکسل نمونه (ساختار مشابه فایل شرکت، داده ساختگی)</button></div>` : ""}
-        <div class="muted small">فایل اصلی شرکت فقط خوانده می‌شود. ثبت همیشه روی یک کپی انجام می‌شود و جایگزینی فایل اصلی فقط با تأیید جداگانه شما انجام می‌شود.</div>
-        <div id="x-report"></div>
-      </div></div>
-    <div class="card" id="x-map-card" hidden><div class="card-h"><h2>${I.swap} ۲. نگاشت ستون‌ها</h2><div class="row" id="x-map-actions"></div></div><div class="card-b" id="x-map"></div></div>
-    <div class="card" id="x-prev-card" hidden><div class="card-h"><h2>${I.eye} ۳. پیش‌نمایش و ثبت</h2><div class="row" id="x-prev-actions"></div></div><div class="card-b stack" id="x-prev"></div></div>
-    <div class="card"><div class="card-h"><h2>${I.history} خروجی‌های ساخته‌شده</h2></div><div class="table-wrap" id="x-exports"></div></div>`;
-  $("#x-browse").onclick = async () => {
-    const cur = $("#x-path").value.trim();
-    const p = await pickPath("excel", cur ? cur.replace(/[\\/][^\\/]*$/, "") : "");
-    if (p) { $("#x-path").value = p; inspect(); }
-  };
-  $("#x-inspect").onclick = inspect;
-  $("#x-sample")?.addEventListener("click", () => { $("#x-path").value = state.meta.samples.excel; inspect(); });
-  if (profile?.excel_path) inspect();
+  // انتخاب فایل و ستون‌ها در «خروجی اکسل» است؛ اینجا ردیف‌های آماده با مقصد فعلی و سوابق ثبت
+  el.innerHTML = `<div class="card"><div class="card-b">${destSentence(state.status)}</div></div>
+    <div class="card" id="x-prev-card" hidden><div class="card-h"><h2>${I.eye} ردیف‌های آماده ثبت</h2><div class="row" id="x-prev-actions"></div></div><div class="card-b stack" id="x-prev"></div></div>
+    <div class="card"><div class="card-h"><h2>${I.history} سوابق ثبت</h2></div><div class="table-wrap" id="x-exports"></div></div>`;
+  if (state.status?.setup?.excel_ready) drawPreview();
   drawExports();
-
-  async function inspect() {
-    const path = $("#x-path").value.trim();
-    if (!path) return toast("مسیر فایل اکسل را وارد یا انتخاب کنید.");
-    $("#x-report").innerHTML = '<div class="row"><span class="spinner"></span> در حال بررسی فایل...</div>';
-    let res;
-    try { res = await api("/api/excel/inspect", { method: "POST", body: { path } }); }
-    catch (e) { $("#x-report").innerHTML = ""; return toastErr(e); }
-    excelState.report = res.report;
-    excelState.draft = JSON.parse(JSON.stringify(res.profile));
-    drawReport();
-    drawMapping();
-    if (excelState.profile?.confirmed && excelState.profile.excel_path === res.report.path) drawPreview();
-    else $("#x-prev-card").hidden = true;
-  }
-
-  function drawReport() {
-    const r = excelState.report;
-    const risks = r.risks || [];
-    $("#x-report").innerHTML = `<div class="grid grid-2">
-      <dl class="kv"><dt>نام فایل</dt><dd><bdi dir="ltr">${esc(r.name)}</bdi></dd><dt>نوع</dt><dd>${esc(r.type)}${r.has_macros ? " (دارای ماکرو)" : ""}</dd>
-        <dt>حجم</dt><dd>${fmtSize(r.size)}</dd><dt>باز بودن در Excel</dt><dd>${r.lock?.locked ? `<span style="color:var(--warn)">${esc(r.lock.message)}</span>` : "بسته است"}</dd></dl>
-      <div class="stack" style="gap:4px">${risks.length ? risks.map((x) => `<div class="risk">${x.level === "block" ? `<span style="color:var(--err)">${I.alert}</span>` : x.level === "warn" ? `<span style="color:var(--warn)">${I.alert}</span>` : `<span style="color:var(--info)">${I.info}</span>`}<span>${esc(x.message)}</span></div>`).join("")
-        : `<div class="risk"><span style="color:var(--ok)">${I.ok}</span><span>ویژگی پرخطری (نمودار، Pivot، ماکرو، کنترل فرم) پیدا نشد؛ ثبت امن است.</span></div>`}</div></div>
-      <div class="table-wrap" style="margin-top:12px; border:1px solid var(--border); border-radius:12px"><table class="table"><thead><tr><th>شیت</th><th>ردیف عنوان</th><th>ردیف‌های داده</th><th>آخرین ردیف داده</th><th>راست‌به‌چپ</th><th>فرمول</th><th>فیلتر</th><th>ادغام</th></tr></thead><tbody>
-      ${r.sheets.map((s) => `<tr><td><b>${esc(s.name)}</b>${s.state !== "visible" ? ' <span class="muted small">(پنهان)</span>' : ""}</td><td>${fa(s.header_row)}</td><td>${fa(s.data_rows)}</td><td>${fa(s.last_data_row)}</td>
-        <td>${s.right_to_left ? "بله" : "خیر"}</td><td>${fa(s.formula_count)}</td>
-        <td class="small">${s.auto_filter ? `<span class="ltr">${esc(s.auto_filter)}</span>${s.auto_filter_stale ? ' <span style="color:var(--warn)" title="محدوده فیلتر همه داده‌ها را پوشش نمی‌دهد">(ناقص)</span>' : ""}` : "—"}</td><td>${fa(s.merged_cells.length)}</td></tr>`).join("")}
-      </tbody></table></div>`;
-  }
-
-  function drawMapping() {
-    const p = excelState.draft;
-    const card = $("#x-map-card");
-    if (!p) { card.hidden = true; return; }
-    card.hidden = false;
-    const sheet = excelState.report.sheets.find((s) => s.name === p.sheet) || excelState.report.sheets[0];
-    const fields = state.meta.fields.concat(state.meta.computed).concat([{ key: "followup", label: "پیگیری (اقدام + تاریخ)" }]);
-    const protectedSet = new Set(p.protected || []);
-    const opts = (col) => {
-      const cur = p.columns[col] || (protectedSet.has(col) ? "__protect" : "");
-      return `<option value="" ${!cur ? "selected" : ""}>— نوشته نشود —</option>
-        <option value="__protect" ${cur === "__protect" ? "selected" : ""}>🔒 محافظت‌شده (هرگز دست نخورد)</option>
-        <optgroup label="فیلدها">${fields.map((f) => `<option value="${f.key}" ${cur === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</optgroup>`;
-    };
-    const pol = p.policy;
-    $("#x-map-actions").innerHTML = `<button class="btn primary" id="x-save">${I.check} ذخیره نگاشت</button>`;
-    $("#x-map").innerHTML = `<div class="stack">
-      <div class="row"><div class="field"><label>شیت مقصد</label><select class="select" id="x-sheet">${excelState.report.sheets.map((s) => `<option ${s.name === p.sheet ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
-        <div class="field"><label>ردیف عنوان</label><input class="input" id="x-hr" type="number" min="1" value="${p.header_row}" style="width:100px"></div>
-        <div class="alert info" style="flex:1">${I.info}<div class="alert-body">نگاشت پیشنهادی از روی عنوان ستون‌ها ساخته شده است. آن را بررسی کنید. ستون‌های پیگیری فروش به‌صورت محافظت‌شده علامت خورده‌اند تا سامانه هرگز در آن‌ها ننویسد.</div></div></div>
-      <div class="table-wrap" style="border:1px solid var(--border); border-radius:12px"><table class="table"><thead><tr><th>ستون</th><th>عنوان ستون در فایل شرکت</th><th>چه چیزی نوشته شود</th></tr></thead><tbody>
-        ${Object.entries(sheet.headers).map(([col, h]) => `<tr><td><b class="ltr">${esc(col)}</b></td><td>${esc(h).replace(/\n/g, " ")}</td>
-          <td><select class="select map-select" data-col="${esc(col)}">${opts(col)}</select></td></tr>`).join("")}
-      </tbody></table></div>
-      <div class="grid grid-2">
-        <div class="stack" style="gap:8px"><b>قواعد ثبت</b>
-          <label class="check"><input type="radio" name="pf" value="text_leading_zero" ${pol.phone_format !== "as_number_like_existing" ? "checked" : ""}> شماره تلفن به‌صورت متن و با صفر اول (09151234567)</label>
-          <label class="check"><input type="radio" name="pf" value="as_number_like_existing" ${pol.phone_format === "as_number_like_existing" ? "checked" : ""}> شماره بدون صفر اول، مثل ردیف‌های فعلی فایل (9151234567)</label>
-          <label class="check"><input type="checkbox" id="pol-blank" ${pol.blank_row_between_dates ? "checked" : ""}> یک ردیف خالی میان روزهای بازدید</label>
-          <label class="check"><input type="checkbox" id="pol-date1" ${pol.date_first_row_only ? "checked" : ""}> تاریخ فقط در اولین ردیف هر روز</label>
-          <label class="check"><input type="checkbox" id="pol-style" ${pol.copy_style_from_last_row ? "checked" : ""}> قالب‌بندی ردیف‌های جدید مثل آخرین ردیف فایل</label>
-          <div class="field"><label>سبک نوشتن آدرس و توضیحات</label><div class="row">
-            <select class="select" id="pol-sep">${[["", "خودکار (مثل ردیف‌های همین فایل)"], [" ، ", "سجادیه 58 ، قطعه دوم"], ["، ", "سجادیه 58، قطعه دوم"], ["،", "سجادیه 58،قطعه دوم"]]
-              .map(([k, l]) => `<option value="${esc(k)}" ${(pol.text_style?.sep ?? "") === k && (k || !pol.text_style) ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
-            <select class="select" id="pol-digits">${[["", "رقم: خودکار"], ["ascii", "رقم انگلیسی (58)"], ["persian", "رقم فارسی (۵۸)"]]
-              .map(([k, l]) => `<option value="${k}" ${(pol.text_style?.digits ?? "") === k && (k || !pol.text_style) ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-            <span class="hint">«خودکار» یعنی از روی ردیف‌های موجود فایل شرکت تشخیص داده می‌شود${pol.text_style ? `؛ فعلاً: «${esc(pol.text_style.sep)}» و رقم ${pol.text_style.digits === "persian" ? "فارسی" : "انگلیسی"}` : ""}.</span></div></div>
-        <div class="stack" style="gap:8px"><b>اجزای ستون «توضیحات ترکیبی»</b>
-          ${[["technical_summary", "خلاصه فنی (تعداد سقف، سازه، مرحله)"], ["project_name", "نام پروژه"], ["building_type", "نوع ساختمان"], ["permit_status", "وضعیت نقشه/مجوز"], ["customer_need", "نیاز مشتری"], ["notes", "توضیحات تکمیلی"], ["followup", "پیگیری و تاریخ پیشنهادی"]]
-            .map(([k, l]) => `<label class="check"><input type="checkbox" data-np="${k}" ${pol.notes_parts.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}
-          <span class="hint muted small">اگر یکی از این‌ها ستون جداگانه داشته باشد، در توضیحات تکرار نمی‌شود.</span></div></div></div>`;
-    $("#x-sheet").onchange = (e) => {
-      const s = excelState.report.sheets.find((x) => x.name === e.target.value);
-      p.sheet = s.name; p.header_row = s.header_row; p.headers = s.headers; p.columns = {}; p.protected = [];
-      drawMapping();
-    };
-    $("#x-save").onclick = saveMapping;
-  }
-
-  async function saveMapping() {
-    const p = excelState.draft;
-    const columns = {}, prot = [];
-    $$("[data-col]").forEach((s) => { if (s.value === "__protect") prot.push(s.dataset.col); else if (s.value) columns[s.dataset.col] = s.value; });
-    const body = {
-      ...p, header_row: +$("#x-hr").value || p.header_row, columns, protected: prot,
-      policy: {
-        ...p.policy,
-        phone_format: $("input[name=pf]:checked").value,
-        blank_row_between_dates: $("#pol-blank").checked,
-        date_first_row_only: $("#pol-date1").checked,
-        copy_style_from_last_row: $("#pol-style").checked,
-        text_style: $("#pol-sep").value || $("#pol-digits").value
-          ? { sep: $("#pol-sep").value || p.policy.text_style?.sep || " ، ", digits: $("#pol-digits").value || p.policy.text_style?.digits || "ascii" }
-          : null,
-        notes_parts: $$("[data-np]").filter((c) => c.checked).map((c) => c.dataset.np),
-      },
-    };
-    try {
-      const r = await api("/api/excel/profile", { method: "PUT", body });
-      excelState.profile = r.profile;
-      excelState.draft = JSON.parse(JSON.stringify(r.profile));
-      toast("نگاشت ذخیره شد.", "ok");
-      // واژه‌نامه از نام مهندس‌ها و خیابان‌های همین فایل پر می‌شود تا املای درست پیشنهاد شود
-      try {
-        const sd = await api("/api/dictionary/seed-from-excel", { method: "POST" });
-        if (sd.added.engineer || sd.added.street)
-          toast(`واژه‌نامه پر شد: ${fa(sd.added.engineer)} نام مهندس و ${fa(sd.added.street)} خیابان از فایل اکسل.`, "ok");
-      } catch { }
-      drawMapping();
-      drawPreview();
-      refreshStatus();
-    } catch (e) { toastErr(e); }
-  }
 
   async function drawPreview() {
     const card = $("#x-prev-card");
@@ -1718,9 +1580,11 @@ async function renderExcel(el) {
   }
 }
 
-// ================= قالب اکسل =================
-/** شخصی‌سازی خروجی: قالب «فایل شرکت» (فقط قالب مقادیر) یا قالب «فایل جدید» (ستون‌ها، ظاهر، مقصد). */
-const tplState = { name: null, tpl: null, tab: "columns", dirty: false, rows: [], headers: [] };
+// ================= خروجی اکسل: مقصد ثبت =================
+/** ثبت‌ها کجا بروند: «فایل موجود» (فایل شرکت؛ ستون‌ها و ظاهر همان فایل) یا «فایل جداگانه» (ستون‌ها و ظاهر دلخواه).
+ * هر مقصد یک کارت است؛ «مقصد ثبت» (فعال) جدا از ویرایش انتخاب می‌شود تا این دو با هم قاطی نشوند. */
+const COMPANY = "default";
+const tplState = { name: null, tab: null, dirty: false, rows: [], colors: [], target: "", pickFile: false };
 const VALUE_OPTS = {
   date_format: [["auto", "مثل ردیف‌های قبلی همین فایل"], ["", "1405/07/28"], ["compact", "1405/7/28"], ["persian", "۱۴۰۵/۰۷/۲۸"], ["long", "۲۸ مهر ۱۴۰۵"]],
   phone_format: [["text_leading_zero", "با صفر اول (09151234567)"], ["as_number_like_existing", "بدون صفر اول (9151234567)"]],
@@ -1729,103 +1593,258 @@ const VALUE_OPTS = {
 };
 const NOTE_PARTS = [["technical_summary", "خلاصه فنی"], ["project_name", "نام پروژه"], ["building_type", "نوع ساختمان"], ["permit_status", "وضعیت مجوز"],
   ["customer_need", "نیاز مشتری"], ["notes", "توضیحات تکمیلی"], ["followup", "پیگیری"]];
+const HELP = {
+  dest: "مقصد ثبت فایلی است که با زدن «ثبت در اکسل» ردیف‌های تأییدشده در آن نوشته می‌شوند. در هر لحظه فقط یک مقصد فعال است.",
+  append: "ردیف‌های تازه به انتهای یک فایل اکسل موجود (مثل فایل اصلی شرکت) اضافه می‌شوند. ستون‌ها، ترتیب و ظاهر همان فایل می‌ماند و ردیف‌های قبلی دست نمی‌خورند.",
+  new: "برنامه یک فایل اکسل تازه می‌سازد و ستون‌ها، ترتیب و رنگ‌هایش را خودتان تعیین می‌کنید؛ مثلاً یک گزارش جدا برای مدیر.",
+  columns_append: "برای هر ستون فایل مشخص کنید چه اطلاعاتی در آن نوشته شود. «نوشته نشود» یعنی خانه خالی می‌ماند؛ «محافظت‌شده» یعنی برنامه هرگز به آن ستون دست نمی‌زند (مثلاً ستونی که همکاران دستی پر می‌کنند).",
+  columns_new: "ستون‌های فایل تازه به همین ترتیب ساخته می‌شوند؛ با کشیدن ☰ یا فلش‌ها ترتیب را عوض کنید.",
+  values: "شکل نوشتن تاریخ، شماره تلفن، نام و آدرس در خانه‌های اکسل. روی خود اطلاعات استخراج‌شده اثری ندارد.",
+  colors: "ردیف‌هایی که یکی از این شرایط را دارند با رنگ مشخص در اکسل ثبت می‌شوند تا زودتر به چشم بیایند.",
+  header_row: "شماره ردیفی که عنوان ستون‌ها در آن نوشته شده است (معمولاً ۱).",
+  split: "همه ردیف‌ها در یک فایل جمع شوند، یا برای هر ماه یا هر روز فایل یا شیت جدا ساخته شود.",
+};
+const help = (k) => `<span class="help" tabindex="0" role="note" aria-label="${esc(HELP[k])}" data-tip="${esc(HELP[k])}">؟</span>`;
+const ART_APPEND = `<svg viewBox="0 0 120 84" aria-hidden="true"><rect x="8" y="4" width="104" height="76" rx="7" class="a-paper"/>
+  <path d="M8 11a7 7 0 0 1 7-7h90a7 7 0 0 1 7 7v7H8z" class="a-head"/>${[25, 35, 45].map((y) => `<rect x="16" y="${y}" width="88" height="6" rx="3" class="a-row"/>`).join("")}
+  ${[56, 66].map((y) => `<rect x="16" y="${y}" width="70" height="6" rx="3" class="a-new"/>`).join("")}<circle cx="100" cy="66" r="9" class="a-badge"/><path d="M100 61.5v9M95.5 66h9" class="a-plus"/></svg>`;
+const ART_NEW = `<svg viewBox="0 0 120 84" aria-hidden="true"><rect x="8" y="4" width="104" height="76" rx="7" class="a-paper"/>
+  <path d="M8 11a7 7 0 0 1 7-7h90a7 7 0 0 1 7 7v7H8z" class="a-head-new"/><path d="M42 4v76M76 4v76" class="a-grid"/>
+  ${[25, 37, 49, 61].map((y, i) => `<rect x="12" y="${y}" width="96" height="9" rx="2" class="${i % 2 ? "a-zebra" : "a-row-new"}"/>`).join("")}
+  <circle cx="100" cy="70" r="9" class="a-badge"/><path d="M100 65.5v9M95.5 70h9" class="a-plus"/></svg>`;
+
+function destInfo(meta, name) {
+  return meta.templates.find((t) => t.name === name)
+    || (name === COMPANY ? { name: COMPANY, mode: "append", title: "فایل شرکت", target: "", active: false, confirmed: false } : null);
+}
+// نام فایل لاتین (مثل sample-company.xlsx) وسط جمله فارسی جدا نمایش داده شود تا جابه‌جا و شکسته نشود
+const fname = (s) => `<bdi class="fname">${esc(s)}</bdi>`;
+const destKind = (t) => t.mode === "new" ? "فایل جداگانه" : "اضافه به فایل موجود";
+const destName = (t) => t.mode === "new" ? t.title : (t.target || "فایل اکسل شرکت");
+/** یک جمله ساده: با این مقصد، ردیف‌ها کجا و چطور نوشته می‌شوند. */
+function destDescribe(t) {
+  if (t.mode !== "new") return t.target ? `ردیف‌های تازه به انتهای «${fname(t.target)}»${t.sheet ? ` (شیت ${fname(t.sheet)})` : ""} اضافه می‌شوند؛ ستون‌ها و ظاهر همان فایل می‌ماند.`
+    : "هنوز فایلی انتخاب نشده؛ روی کارت بزنید و فایل اکسل شرکت را انتخاب کنید.";
+  const dir = (t.folder || "").split(/[\\/]/).filter(Boolean).pop();
+  const where = dir ? ` در پوشه «${fname(dir)}»` : "";
+  return {
+    none: `فایل تازه «${fname(t.file + ".xlsx")}»${where} ساخته می‌شود و همه ردیف‌ها در آن جمع می‌شوند.`,
+    month_file: `برای هر ماه یک فایل تازه${where} ساخته می‌شود (مثل «${fname(t.target)}»).`,
+    day_file: `برای هر روز یک فایل تازه${where} ساخته می‌شود (مثل «${fname(t.target)}»).`,
+    month_sheet: `فایل «${fname(t.file + ".xlsx")}»${where}؛ ردیف‌های هر ماه در یک شیت جدا.`,
+  }[t.split || "none"];
+}
+/** جمله نتیجه «ثبت در اکسل» با مقصد فعلی (کار امروز، خروجی اکسل، ثبت در اکسل). */
+function destSentence(s, links = true) {
+  const st = s?.setup || {}, n = s?.records?.approved || 0;
+  if (!st.excel_ready) return `<div class="dest-sentence warn">${I.alert}<span>هنوز <b>مقصد ثبت</b> آماده نیست؛ تا مشخص نشود ردیف‌ها کجا بروند، چیزی در اکسل ثبت نمی‌شود.</span>
+    ${links ? `<a class="btn sm primary" href="#/templates">انتخاب مقصد ثبت</a>` : ""}</div>`;
+  const rows = n ? `<b>${fa(n)} ردیف آماده</b>` : "ردیف‌های تأییدشده";
+  const text = st.template_mode === "new"
+    ? `با زدن «ثبت در اکسل»، ${rows} در فایل جداگانه <b>«${fname(st.excel_name)}»</b> نوشته می‌شود.`
+    : `با زدن «ثبت در اکسل»، ${rows} به انتهای فایل <b>«${fname(st.excel_name)}»</b> اضافه می‌شود.`;
+  return `<div class="dest-sentence">${I.table}<span>${text}</span>${links ? `<a class="btn sm ghost" href="#/templates">تغییر مقصد</a>` : ""}</div>`;
+}
+function destCard(t) {
+  const isNew = t.mode === "new", ready = isNew || t.confirmed;
+  return `<div class="dest-card ${t.name === tplState.name ? "sel" : ""} ${t.active ? "on" : ""}" data-dest="${esc(t.name)}" tabindex="0" role="button" aria-pressed="${t.name === tplState.name}">
+    <div class="dc-top"><span class="dc-ico">${isNew ? I.file : I.table}</span>
+      <div class="dc-names"><span class="dc-kind">${destKind(t)}</span><b class="dc-title">${esc(destName(t))}</b></div></div>
+    <p class="dc-desc">${destDescribe(t)}</p>
+    <div class="dc-foot">${t.active
+      ? `<span class="dc-active ${ready ? "" : "warn"}">${ready ? `${I.check} مقصد ثبت فعلی` : `${I.alert} مقصد فعلی؛ هنوز آماده نیست`}</span>`
+      : `<button class="btn sm" data-activate="${esc(t.name)}" ${ready ? "" : `disabled title="اول فایل و ستون‌هایش را ذخیره کنید"`}>ثبت‌ها اینجا برود</button>`}</div></div>`;
+}
+function destChoicesHtml() {
+  return `<div class="choice-grid">
+      <button class="choice" data-choice="append"><span class="choice-art">${ART_APPEND}</span><b>به فایل اکسلی که دارم اضافه شود</b>
+        <span>ردیف‌های تازه به انتهای فایل موجود (مثل فایل اصلی شرکت) اضافه می‌شوند. ستون‌ها و ظاهر همان فایل می‌ماند.</span></button>
+      <button class="choice" data-choice="new"><span class="choice-art">${ART_NEW}</span><b>یک فایل اکسل تازه ساخته شود</b>
+        <span>ستون‌ها، ترتیب و رنگ‌ها را خودتان می‌چینید؛ مثلاً یک گزارش جدا برای مدیر.</span></button></div>
+    <div class="small muted" style="margin-top:14px">مقصدی را از رایانه دیگر خروجی گرفته‌اید؟ <button class="linkbtn" data-choice="import">ورود فایل قالب (.json)</button></div>`;
+}
 
 async function renderTemplates(el) {
-  const meta = await api("/api/templates");
-  const names = meta.templates.map((t) => t.name);
-  if (!names.includes(tplState.name)) tplState.name = names.includes(meta.active) ? meta.active : names[0] || "__company";
-  const hasCompany = names.includes("default");
-  el.innerHTML = `<div class="card"><div class="card-h">
-      <div class="row"><select class="select" id="tp-sel">
-        ${hasCompany ? "" : `<option value="__company">فایل شرکت (هنوز وصل نشده)</option>`}
-        ${meta.templates.map((t) => `<option value="${esc(t.name)}" ${t.name === tplState.name ? "selected" : ""}>${esc(t.title)}${t.mode === "new" ? " — فایل جدید" : " — افزودن به فایل شرکت"}${t.active ? " ✓" : ""}</option>`).join("")}
-      </select><span id="tp-active"></span><span id="tp-dirty"></span></div>
-      <div class="row"><button class="btn" id="tp-new">${I.plus} قالب جدید</button>
-        <button class="btn" id="tp-activate">${I.check} استفاده برای ثبت</button>
-        <button class="btn" id="tp-show" title="جدول نمونه با ستون‌ها، ترتیب و ظاهر همین قالب">${I.eye} پیش‌نمایش</button>
-        <button class="btn ghost" id="tp-import" title="ورود قالبی که از رایانه دیگری خروجی گرفته شده">${I.upload} ورود قالب</button>
-        <button class="btn ghost" id="tp-del" title="حذف قالب">${I.trash}</button>
-        <input type="file" id="tp-import-file" accept=".json" hidden></div></div>
-    <div id="tp-body"></div></div>`;
-  const active = meta.templates.find((t) => t.active);
-  const drawHead = () => {
-    $("#tp-active").innerHTML = tplState.name === meta.active ? chip("ok", "فعال: ثبت در همین قالب انجام می‌شود") : active ? `<span class="small muted">قالب فعال: ${esc(active.title)}</span>` : "";
-    $("#tp-dirty").innerHTML = tplState.dirty ? chip("warn", "ذخیره نشده") : "";
-    $("#tp-activate").disabled = tplState.name === meta.active || tplState.name === "__company";
-    $("#tp-del").disabled = ["default", "__company", meta.active].includes(tplState.name);
-    $("#tp-show").disabled = tplState.name === "__company";
-  };
-  $("#tp-sel").onchange = async (e) => {
-    if (tplState.dirty && !(await confirmBox("تغییرات ذخیره نشده", "تغییرات این قالب ذخیره نشده‌اند و از دست می‌روند. ادامه می‌دهید؟", "ادامه", "danger"))) { e.target.value = tplState.name; return; }
-    tplState.name = e.target.value; tplState.dirty = false; tplState.tab = "columns"; renderTemplates(el);
-  };
-  $("#tp-new").onclick = async () => {
-    const title = await openModal({ title: "قالب جدید", body: `<div class="field"><label>نام قالب (و نام فایل خروجی)</label><input class="input" id="m-in" placeholder="مثلاً گزارش مدیر"></div>`,
-      actions: [{ label: "ساخت", cls: "primary", onClick: (m) => $("#m-in", m).value.trim() || false }, { label: "انصراف", cls: "ghost", value: null }],
-      onOpen: (m) => setTimeout(() => $("#m-in", m).focus(), 50) });
-    if (!title) return;
-    try { tplState.name = (await api("/api/templates", { method: "POST", body: { title } })).name; tplState.dirty = false; tplState.tab = "columns"; renderTemplates(el); } catch (e) { toastErr(e); }
-  };
-  $("#tp-activate").onclick = async () => {
-    if (tplState.dirty) return toast("اول قالب را ذخیره کنید.", "err");
-    try { await api(`/api/templates/${tplState.name}/activate`, { method: "POST" }); toast("از این پس ثبت در اکسل با همین قالب انجام می‌شود.", "ok"); refreshStatus(); renderTemplates(el); } catch (e) { toastErr(e); }
-  };
-  $("#tp-import").onclick = () => $("#tp-import-file").click();
-  $("#tp-import-file").onchange = async (e) => {
+  const seq = routeSeq;
+  const q = new URLSearchParams(location.hash.split("?")[1] || "");
+  if (q.get("dest")) { tplState.name = q.get("dest"); tplState.tab = q.get("tab"); tplState.dirty = false; history.replaceState(null, "", "#/templates"); }
+  const [meta, { profile: company }] = await Promise.all([api("/api/templates"), api("/api/excel/profile")]);
+  if (seq !== routeSeq) return;
+  state.tplMeta = meta;
+  const news = meta.templates.filter((t) => t.mode === "new");
+  const drawSummary = () => { const b = $("#dv-summary"); if (b) b.innerHTML = destSentence(state.status, false); };
+  setHook(seq, drawSummary);
+  const importInput = `<input type="file" id="tp-import-file" accept=".json" hidden>`;
+  const bindImport = () => $("#tp-import-file").onchange = async (e) => {
     const f = e.target.files[0];
     e.target.value = "";
     if (!f) return;
     const fd = new FormData();
     fd.append("file", f, f.name);
-    try { tplState.name = (await api("/api/templates/import", { method: "POST", form: fd })).name; tplState.dirty = false; tplState.tab = "columns"; toast("قالب وارد شد؛ پوشه خروجی را در زبانه «مقصد» بررسی کنید.", "ok"); renderTemplates(el); }
+    try { tplState.name = (await api("/api/templates/import", { method: "POST", form: fd })).name; tplState.dirty = false; tplState.tab = "output"; toast("قالب وارد شد؛ پوشه فایل را بررسی و ذخیره کنید.", "ok"); renderTemplates(el); }
     catch (er) { toastErr(er); }
   };
-  $("#tp-del").onclick = async () => {
-    if (!(await confirmBox("حذف قالب", "قالب حذف می‌شود. فایل‌هایی که قبلاً با آن ساخته شده‌اند دست نمی‌خورند.", "حذف", "danger"))) return;
-    try { await api(`/api/templates/${tplState.name}`, { method: "DELETE" }); tplState.name = null; tplState.dirty = false; renderTemplates(el); } catch (e) { toastErr(e); }
+  // ساختن مقصد تازه: اول فقط یک سؤال (فایل موجود یا فایل تازه)
+  const startDest = async (choice) => {
+    if (choice === "import") return $("#tp-import-file").click();
+    if (choice === "append") {
+      if (company?.excel_path && !(await confirmBox("فایل موجود دیگری انتخاب شود؟", `در هر لحظه یک «فایل موجود» وصل است: الان «${esc(company.excel_path.split(/[\\/]/).pop())}». با انتخاب فایل دیگر، آن جایگزین می‌شود؛ ردیف‌هایی که قبلاً در آن ثبت شده دست نمی‌خورند.`, "انتخاب فایل دیگر"))) return;
+      Object.assign(tplState, { name: COMPANY, tab: "output", dirty: false, pickFile: true });
+      return renderTemplates(el);
+    }
+    const title = await openModal({ title: "فایل اکسل تازه", body: `<div class="field"><label>نام این مقصد (نام فایل اکسل هم همین می‌شود)</label><input class="input" id="m-in" placeholder="مثلاً گزارش مدیر"></div>
+        <div class="small muted" style="margin-top:8px">در گام بعد ستون‌ها، ظاهر و پوشه فایل را می‌چینید.</div>`,
+      actions: [{ label: "ساخت", cls: "primary", onClick: (m) => $("#m-in", m).value.trim() || false }, { label: "انصراف", cls: "ghost", value: null }],
+      onOpen: (m) => { const i = $("#m-in", m); setTimeout(() => i.focus(), 50); i.onkeydown = (e) => { if (e.key === "Enter") $('[data-mi="0"]', m).click(); }; } });
+    if (!title) return;
+    try {
+      tplState.name = (await api("/api/templates", { method: "POST", body: { title } })).name;
+      Object.assign(tplState, { dirty: false, tab: "columns" });
+      toast("فایل جداگانه ساخته شد. ستون‌ها و پوشه را بچینید؛ برای ثبت در آن، «ثبت‌ها اینجا برود» را بزنید.", "ok");
+      renderTemplates(el);
+    } catch (e) { toastErr(e); }
   };
-  drawHead();
-  const body = $("#tp-body");
-  if (tplState.name === "__company") {
-    body.innerHTML = `<div class="card-b"><div class="alert info">${I.info}<div class="alert-body">برای افزودن ردیف به فایل اکسل موجود شرکت، اول فایل را وصل و ستون‌هایش را نگاشت کنید. برای ساختن فایل تازه با ستون‌ها و ظاهر دلخواه، «قالب جدید» را بزنید.</div>
-      <a class="btn sm" href="#/excel">اتصال فایل شرکت</a></div></div>`;
+
+  if (!company && !news.length && tplState.name !== COMPANY) {
+    // هنوز هیچ مقصدی نیست: به جای پیام، همان دو انتخاب
+    el.innerHTML = `<div id="dv-summary"></div><div class="card"><div class="card-h"><h2>${I.table} شروع: ردیف‌ها کجا ثبت شوند؟</h2></div>
+      <div class="card-b">${destChoicesHtml()}</div></div>${importInput}`;
+    drawSummary();
+    bindImport();
+    $$("[data-choice]", el).forEach((b) => b.onclick = () => startDest(b.dataset.choice));
     return;
   }
-  const { template, target } = await api(`/api/templates/${tplState.name}`);
-  tplState.tpl = template;
-  template.policy = template.policy || {};
-  const isNew = template.mode === "new";
-  const TABS = isNew ? [["columns", "ستون‌ها"], ["values", "قالب مقادیر"], ["colors", "رنگ‌گذاری"], ["style", "ظاهر"], ["output", "مقصد"]]
-    : [["values", "قالب مقادیر"], ["colors", "رنگ‌گذاری"]];
-  if (!TABS.some(([k]) => k === tplState.tab)) tplState.tab = TABS[0][0];
-  body.innerHTML = `${isNew ? "" : `<div class="card-b"><div class="alert info">${I.info}<div class="alert-body">این قالب ردیف‌ها را به فایل «${esc(target.split(/[\\/]/).pop())}» اضافه می‌کند. ترتیب، عنوان و ظاهر ستون‌های فایل شرکت حفظ می‌شود تا داده‌های قبلی دست نخورند؛ اینجا فقط قالب مقادیر تغییر می‌کند. ستون‌ها در «اتصال و نگاشت فایل اکسل» تنظیم می‌شوند.</div><a class="btn sm" href="#/excel">نگاشت ستون‌ها</a></div></div>`}
+
+  const names = [COMPANY, ...news.map((t) => t.name)];
+  if (!names.includes(tplState.name)) Object.assign(tplState, { name: names.includes(meta.active) ? meta.active : names[0], tab: null, dirty: false });
+  el.innerHTML = `<div id="dv-summary"></div>
+    <div class="dest-head"><h3>مقصدهای ثبت ${help("dest")}</h3><span class="small muted">روی هر کارت بزنید تا تنظیماتش پایین باز شود.</span></div>
+    <div class="dest-grid">${names.map((n) => destCard(destInfo(meta, n))).join("")}
+      <button class="dest-card dest-add" id="dv-new">${I.plus}<b>مقصد تازه</b><span>فایل جداگانه یا فایل موجود دیگر</span></button></div>
+    <div class="card" id="dv-editor"><div class="card-b"><span class="spinner"></span></div></div>${importInput}`;
+  drawSummary();
+  bindImport();
+  $$("[data-dest]", el).forEach((c) => {
+    const pick = async (e) => {
+      if (e.target.closest("[data-activate]") || c.dataset.dest === tplState.name) return;
+      if (tplState.dirty && !(await confirmBox("تغییرات ذخیره نشده", "تغییرات این مقصد ذخیره نشده‌اند و از دست می‌روند. ادامه می‌دهید؟", "ادامه", "danger"))) return;
+      Object.assign(tplState, { name: c.dataset.dest, dirty: false, tab: null });
+      renderTemplates(el);
+    };
+    c.onclick = pick;
+    c.onkeydown = (e) => { if (e.target === c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pick(e); } };
+  });
+  $$("[data-activate]", el).forEach((b) => b.onclick = () => activate(b.dataset.activate));
+  $("#dv-new").onclick = async () => {
+    if (tplState.dirty) return toast("اول تغییرات این مقصد را ذخیره یا لغو کنید.", "err");
+    const choice = await openModal({ title: "مقصد تازه: ردیف‌ها کجا ثبت شوند؟", body: destChoicesHtml(), wide: true,
+      actions: [{ label: "انصراف", cls: "ghost", value: null }],
+      onOpen: (m) => $$("[data-choice]", m).forEach((b) => b.onclick = () => closeModal(b.dataset.choice)) });
+    if (choice) startDest(choice);
+  };
+
+  // تغییر مقصد ثبت با نمایش روشن «تا الان» و «از این پس»
+  async function activate(name) {
+    if (tplState.dirty) return toast("اول تغییرات را ذخیره یا لغو کنید.", "err");
+    const to = destInfo(meta, name), from = meta.templates.find((t) => t.active);
+    const box = (t, cls, label) => `<div class="ds-box ${cls}"><span>${label}</span><b>${t ? fname(destName(t)) : "—"}</b><small>${t ? destKind(t) : "مقصدی انتخاب نشده بود"}</small></div>`;
+    const ok = await confirmBox("تغییر مقصد ثبت", `<div class="dest-switch">${box(from, "", "تا الان")}<span class="ds-arrow">←</span>${box(to, "on", "از این پس")}</div>
+      <p class="small muted" style="margin:14px 0 0">ردیف‌هایی که قبلاً ثبت شده‌اند همان‌جا می‌مانند؛ فقط ثبت‌های بعدی به مقصد تازه می‌روند. هر وقت بخواهید می‌توانید برگردید.</p>`, "تغییر مقصد");
+    if (!ok) return;
+    try { await api(`/api/templates/${name}/activate`, { method: "POST" }); toast(`از این پس ثبت‌ها به «${destName(to)}» می‌روند.`, "ok"); await refreshStatus(); renderTemplates(el); }
+    catch (e) { toastErr(e); }
+  }
+
+  // ---------- تنظیمات مقصد انتخاب‌شده (زبانه‌های یکسان برای هر دو نوع) ----------
+  const info = destInfo(meta, tplState.name);
+  const isNew = info.mode === "new";
+  const draft = isNew ? (await api(`/api/templates/${info.name}`)).template
+    : company ? JSON.parse(JSON.stringify(company)) : { name: COMPANY, excel_path: "", columns: {}, protected: [], policy: {} };
+  if (seq !== routeSeq) return;
+  draft.policy = draft.policy || {};
+  let report = null;  // گزارش خواندن فایل موجود (شیت‌ها و عنوان ستون‌ها)
+  const hasFile = () => isNew || !!draft.excel_path;
+  const fileName = () => (draft.excel_path || "").split(/[\\/]/).pop();
+  const TABS = [["columns", "ستون‌ها"], ["values", "شکل نوشتن مقادیر"], ["colors", "رنگ ردیف‌ها"], ["style", "ظاهر"], ["output", isNew ? "فایل و پوشه" : "فایل"]];
+  if (!TABS.some(([k]) => k === tplState.tab)) tplState.tab = hasFile() ? "columns" : "output";
+  const ed = $("#dv-editor");
+  ed.innerHTML = `<div class="card-h"><div class="stack" style="gap:3px"><span class="dc-kind">${destKind(info)} ${help(isNew ? "new" : "append")}</span>
+        <h2>${isNew ? I.file : I.table} تنظیمات «${esc(isNew ? info.title : fileName() || "فایل اکسل شرکت")}»</h2></div>
+      <div class="row">
+        <button class="btn" id="tp-show" title="جدول نمونه با ستون‌ها، ترتیب و ظاهر همین مقصد">${I.eye} پیش‌نمایش</button>
+        ${isNew ? `<button class="btn ghost" id="tp-like" title="ستون‌ها و ظاهر را از یک فایل اکسل دیگر بردارد">${I.table} مثل فایل دیگر…</button>
+          <a class="btn ghost" href="/api/templates/${esc(info.name)}/export" title="برای استفاده در رایانه دیگر (پوشه خروجی همراهش نیست)">${I.down} خروجی قالب</a>
+          <button class="btn ghost icon" id="tp-del" title="${info.active ? "مقصد فعلی ثبت را نمی‌شود حذف کرد؛ اول مقصد دیگری را انتخاب کنید" : "حذف این مقصد"}" ${info.active ? "disabled" : ""}>${I.trash}</button>
+          <input type="file" id="tp-like-file" accept=".xlsx,.xlsm" hidden>` : ""}</div></div>
     <div class="card-b" style="padding-bottom:0"><div class="tabs" id="tp-tabs">${TABS.map(([k, l]) => `<button data-tt="${k}" class="${k === tplState.tab ? "active" : ""}">${l}</button>`).join("")}</div></div>
     <div class="card-b" id="tp-tab"></div>
-    ${isNew ? `<div class="card-b" style="border-top:1px solid var(--border)"><div class="row between"><b>پیش‌نمایش</b><span class="small muted">چند ردیف از رکوردهای اخیر، با همین قالب</span></div>
+    ${isNew ? `<div class="card-b" style="border-top:1px solid var(--border)"><div class="row between"><b>پیش‌نمایش زنده</b><span class="small muted">چند ردیف از رکوردهای اخیر، با همین تنظیمات</span></div>
       <div class="tp-preview" id="tp-preview"></div></div>` : ""}
-    <div class="card-b row" style="border-top:1px solid var(--border)">
-      <button class="btn primary" id="tp-save">${I.check} ذخیره قالب</button>
-      ${isNew ? `<button class="btn" id="tp-sample">${I.down} دریافت فایل نمونه</button>
-        <button class="btn ghost" id="tp-like" title="ستون‌ها و ظاهر را از یک فایل اکسل دیگر بردارد">${I.table} مثل این فایل…</button>
-        <a class="btn ghost" href="/api/templates/${esc(tplState.name)}/export" title="برای استفاده در رایانه یا مشتری دیگر (پوشه خروجی همراهش نیست)">${I.down} خروجی قالب</a>
-        <input type="file" id="tp-like-file" accept=".xlsx,.xlsm" hidden>` : ""}</div>`;
-  $$("[data-tt]", body).forEach((b) => b.onclick = () => { tplState.tab = b.dataset.tt; $$("[data-tt]", body).forEach((x) => x.classList.toggle("active", x === b)); drawTab(); });
-  $("#tp-show").onclick = () => showTemplatePreview(template, (meta.templates.find((t) => t.name === tplState.name) || {}).title || "");
-  const changed = (values = false) => { tplState.dirty = true; drawHead(); if (values) loadPreview(); else drawPreview(); };
+    <div class="save-bar" id="dv-savebar"><span id="dv-save-msg"></span><div class="row">
+      ${isNew ? `<button class="btn ghost" id="tp-sample">${I.down} دریافت فایل نمونه</button>` : ""}
+      <button class="btn ghost" id="dv-discard">لغو تغییرات</button><button class="btn primary" id="tp-save">${I.check} ذخیره</button></div></div>`;
+  const setTab = (k) => { tplState.tab = k; $$("[data-tt]", ed).forEach((x) => x.classList.toggle("active", x.dataset.tt === k)); drawTab(); };
+  $$("[data-tt]", ed).forEach((b) => b.onclick = () => setTab(b.dataset.tt));
+  const drawSaveBar = () => {
+    $("#dv-savebar").classList.toggle("dirty", tplState.dirty);
+    $("#dv-save-msg").innerHTML = tplState.dirty ? `${I.alert} تغییرات ذخیره نشده` : `<span class="muted">${I.check} همه تغییرات ذخیره شده</span>`;
+    $("#dv-discard").hidden = !tplState.dirty;
+    $("#tp-save").disabled = !tplState.dirty;
+    $("#tp-show").disabled = !hasFile();
+  };
+  const changed = (values = false) => { tplState.dirty = true; drawSaveBar(); if (!isNew) return; if (values) loadPreview(); else drawPreview(); };
   const loadPreview = debounce(async () => {
     if (!isNew) return;
-    try { const p = await api("/api/templates/preview", { method: "POST", body: template }); tplState.headers = p.headers; tplState.rows = p.rows; tplState.colors = p.colors || []; tplState.target = p.target;
+    try { const p = await api("/api/templates/preview", { method: "POST", body: draft }); tplState.rows = p.rows; tplState.colors = p.colors || []; tplState.target = p.target;
       const tn = $("#tp-target-name"); if (tn) tn.textContent = p.target; drawPreview(); }
-    catch (e) { $("#tp-preview").innerHTML = `<div class="err-text small">${esc(e.message)}</div>`; }
+    catch (e) { const b = $("#tp-preview"); if (b) b.innerHTML = `<div class="err-text small">${esc(e.message)}</div>`; }
   }, 300);
+  function drawPreview() {
+    const box = $("#tp-preview");
+    if (box) box.innerHTML = sheetHtml(draft.style, draft.columns_list, tplState.rows, tplState.colors);
+  }
+
+  // فایل موجود: خواندن شیت‌ها و عنوان ستون‌ها؛ فایل تازه = پیشنهاد ستون‌ها از روی عنوان‌ها
+  async function inspect(path) {
+    if (!path) return toast("مسیر فایل اکسل را وارد یا انتخاب کنید.");
+    const fresh = !company || company.excel_path !== path;
+    report = null;
+    if (tplState.tab === "output") drawTab();
+    try {
+      const res = await api("/api/excel/inspect", { method: "POST", body: { path } });
+      report = res.report;
+      if (fresh && res.profile) {
+        for (const k of Object.keys(draft)) delete draft[k];
+        Object.assign(draft, JSON.parse(JSON.stringify(res.profile)));
+        changed();
+        toast("ستون‌های فایل خوانده شد و پیشنهاد ستون‌ها آماده است. بررسی کنید و «ذخیره» را بزنید.", "ok");
+        setTab("columns");
+        return;
+      }
+    } catch (e) { report = { error: e.message }; }
+    if (["output", "columns"].includes(tplState.tab)) drawTab();
+  }
+  const browse = async () => {
+    const cur = ($("#x-path")?.value || draft.excel_path || "").trim();
+    const p = await pickPath("excel", cur ? cur.replace(/[\\/][^\\/]*$/, "") : "");
+    if (p) { if ($("#x-path")) $("#x-path").value = p; inspect(p); }
+  };
+  const needFile = (box) => {
+    box.innerHTML = `<div class="empty">${I.table}<div>اول فایل اکسل موجود را انتخاب کنید تا ستون‌هایش خوانده شود.</div>
+      <button class="btn primary" id="x-go-file">${I.folder} انتخاب فایل</button></div>`;
+    $("#x-go-file").onclick = () => { setTab("output"); browse(); };
+  };
 
   function drawTab() {
-    const box = $("#tp-tab"), t = tplState.tab, P = template.policy;
-    if (t === "columns") {
-      const used = new Set(template.columns_list.map((c) => c.field));
-      box.innerHTML = `<div class="tp-cols">${template.columns_list.map((c, i) => `<div class="tp-col" draggable="true" data-ci="${i}">
-          <span class="tp-drag" title="برای جابه‌جایی بکشید">☰</span>
-          <select class="select sm tp-flabel" data-cf title="چه چیزی در این ستون نوشته شود">${state.tplMeta.fields.map((f) => `<option value="${f.key}" ${f.key === c.field ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select>
+    const box = $("#tp-tab"), t = tplState.tab, P = draft.policy;
+    if (!box) return;
+    if (!hasFile() && t !== "output") return needFile(box);
+    if (t === "columns" && isNew) {
+      const used = new Set(draft.columns_list.map((c) => c.field));
+      box.innerHTML = `<div class="small muted" style="margin-bottom:10px">${help("columns_new")} ستون‌های فایل به همین ترتیب از راست ساخته می‌شوند.</div>
+        <div class="tp-cols">${draft.columns_list.map((c, i) => `<div class="tp-col" draggable="true" data-ci="${i}">
+          <span class="tp-drag" title="برای جابه‌جایی بکشید">☰</span><b class="tp-letter">${columnLetter(i)}</b>
+          <select class="select sm tp-flabel" data-cf title="چه اطلاعاتی در این ستون نوشته شود">${state.tplMeta.fields.map((f) => `<option value="${f.key}" ${f.key === c.field ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</select>
           <input class="input sm" data-ck="title" value="${esc(c.title)}" title="عنوان ستون">
           ${c.field === "constant" ? `<input class="input sm" data-ck="value" value="${esc(c.value || "")}" placeholder="مقدار ثابت">` : ""}
           <label class="small muted">عرض <input class="input sm" type="number" min="4" max="120" data-ck="width" value="${c.width}" style="width:64px"></label>
@@ -1835,7 +1854,7 @@ async function renderTemplates(el) {
         <div class="row" style="margin-top:10px"><select class="select" id="tp-addf">${state.tplMeta.fields.filter((f) => f.key === "constant" || !used.has(f.key)).map((f) => `<option value="${f.key}">${esc(f.label)}</option>`).join("")}</select>
           <button class="btn" id="tp-add">${I.plus} افزودن ستون</button></div>`;
       $$(".tp-col", box).forEach((row) => {
-        const i = +row.dataset.ci, col = template.columns_list[i];
+        const i = +row.dataset.ci, col = draft.columns_list[i];
         $$("[data-ck]", row).forEach((inp) => inp.oninput = () => { col[inp.dataset.ck] = inp.dataset.ck === "width" ? +inp.value : inp.value; changed(inp.dataset.ck === "value"); });
         $("[data-cf]", row).onchange = (e) => {
           col.field = e.target.value;
@@ -1843,7 +1862,7 @@ async function renderTemplates(el) {
           drawTab(); changed(true);
         };
         $$("[data-cmove]", row).forEach((b) => b.onclick = () => moveCol(i, i + +b.dataset.cmove));
-        $("[data-crm]", row).onclick = () => { if (template.columns_list.length > 1) { template.columns_list.splice(i, 1); drawTab(); changed(true); } };
+        $("[data-crm]", row).onclick = () => { if (draft.columns_list.length > 1) { draft.columns_list.splice(i, 1); drawTab(); changed(true); } };
         row.ondragstart = (e) => e.dataTransfer.setData("text/plain", String(i));
         row.ondragover = (e) => { e.preventDefault(); row.classList.add("over"); };
         row.ondragleave = () => row.classList.remove("over");
@@ -1851,37 +1870,79 @@ async function renderTemplates(el) {
       });
       $("#tp-add").onclick = () => {
         const f = $("#tp-addf").value;
-        template.columns_list.push({ field: f, title: uniqueTitle(fieldLabel(f)), width: 18, align: "right", ...(f === "constant" ? { value: "" } : {}) });
+        draft.columns_list.push({ field: f, title: uniqueTitle(fieldLabel(f)), width: 18, align: "right", ...(f === "constant" ? { value: "" } : {}) });
         drawTab(); changed(true);
       };
+    } else if (t === "columns") {
+      if (!report) { box.innerHTML = `<div class="row"><span class="spinner"></span> در حال خواندن ستون‌های «${esc(fileName())}»…</div>`; return; }
+      if (report.error) { box.innerHTML = `<div class="alert err">${I.alert}<div class="alert-body"><b>فایل خوانده نشد</b>${esc(report.error)}</div><button class="btn sm" id="x-go-file">زبانه «فایل»</button></div>`; $("#x-go-file").onclick = () => setTab("output"); return; }
+      const sheet = report.sheets.find((s) => s.name === draft.sheet) || report.sheets[0];
+      const fields = state.meta.fields.concat(state.meta.computed).concat([{ key: "followup", label: "پیگیری (اقدام + تاریخ)" }]);
+      const prot = new Set(draft.protected || []);
+      const cur = (col) => draft.columns[col] || (prot.has(col) ? "__protect" : "");
+      const opts = (col) => `<option value="" ${!cur(col) ? "selected" : ""}>— نوشته نشود (خالی می‌ماند) —</option>
+        <option value="__protect" ${cur(col) === "__protect" ? "selected" : ""}>🔒 محافظت‌شده (برنامه هرگز دست نمی‌زند)</option>
+        <optgroup label="اطلاعات ویس">${fields.map((f) => `<option value="${f.key}" ${cur(col) === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</optgroup>`;
+      const entries = Object.entries(sheet.headers);
+      const filled = entries.filter(([c]) => draft.columns[c]).length;
+      box.innerHTML = `<div class="stack">
+        <div class="small muted">${help("columns_append")} برای هر ستونِ «${esc(fileName())}» مشخص کنید چه اطلاعاتی از ویس در آن نوشته شود. پیشنهاد اولیه از روی عنوان ستون‌ها ساخته شده است.</div>
+        <div class="row"><div class="field"><label>شیت</label><select class="select" id="x-sheet">${report.sheets.map((s) => `<option ${s.name === sheet.name ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+          <div class="field"><label>ردیف عنوان ${help("header_row")}</label><input class="input" id="x-hr" type="number" min="1" value="${draft.header_row}" style="width:100px"></div></div>
+        <div class="table-wrap" style="border:1px solid var(--border); border-radius:12px"><table class="table"><thead><tr><th>ستون</th><th>عنوان در فایل</th><th>چه اطلاعاتی نوشته شود</th></tr></thead><tbody>
+          ${entries.map(([col, h]) => `<tr class="${cur(col) ? "" : "map-empty"}"><td><b class="ltr">${esc(col)}</b></td><td>${esc(h).replace(/\n/g, " ")}</td>
+            <td><select class="select map-select" data-col="${esc(col)}">${opts(col)}</select></td></tr>`).join("")}
+        </tbody></table></div>
+        <div class="small muted" id="x-map-count">${fa(filled)} ستون از ${fa(entries.length)} ستون پر می‌شود؛ بقیه خالی می‌مانند یا محافظت‌شده‌اند.</div></div>`;
+      $$("[data-col]", box).forEach((s) => s.onchange = () => {
+        const col = s.dataset.col;
+        delete draft.columns[col];
+        draft.protected = (draft.protected || []).filter((c) => c !== col);
+        if (s.value === "__protect") draft.protected.push(col); else if (s.value) draft.columns[col] = s.value;
+        s.closest("tr").classList.toggle("map-empty", !s.value);
+        $("#x-map-count").textContent = `${fa(entries.filter(([c]) => draft.columns[c]).length)} ستون از ${fa(entries.length)} ستون پر می‌شود؛ بقیه خالی می‌مانند یا محافظت‌شده‌اند.`;
+        changed();
+      });
+      $("#x-sheet").onchange = (e) => {
+        const s = report.sheets.find((x) => x.name === e.target.value);
+        Object.assign(draft, { sheet: s.name, header_row: s.header_row, headers: s.headers, columns: {}, protected: [] });
+        drawTab(); changed();
+      };
+      $("#x-hr").oninput = (e) => { draft.header_row = +e.target.value || draft.header_row; changed(); };
     } else if (t === "values") {
-      const sel = (k, def) => `<select class="select" data-pk="${k}">${VALUE_OPTS[k].map(([v, l]) => `<option value="${esc(v)}" ${(P[k] ?? def) === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+      const sel = (k, def) => `<select class="select" data-pk="${k}">${VALUE_OPTS[k].filter(([v]) => !(isNew && v === "auto")).map(([v, l]) => `<option value="${esc(v)}" ${(P[k] ?? def) === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
       const ts = P.text_style || {};
-      box.innerHTML = `<div class="grid grid-2" style="gap:14px">
+      const auto = isNew ? [] : [["", "خودکار (مثل ردیف‌های همین فایل)"]];
+      const tsSel = (k, opts, def) => `<select class="select" data-ts="${k}">${[...auto, ...opts].map(([v, l]) => `<option value="${esc(v)}" ${(P.text_style ? ts[k] : isNew ? def : "") === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+      box.innerHTML = `<div class="small muted" style="margin-bottom:12px">${help("values")} شکل نوشتن مقدارها در خانه‌های اکسل.</div>
+        <div class="grid grid-2" style="gap:14px">
         <div class="field"><label>تاریخ</label>${sel("date_format", "")}</div>
         <div class="field"><label>نام مهندس</label>${sel("name_title", "keep")}</div>
         <div class="field"><label>شماره تلفن</label>${sel("phone_format", "text_leading_zero")}
           <label class="check small"><input type="checkbox" data-pk="phone_group" ${P.phone_group ? "checked" : ""}> گروه‌بندی رقم‌ها (0915 123 4567)</label></div>
         <div class="field"><label>چند شماره برای یک ساختمان</label>${sel("multi_phone_separator", "\n")}</div>
-        <div class="field"><label>رقم‌ها در آدرس و توضیحات</label><select class="select" data-ts="digits">
-          ${[["ascii", "انگلیسی (58)"], ["persian", "فارسی (۵۸)"]].map(([v, l]) => `<option value="${v}" ${(ts.digits || "ascii") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
-        <div class="field"><label>جداکننده</label><select class="select" data-ts="sep">
-          ${[[" ، ", "سجادیه 58 ، قطعه دوم"], ["، ", "سجادیه 58، قطعه دوم"], [" - ", "سجادیه 58 - قطعه دوم"]].map(([v, l]) => `<option value="${esc(v)}" ${(ts.sep || " ، ") === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
+        <div class="field"><label>رقم‌ها در آدرس و توضیحات</label>${tsSel("digits", [["ascii", "انگلیسی (58)"], ["persian", "فارسی (۵۸)"]], "ascii")}</div>
+        <div class="field"><label>جداکننده</label>${tsSel("sep", [[" ، ", "سجادیه 58 ، قطعه دوم"], ["، ", "سجادیه 58، قطعه دوم"], [" - ", "سجادیه 58 - قطعه دوم"]], " ، ")}</div>
         <div class="field" style="grid-column:1/-1"><label>چیدمان روزها</label><div class="row">
           <label class="check small"><input type="checkbox" data-pk="blank_row_between_dates" ${P.blank_row_between_dates ? "checked" : ""}> یک ردیف خالی میان روزهای بازدید</label>
           <label class="check small"><input type="checkbox" data-pk="date_first_row_only" ${P.date_first_row_only ? "checked" : ""}> تاریخ فقط در اولین ردیف هر روز</label>
           <label class="check small"><input type="checkbox" data-pk="autofit" ${P.autofit !== false ? "checked" : ""}> عرض ستون‌ها و ارتفاع ردیف‌ها خودکار به اندازه محتوا</label></div></div>
         <div class="field" style="grid-column:1/-1"><label>اجزای ستون «توضیحات ترکیبی»</label><div class="row">
-          ${NOTE_PARTS.map(([k, l]) => `<label class="check small"><input type="checkbox" data-np="${k}" ${(P.notes_parts || NOTE_PARTS.map((x) => x[0])).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div></div></div>`;
+          ${NOTE_PARTS.map(([k, l]) => `<label class="check small"><input type="checkbox" data-np="${k}" ${(P.notes_parts || NOTE_PARTS.map((x) => x[0])).includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>
+          <span class="hint">اگر یکی از این‌ها ستون جداگانه داشته باشد، در توضیحات تکرار نمی‌شود.</span></div></div>`;
       $$("[data-pk]", box).forEach((x) => x.onchange = () => { P[x.dataset.pk] = x.type === "checkbox" ? x.checked : x.value; changed(true); });
-      $$("[data-ts]", box).forEach((x) => x.onchange = () => { P.text_style = { sep: " ، ", digits: "ascii", ...P.text_style, [x.dataset.ts]: x.value }; changed(true); });
+      $$("[data-ts]", box).forEach((x) => x.onchange = () => {
+        const sep = $('[data-ts="sep"]', box).value, digits = $('[data-ts="digits"]', box).value;
+        P.text_style = !isNew && !sep && !digits ? null : { sep: sep || P.text_style?.sep || " ، ", digits: digits || P.text_style?.digits || "ascii" };
+        changed(true);
+      });
       $$("[data-np]", box).forEach((x) => x.onchange = () => { P.notes_parts = $$("[data-np]", box).filter((c) => c.checked).map((c) => c.dataset.np); changed(true); });
     } else if (t === "colors") {
       const H = P.highlights = { ...state.tplMeta.highlight_defaults, warn: "", today: "", followup: "", ...(P.highlights || {}) };
       const row = (k, label, hint) => `<div class="tp-hl"><label class="check"><input type="checkbox" data-hk="${k}" ${H[k] ? "checked" : ""}> ${label}</label>
         <input type="color" class="tp-color" data-hc="${k}" value="${esc(H[k] || state.tplMeta.highlight_defaults[k] || "#fff3dc")}"><span class="small muted">${hint}</span></div>`;
       box.innerHTML = `<div class="stack">
-        <div class="small muted">ردیف‌هایی که یکی از این شرایط را دارند، با رنگ خودشان ثبت می‌شوند (اولویت به ترتیب از بالا). ${isNew ? "" : "در فایل شرکت فقط ردیف‌های تازه رنگ می‌گیرند؛ ردیف‌های قبلی دست نمی‌خورند."}</div>
+        <div class="small muted">${help("colors")} ردیف‌هایی که یکی از این شرایط را دارند، با رنگ خودشان ثبت می‌شوند (اولویت به ترتیب از بالا). ${isNew ? "" : "در فایل موجود فقط ردیف‌های تازه رنگ می‌گیرند؛ ردیف‌های قبلی دست نمی‌خورند."}</div>
         ${row("followup", "پیگیری نزدیک", `تاریخ پیگیری تا <input class="input sm" type="number" min="0" max="60" id="tp-fdays" value="${H.followup_days}" style="width:60px;display:inline-block"> روز آینده`)}
         ${row("warn", "ردیف ناقص", "نام، شماره یا آدرس ندارد یا نامعتبر است")}
         ${row("today", "بازدید امروز", "تاریخ بازدید همان روز ثبت است")}</div>`;
@@ -1889,13 +1950,19 @@ async function renderTemplates(el) {
       $$("[data-hk]", box).forEach((x) => x.onchange = () => set(x.dataset.hk));
       $$("[data-hc]", box).forEach((x) => x.oninput = () => { if ($(`[data-hk="${x.dataset.hc}"]`, box).checked) set(x.dataset.hc); });
       $("#tp-fdays").oninput = (e) => { H.followup_days = Math.max(0, Math.min(60, +e.target.value || 0)); changed(true); };
+    } else if (t === "style" && !isNew) {
+      // فایل موجود: ظاهرش دست نمی‌خورد؛ فقط ردیف‌های تازه می‌توانند مثل ردیف‌های قبلی قالب‌بندی شوند
+      box.innerHTML = `<div class="stack"><div class="alert info">${I.info}<div class="alert-body"><b>ظاهر فایل موجود دست نمی‌خورد</b>
+          ترتیب، عنوان، رنگ و عرض ستون‌های «${esc(fileName())}» همان‌طور که هست می‌ماند تا داده‌های قبلی به‌هم نریزند. برای ظاهر دلخواه، یک «فایل جداگانه» بسازید.</div></div>
+        <label class="check"><input type="checkbox" id="pol-style" ${P.copy_style_from_last_row !== false ? "checked" : ""}> ردیف‌های تازه مثل آخرین ردیف فایل قالب‌بندی شوند (فونت، کادر و رنگ)</label></div>`;
+      $("#pol-style").onchange = (e) => { P.copy_style_from_last_row = e.target.checked; changed(); };
     } else if (t === "style") {
-      const S = template.style, fonts = state.tplMeta.fonts;
+      const S = draft.style, fonts = state.tplMeta.fonts;
       const fontSel = (part) => `<select class="select" data-sp="${part}.font">${fonts.map((f) => `<option value="${esc(f.name)}" ${S[part].font === f.name ? "selected" : ""}>${esc(f.name)}${f.installed ? "" : " (روی این رایانه نصب نیست)"}</option>`).join("")}</select>`;
       const num = (path, v, min, max) => `<input class="input" type="number" min="${min}" max="${max}" data-sp="${path}" value="${v}" style="width:80px">`;
       const color = (path, v) => `<input type="color" class="tp-color" data-sp="${path}" value="${esc(v || "#ffffff")}">`;
       box.innerHTML = `<div class="stack">
-        <div class="row"><span class="small muted">قالب‌های آماده:</span>${Object.entries(state.tplMeta.presets).map(([k, p]) => `<button class="btn sm tp-preset" data-preset="${k}"><span class="tp-swatch" style="background:${p.fill}"></span>${esc(p.label)}</button>`).join("")}</div>
+        <div class="row"><span class="small muted">رنگ‌های آماده:</span>${Object.entries(state.tplMeta.presets).map(([k, p]) => `<button class="btn sm tp-preset" data-preset="${k}"><span class="tp-swatch" style="background:${p.fill}"></span>${esc(p.label)}</button>`).join("")}</div>
         <div class="grid grid-2" style="gap:14px">
           <div class="stack"><b>سرستون</b>
             <div class="row">${fontSel("header")} ${num("header.size", S.header.size, 6, 36)}<label class="check small"><input type="checkbox" data-sp="header.bold" ${S.header.bold ? "checked" : ""}> پررنگ</label></div>
@@ -1904,7 +1971,7 @@ async function renderTemplates(el) {
           <div class="stack"><b>ردیف‌ها</b>
             <div class="row">${fontSel("body")} ${num("body.size", S.body.size, 6, 36)}<label class="check small"><input type="checkbox" data-sp="body.wrap" ${S.body.wrap ? "checked" : ""}> شکستن متن بلند</label></div>
             <div class="row small"><label class="row">رنگ متن ${color("body.color", S.body.color)}</label>
-              <label class="row"><input type="checkbox" id="tp-zebra-on" ${S.zebra ? "checked" : ""}> راه‌راه ${color("zebra", S.zebra || "#eef2fc")}</label>
+              <label class="row"><input type="checkbox" id="tp-zebra-on" ${S.zebra ? "checked" : ""}> راه‌راه ${color("zebra", S.zebra || "#e8f6ef")}</label>
               <label class="row">ارتفاع ${num("body.height", S.body.height, 0, 200)}</label></div></div></div>
         <div class="row">${[["border", "کادر خانه‌ها"], ["rtl", "راست‌به‌چپ"], ["freeze", "ثابت ماندن سرستون"], ["filter", "فیلتر روی سرستون"]].map(([k, l]) => `<label class="check"><input type="checkbox" data-sp="${k}" ${S[k] ? "checked" : ""}> ${l}</label>`).join("")}</div>
         ${fonts.some((f) => f.name === S.body.font && !f.installed) || fonts.some((f) => f.name === S.header.font && !f.installed) ? `<div class="small muted">${I.info} فایل اکسل فقط نام فونت را نگه می‌دارد؛ اگر فونت روی رایانه‌ای که فایل را باز می‌کند نصب نباشد، Excel فونت دیگری نشان می‌دهد.</div>` : ""}</div>`;
@@ -1920,43 +1987,68 @@ async function renderTemplates(el) {
         Object.assign(S.header, { fill: p.fill, color: p.color }); S.zebra = p.zebra;
         drawTab(); changed();
       });
+    } else if (!isNew) {
+      box.innerHTML = `<div class="stack"><div class="field"><label>فایل اکسل موجود ${help("append")}</label><div class="row" style="flex-wrap:nowrap">
+          <input class="input ltr" id="x-path" style="flex:1; text-align:right" placeholder="C:\\...\\فایل شرکت.xlsx" value="${esc(draft.excel_path || "")}">
+          <button class="btn primary" id="x-browse">${I.folder} انتخاب فایل…</button><button class="btn ghost" id="x-inspect">${I.search} بررسی</button></div>
+          <span class="hint">فایل فقط خوانده می‌شود تا ستون‌هایش شناخته شود. پیش از هر ثبت از آن پشتیبان گرفته می‌شود و هر ثبت قابل بازگشت است.</span></div>
+        ${state.meta?.samples?.excel ? `<div class="row small"><span class="muted">فایل اکسل شرکت را ندارید؟</span><button class="btn sm ghost" id="x-sample">${I.table} استفاده از فایل اکسل نمونه</button></div>` : ""}
+        <div id="x-report">${report ? (report.error ? `<div class="alert err">${I.alert}<div class="alert-body">${esc(report.error)}</div></div>` : excelReportHtml(report))
+          : draft.excel_path ? `<div class="row"><span class="spinner"></span> در حال بررسی فایل…</div>` : ""}</div></div>`;
+      $("#x-browse").onclick = browse;
+      $("#x-inspect").onclick = () => inspect($("#x-path").value.trim().replace(/^"|"$/g, ""));
+      $("#x-sample")?.addEventListener("click", () => { $("#x-path").value = state.meta.samples.excel; inspect(state.meta.samples.excel); });
+      if (tplState.pickFile) { tplState.pickFile = false; browse(); }
     } else {
-      const O = template.output;
-      box.innerHTML = `<div class="stack"><div class="field"><label>پوشه فایل خروجی</label><div class="row" style="flex-wrap:nowrap">
+      const O = draft.output;
+      box.innerHTML = `<div class="stack"><div class="field"><label>پوشه فایل</label><div class="row" style="flex-wrap:nowrap">
           <input class="input ltr" id="tp-folder" value="${esc(O.folder)}" style="flex:1; text-align:right"><button class="btn" id="tp-pick">${I.folder} انتخاب پوشه</button></div></div>
         <div class="field"><label>نام فایل</label><div class="row"><input class="input" id="tp-file" value="${esc(O.file)}" style="width:260px"><span class="muted">.xlsx</span></div>
-          <span class="hint">اگر فایل نباشد، در اولین ثبت با سرستون همین قالب ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div>
-        <div class="field"><label>تقسیم خروجی</label><select class="select" id="tp-split" style="width:300px">${Object.entries(state.tplMeta.splits).map(([k, l]) => `<option value="${k}" ${(O.split || "none") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
-          <span class="hint">نمونه نام فایل امروز: <b id="tp-target-name">${esc(tplState.target || "")}</b></span></div></div>`;
+          <span class="hint">اگر فایل نباشد، در اولین ثبت با ستون‌های همین مقصد ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div>
+        <div class="field"><label>یک فایل یا چند فایل؟ ${help("split")}</label><select class="select" id="tp-split" style="width:300px">${Object.entries(state.tplMeta.splits).map(([k, l]) => `<option value="${k}" ${(O.split || "none") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+          <span class="hint">نام فایل امروز: <b id="tp-target-name">${esc(tplState.target || info.target || "")}</b></span></div></div>`;
       $("#tp-split").onchange = (e) => { O.split = e.target.value; changed(true); };
       $("#tp-folder").oninput = (e) => { O.folder = e.target.value.trim(); changed(); };
-      $("#tp-file").oninput = (e) => { O.file = e.target.value.trim(); changed(); };
+      $("#tp-file").oninput = (e) => { O.file = e.target.value.trim(); changed(true); };
       $("#tp-pick").onclick = async () => { const p = await pickPath("audio", O.folder); if (p) { O.folder = p; $("#tp-folder").value = p; changed(); } };
     }
   }
 
   function moveCol(from, to) {
-    const L = template.columns_list;
+    const L = draft.columns_list;
     if (to < 0 || to >= L.length || from === to) return;
     L.splice(to, 0, L.splice(from, 1)[0]);
     drawTab(); changed(true);
   }
-  function uniqueTitle(t) { let n = t, i = 2; while (template.columns_list.some((c) => c.title === n)) n = `${t} ${fa(i++)}`; return n; }
-
-  function drawPreview() {
-    const box = $("#tp-preview");
-    if (box) box.innerHTML = sheetHtml(template.style, template.columns_list, tplState.rows, tplState.colors);
-  }
+  function uniqueTitle(t) { let n = t, i = 2; while (draft.columns_list.some((c) => c.title === n)) n = `${t} ${fa(i++)}`; return n; }
 
   $("#tp-save").onclick = async () => {
+    const btn = $("#tp-save");
+    btn.disabled = true;
     try {
-      const r = await api(`/api/templates/${tplState.name}`, { method: "PUT", body: template });
-      tplState.dirty = false; drawHead();
-      toast("قالب ذخیره شد.", "ok");
-      if (r.warning) toast(r.warning, "err");
-      refreshStatus();
-    } catch (e) { toastErr(e); }
+      if (isNew) {
+        const r = await api(`/api/templates/${info.name}`, { method: "PUT", body: draft });
+        if (r.warning) toast(r.warning, "err");
+      } else {
+        await api("/api/excel/profile", { method: "PUT", body: draft });
+        // واژه‌نامه از نام مهندس‌ها و خیابان‌های همین فایل پر می‌شود تا املای درست پیشنهاد شود
+        try {
+          const sd = await api("/api/dictionary/seed-from-excel", { method: "POST" });
+          if (sd.added.engineer || sd.added.street) toast(`واژه‌نامه پر شد: ${fa(sd.added.engineer)} نام مهندس و ${fa(sd.added.street)} خیابان از فایل اکسل.`, "ok");
+        } catch { }
+      }
+      tplState.dirty = false;
+      toast("ذخیره شد.", "ok");
+      await refreshStatus();
+      renderTemplates(el);
+    } catch (e) { toastErr(e); btn.disabled = false; }
   };
+  $("#dv-discard").onclick = () => { tplState.dirty = false; renderTemplates(el); };
+  $("#tp-show").onclick = () => showTemplatePreview(draft, isNew ? info.title : fileName());
+  $("#tp-del")?.addEventListener("click", async () => {
+    if (!(await confirmBox("حذف مقصد", `«${esc(info.title)}» از فهرست مقصدها حذف می‌شود. فایل‌هایی که قبلاً با آن ساخته شده‌اند دست نمی‌خورند.`, "حذف", "danger"))) return;
+    try { await api(`/api/templates/${info.name}`, { method: "DELETE" }); Object.assign(tplState, { name: null, dirty: false }); renderTemplates(el); } catch (e) { toastErr(e); }
+  });
   $("#tp-like")?.addEventListener("click", () => $("#tp-like-file").click());
   $("#tp-like-file")?.addEventListener("change", async (e) => {
     const f = e.target.files[0];
@@ -1966,24 +2058,39 @@ async function renderTemplates(el) {
     fd.append("file", f, f.name);
     try {
       const got = await api("/api/templates/from-file", { method: "POST", form: fd });
-      template.columns_list = got.columns_list;
-      template.style = got.style;
+      draft.columns_list = got.columns_list;
+      draft.style = got.style;
       const unknown = got.columns_list.filter((c) => c.field === "constant").length;
-      toast(`ستون‌ها و ظاهر از «${f.name}» برداشته شد${unknown ? `؛ ${fa(unknown)} ستون شناخته نشد و خالی می‌ماند (در زبانه «ستون‌ها» می‌توانید فیلدش را عوض کنید)` : ""}. ذخیره را فراموش نکنید.`, "ok");
-      tplState.tab = "columns";
-      $$("[data-tt]", body).forEach((x) => x.classList.toggle("active", x.dataset.tt === "columns"));
-      drawTab(); changed(true);
+      toast(`ستون‌ها و ظاهر از «${f.name}» برداشته شد${unknown ? `؛ ${fa(unknown)} ستون شناخته نشد و خالی می‌ماند (در زبانه «ستون‌ها» می‌توانید عوضش کنید)` : ""}. ذخیره را فراموش نکنید.`, "ok");
+      setTab("columns"); changed(true);
     } catch (er) { toastErr(er); }
   });
   $("#tp-sample")?.addEventListener("click", async () => {
-    try { await downloadPost("/api/templates/sample", template, `${template.output.file || "نمونه"} (نمونه).xlsx`); }
+    try { await downloadPost("/api/templates/sample", draft, `${draft.output.file || "نمونه"} (نمونه).xlsx`); }
     catch (e) { toastErr(e); }
   });
-  state.tplMeta = meta;
+  drawSaveBar();
   drawTab();
   if (isNew) loadPreview();
+  else if (draft.excel_path) inspect(draft.excel_path);
 }
 function fieldLabel(k) { return (state.tplMeta?.fields.find((f) => f.key === k) || {}).label || k; }
+function columnLetter(i) { let s = ""; for (i += 1; i > 0; i = Math.floor((i - 1) / 26)) s = String.fromCharCode(65 + (i - 1) % 26) + s; return s; }
+
+/** گزارش بررسی فایل اکسل: ویژگی‌های پرخطر و شیت‌ها. */
+function excelReportHtml(r) {
+  const risks = r.risks || [];
+  return `<div class="grid grid-2">
+    <dl class="kv"><dt>نام فایل</dt><dd><bdi dir="ltr">${esc(r.name)}</bdi></dd><dt>نوع</dt><dd>${esc(r.type)}${r.has_macros ? " (دارای ماکرو)" : ""}</dd>
+      <dt>حجم</dt><dd>${fmtSize(r.size)}</dd><dt>باز بودن در Excel</dt><dd>${r.lock?.locked ? `<span style="color:var(--warn)">${esc(r.lock.message)}</span>` : "بسته است"}</dd></dl>
+    <div class="stack" style="gap:4px">${risks.length ? risks.map((x) => `<div class="risk">${x.level === "block" ? `<span style="color:var(--err)">${I.alert}</span>` : x.level === "warn" ? `<span style="color:var(--warn)">${I.alert}</span>` : `<span style="color:var(--info)">${I.info}</span>`}<span>${esc(x.message)}</span></div>`).join("")
+      : `<div class="risk"><span style="color:var(--ok)">${I.ok}</span><span>ویژگی پرخطری (نمودار، Pivot، ماکرو، کنترل فرم) پیدا نشد؛ ثبت امن است.</span></div>`}</div></div>
+    <div class="table-wrap" style="margin-top:12px; border:1px solid var(--border); border-radius:12px"><table class="table"><thead><tr><th>شیت</th><th>ردیف عنوان</th><th>ردیف‌های داده</th><th>آخرین ردیف داده</th><th>راست‌به‌چپ</th><th>فرمول</th><th>فیلتر</th><th>ادغام</th></tr></thead><tbody>
+    ${r.sheets.map((s) => `<tr><td><b>${esc(s.name)}</b>${s.state !== "visible" ? ' <span class="muted small">(پنهان)</span>' : ""}</td><td>${fa(s.header_row)}</td><td>${fa(s.data_rows)}</td><td>${fa(s.last_data_row)}</td>
+      <td>${s.right_to_left ? "بله" : "خیر"}</td><td>${fa(s.formula_count)}</td>
+      <td class="small">${s.auto_filter ? `<span class="ltr">${esc(s.auto_filter)}</span>${s.auto_filter_stale ? ' <span style="color:var(--warn)" title="محدوده فیلتر همه داده‌ها را پوشش نمی‌دهد">(ناقص)</span>' : ""}` : "—"}</td><td>${fa(s.merged_cells.length)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
 
 /** جدول شبیه برگه اکسل با ظاهر قالب. letters: سرستون حرفی و شماره ردیف مثل خود Excel. */
 function sheetHtml(S, cols, rows, colors, letters = null) {
@@ -2008,15 +2115,15 @@ const HIGHLIGHT_LABELS = [["followup", "پیگیری نزدیک"], ["warn", "ر�
 async function showTemplatePreview(template, title) {
   const isNew = template.mode === "new";
   let p;
-  try { p = await api("/api/templates/preview", { method: "POST", body: isNew ? template : { name: template.name, mode: template.mode, policy: template.policy } }); }
+  try { p = await api("/api/templates/preview", { method: "POST", body: isNew ? template : { name: template.name, mode: template.mode, policy: template.policy, headers: template.headers, columns: template.columns, protected: template.protected } }); }
   catch (e) { return toastErr(e); }
   const S = isNew ? template.style : COMPANY_SHEET_STYLE;
-  const cols = isNew ? template.columns_list : p.headers.map((h, i) => ({ title: h || `(${p.letters[i]})`, field: p.fields[i], width: 18, align: "right", unmapped: !p.fields[i] }));
+  const cols = isNew ? template.columns_list : p.headers.map((h, i) => ({ title: (p.protected?.includes(p.letters[i]) ? "🔒 " : "") + (h || `(${p.letters[i]})`), field: p.fields[i], width: 18, align: "right", unmapped: !p.fields[i] && !p.protected?.includes(p.letters[i]) }));
   const H = template.policy?.highlights || {};
   const keys = HIGHLIGHT_LABELS.filter(([k]) => H[k]);
   const notes = [
     p.demo ? "هنوز رکوردی نیست؛ مقدارها نمونه ساختگی‌اند." : `مقدارها از ${fa(p.rows.length)} رکورد اخیر، با قالب مقادیر همین قالب.`,
-    isNew ? "" : "ظاهر، عرض و رنگ سرستون‌ها همان فایل شرکت می‌ماند؛ اینجا نام، ترتیب و مقدار ستون‌ها را می‌بینید." + (cols.some((c) => c.unmapped) ? " ستون‌های با کادر قرمز نگاشت نشده‌اند و خالی می‌مانند." : ""),
+    isNew ? "" : "ظاهر، عرض و رنگ سرستون‌ها همان فایل موجود می‌ماند؛ اینجا نام، ترتیب و مقدار ستون‌ها را می‌بینید." + (cols.some((c) => c.unmapped) ? " ستون‌های با کادر قرمز اطلاعاتی نمی‌گیرند و خالی می‌مانند." : ""),
     tplState.dirty ? "تغییرات ذخیره‌نشده هم در این پیش‌نمایش آمده‌اند." : "",
   ].filter(Boolean);
   const actions = [{ label: "بستن", cls: "primary", value: null }];
@@ -2024,7 +2131,7 @@ async function showTemplatePreview(template, title) {
     try { await downloadPost("/api/templates/sample", template, `${template.output.file || "نمونه"} (نمونه).xlsx`); } catch (e) { toastErr(e); }
     return false;
   } });
-  await openModal({ title: `پیش‌نمایش قالب «${esc(title)}»`, actions, onOpen: (m) => m.classList.add("xwide"),
+  await openModal({ title: `پیش‌نمایش «${esc(title)}»`, actions, onOpen: (m) => m.classList.add("xwide"),
     body: `<div class="tpv-head"><span class="small muted">${fa(cols.length)} ستون${p.target ? ` · فایل: <b>${esc(p.target)}</b>` : ""}</span>
         ${keys.length ? `<span class="tpv-keys">${keys.map(([k, l]) => `<span class="tpv-key"><i style="background:${esc(H[k])}"></i>${l}</span>`).join("")}</span>` : ""}</div>
       <div class="tpv-order">${cols.map((c, i) => `<span class="tpv-col"><b>${esc(p.letters[i])}</b>${esc(c.title)}</span>`).join("")}</div>
@@ -2274,7 +2381,8 @@ async function renderSettings(el) {
       <div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.table} ابزارها</h2>
         <label class="check small"><input type="checkbox" id="s-fullnav" ${fullNav ? "checked" : ""}> نمایش همه صفحه‌ها در منو</label></div>
         <div class="card-b row">
-          <a class="btn" href="#/excel">${I.table} اتصال و نگاشت فایل اکسل</a>
+          <a class="btn" href="#/templates">${I.table} خروجی اکسل (مقصد و ستون‌ها)</a>
+          <a class="btn" href="#/excel">${I.history} ثبت در اکسل و سوابق</a>
           <a class="btn" href="#/dictionary">${I.book} واژه‌نامه</a>
           <a class="btn" href="#/dictionary?kb">${I.upload} آموزش از اکسل</a>
           <a class="btn" href="#/voices">${I.music} همه ویس‌ها</a>

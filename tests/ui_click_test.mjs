@@ -90,16 +90,18 @@ try {
 
   // منوی ساده: فقط «کار امروز» و «تنظیمات»؛ بقیه صفحه‌ها از کارت «ابزارها» در تنظیمات
   const navShown = await evaluate(`[...document.querySelectorAll("#nav a")].filter((a) => a.offsetParent && a.dataset.page).map((a) => a.dataset.page).join(",")`);
-  check("منوی ساده فقط «کار امروز»، «قالب اکسل» و «تنظیمات» دارد", navShown === "today,templates,settings", navShown);
+  check("منوی ساده: «کار امروز»، «خروجی اکسل»، «تنظیمات» و «اشتراک و پشتیبانی»", navShown === "today,templates,settings,activate", navShown);
   check("صفحه پیش‌فرض «کار امروز»", (await evaluate("document.querySelector('#page-title').textContent")) === "کار امروز");
   await click(`#nav a[data-page="settings"]`);
   await sleep(1200);
-  const rt = await click(`#page a[href="#/excel"]`);
+  const rt = await click(`#page a[href="#/templates"]`);
   await sleep(900);
-  check("پیوند «اتصال فایل اکسل» در تنظیمات", rt.hit && (await evaluate("document.querySelector('#page-title').textContent")) === "ثبت در اکسل");
+  check("پیوند «خروجی اکسل» در تنظیمات", rt.hit && (await evaluate("document.querySelector('#page-title').textContent")) === "خروجی اکسل");
+  await click(`#nav a[data-page="settings"]`);
+  await sleep(1200);
   // ادامه آزمون با منوی کامل (همان تنظیم «نمایش همه صفحه‌ها»)
   await evaluate("localStorage.setItem('v2x.nav', 'full'); document.documentElement.classList.add('full-nav')");
-  for (const [page, title] of [["voices", "ویس‌ها و پردازش"], ["review", "بازبینی اطلاعات"], ["excel", "ثبت در اکسل"], ["dictionary", "واژه‌نامه"], ["settings", "تنظیمات"], ["dashboard", "داشبورد"], ["templates", "قالب اکسل"], ["today", "کار امروز"]]) {
+  for (const [page, title] of [["voices", "ویس‌ها و پردازش"], ["review", "بازبینی اطلاعات"], ["excel", "ثبت در اکسل"], ["dictionary", "واژه‌نامه"], ["settings", "تنظیمات"], ["dashboard", "داشبورد"], ["templates", "خروجی اکسل"], ["today", "کار امروز"]]) {
     const r = await click(`#nav a[data-page="${page}"]`);
     await sleep(900);
     const t = await evaluate("document.querySelector('#page-title').textContent");
@@ -209,27 +211,74 @@ try {
     check("اصلاح انجام‌شده در «اصلاحات یادگرفته‌شده» ثبت شد", (await evaluate("document.querySelectorAll('#dc-table tbody tr').length")) >= 1);
     // پشتیبان‌گیری دستی
     await click(`#nav a[data-page="settings"]`);
-    await sleep(1500);
+    for (let i = 0; i < 40 && !(await evaluate("!!document.querySelector('#s-backup-now')")); i++) await sleep(300);
     await evaluate("document.querySelector('#s-backup-now').scrollIntoView({block:'center'})");
     await sleep(300);
     await click("#s-backup-now");
     await sleep(2000);
     await shot("05-settings-backups");
     check("پشتیبان‌گیری الان", (await evaluate("document.querySelectorAll('#s-backups tbody tr').length")) >= 1);
-    await click(`#nav a[data-page="review"]`);
-    await sleep(800);
-    await click(`#nav a[data-page="excel"]`);
-    await sleep(1200);
-    const hasSample = await evaluate("!!document.querySelector('#x-sample')");
+    const waitFor = async (sel, ms = 15000) => {
+      for (let t = 0; t < ms; t += 300) { if (await evaluate(`!!document.querySelector(${JSON.stringify(sel)})`)) return true; await sleep(300); }
+      return false;
+    };
+    const setInput = (sel, v) => evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event("input")); })()`);
+    // «خروجی اکسل»: جمله مقصد، انتخاب «فایل موجود» و ستون‌ها
+    await click(`#nav a[data-page="templates"]`);
+    await sleep(1500);
+    check("جمله «با زدن ثبت در اکسل…» بالای خروجی اکسل", await waitFor("#dv-summary .dest-sentence"));
+    const hasSample = await evaluate("!!state.meta?.samples?.excel");
     if (hasSample) {
+      if (await evaluate(`!!document.querySelector('[data-choice="append"]')`)) {
+        check("بدون مقصد: دو انتخاب «فایل موجود / فایل تازه» به جای پیام", await evaluate(`!!document.querySelector('[data-choice="new"]')`));
+        await click('[data-choice="append"]');
+        // پنجره انتخاب فایل خودکار باز می‌شود؛ به جایش فایل نمونه
+        check("انتخاب «فایل موجود» پنجره انتخاب فایل را باز می‌کند", await waitFor("#modal-backdrop:not([hidden]) .fs-list, #modal-backdrop:not([hidden]) .modal-f", 6000));
+        await click("#modal .modal-f .btn.ghost");
+        await sleep(400);
+      } else {
+        await click('[data-dest="default"]');
+        await sleep(1200);
+        await click('[data-tt="output"]');
+      }
+      await waitFor("#x-sample", 6000);
       await click("#x-sample");
-      await sleep(3000);
-      check("بررسی فایل اکسل نمونه", await evaluate("!!document.querySelector('#x-save')"));
-      await click("#x-save");
-      const waitFor = async (sel, ms = 15000) => {
-        for (let t = 0; t < ms; t += 300) { if (await evaluate(`!!document.querySelector(${JSON.stringify(sel)})`)) return true; await sleep(300); }
-        return false;
-      };
+      check("فایل نمونه خوانده شد و زبانه «ستون‌ها» با پیشنهاد باز شد", await waitFor('[data-tt="columns"].active') && await waitFor(".map-select"));
+      check("نوار ذخیره «تغییرات ذخیره نشده» را نشان می‌دهد", await evaluate("document.querySelector('#dv-savebar').classList.contains('dirty') && !document.querySelector('#tp-save').disabled"));
+      check("توضیح «؟» کنار مفهوم‌ها", (await evaluate("document.querySelectorAll('.help[data-tip]').length")) >= 2);
+      await click("#tp-save");
+      check("ذخیره فایل موجود؛ کارتش مقصد ثبت فعلی است", await waitFor('[data-dest="default"] .dc-active:not(.warn)'));
+      check("پس از ذخیره نوار ذخیره عادی است", await evaluate("!document.querySelector('#dv-savebar').classList.contains('dirty')"));
+      await click("#tp-show");
+      check("پیش‌نمایش جدول شبیه اکسل", await waitFor(".modal.xwide .xl-letters"));
+      await click("#modal .modal-f .btn.primary");
+      await sleep(400);
+      // مقصد تازه ← فایل جداگانه، و تأیید روشن هنگام تغییر مقصد
+      await click("#dv-new");
+      check("«مقصد تازه» اول فقط می‌پرسد ردیف‌ها کجا ثبت شوند", await waitFor('#modal [data-choice="new"]'));
+      await click('#modal [data-choice="new"]');
+      await waitFor("#m-in");
+      await setInput("#m-in", "گزارش آزمون");
+      await click('#modal [data-mi="0"]');
+      check("فایل جداگانه ساخته شد و کارتش آمد", await waitFor(".tp-col") && (await evaluate("document.querySelectorAll('.dest-card[data-dest]').length")) === 2);
+      await click(".dest-card:not(.on) [data-activate]");
+      check("تغییر مقصد: «تا الان» و «از این پس» نشان داده می‌شود", await waitFor("#modal .dest-switch .ds-box.on"));
+      await click("#modal .modal-f .btn.ghost");
+      await sleep(500);
+      check("انصراف: مقصد ثبت عوض نشد", (await getJSON(APP + "api/status")).setup.template_mode !== "new");
+      await evaluate("document.querySelector('#tp-del').scrollIntoView({block: 'center'})");
+      await sleep(300);
+      const rdel = await click("#tp-del");
+      check("دکمه حذف مقصد", rdel.hit && await waitFor("#modal .modal-f .btn.danger", 5000), "کلیک به " + rdel.top);
+      await click("#modal .modal-f .btn.danger");
+      let left = 0;
+      for (let i = 0; i < 30 && (left = await evaluate("document.querySelectorAll('.dest-card[data-dest]').length")) !== 1; i++) await sleep(300);
+      check("حذف فایل جداگانه", left === 1, `${left} کارت`);
+      // ثبت روی کپی از صفحه «ثبت در اکسل»
+      await click(`#nav a[data-page="review"]`);
+      await sleep(800);
+      await click(`#nav a[data-page="excel"]`);
+      await sleep(1200);
       check("پیش‌نمایش ثبت و دکمه «ساخت فایل خروجی» نمایش داده شد", await waitFor("#x-export"),
         await evaluate("(document.querySelector('#x-prev') || {}).innerText?.slice(0, 200) || ''"));
       await evaluate("document.querySelector('#x-export')?.scrollIntoView({block: 'center'})");

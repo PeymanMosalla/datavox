@@ -129,6 +129,17 @@ def test_company_template_preview(db, settings, tmp_path):
         assert row["engineer_name"] == "رجبی" and row["phone"] == "0915 123 4567"
         assert excel_mapping.load_profile(saved["name"])["policy"].get("name_title") != "drop"  # پیش‌نمایش چیزی ذخیره نمی‌کند
         assert c.post("/api/templates/preview", json={"name": "nope"}).status_code == 404
+        # ستون‌های ذخیره‌نشده صفحه هم در پیش‌نمایش می‌آیند (بدون ذخیره)
+        pv2 = c.post("/api/templates/preview", json={**body, "headers": saved["headers"], "columns": {}, "protected": [letters[0]]}).json()
+        assert not any(pv2["fields"]) and pv2["protected"] == [letters[0]] and not any(any(r) for r in pv2["rows"])
+        assert excel_mapping.load_profile(saved["name"])["columns"] == saved["columns"]
+        # کارت مقصد: یک جمله ساده درباره فایل و شیت
+        info = next(t for t in c.get("/api/templates").json()["templates"] if t["name"] == saved["name"])
+        assert info["confirmed"] and info["target"] == "co.xlsx" and info["sheet"] == saved["sheet"]
+        # رنگ ردیف نامعتبر در ذخیره فایل موجود پذیرفته نمی‌شود
+        bad = {**saved, "policy": {**saved["policy"], "highlights": {"warn": "javascript:alert(1)", "today": "#E3F5EC"}}}
+        hl = c.put("/api/excel/profile", json=bad).json()["profile"]["policy"]["highlights"]
+        assert hl["warn"] == "" and hl["today"].upper() == "#E3F5EC"
 
 
 def test_new_template_writes_date_on_every_row(db, settings, tmp_path):

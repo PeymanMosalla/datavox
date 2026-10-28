@@ -1351,6 +1351,8 @@ def excel_profile_save(profile: dict):
         "confirmed": True,
         "confirmed_at": now(),
     }
+    if "highlights" in clean["policy"]:
+        clean["policy"]["highlights"] = excel_template.clean_highlights(clean["policy"]["highlights"])
     if not clean["policy"].get("text_style"):
         # سبک نوشتن (جداکننده، نوع رقم) از ردیف‌های موجود همان فایل استخراج می‌شود
         style_cols = {c: f for c, f in columns.items() if f in ("address", "notes_composed", "technical_summary")}
@@ -1399,7 +1401,7 @@ _export_lock = threading.Lock()
 def _confirmed_profile() -> dict:
     prof = _write_profile(create=True)
     if not prof or not prof.get("confirmed"):
-        err(400, "ابتدا نگاشت ستون‌ها را بررسی و ذخیره کنید.")
+        err(400, "هنوز مقصد ثبت آماده نیست؛ در «خروجی اکسل» فایل مقصد و ستون‌هایش را مشخص و ذخیره کنید.")
     return prof
 
 
@@ -1453,7 +1455,7 @@ def excel_commit(body: ExportIn):
                for vd, grp in groups]
     for prof, _ in targets:
         if not prof or not prof.get("confirmed"):
-            err(400, "ابتدا نگاشت ستون‌ها را بررسی و ذخیره کنید.")
+            err(400, "هنوز مقصد ثبت آماده نیست؛ در «خروجی اکسل» فایل مقصد و ستون‌هایش را مشخص و ذخیره کنید.")
         lock = lock_status(Path(prof["excel_path"]))
         if lock["write_blocked"] or lock["owner_file"]:
             err(409, lock["message"] or "فایل اکسل باز است؛ آن را ببندید و دوباره تلاش کنید.")
@@ -1490,8 +1492,12 @@ _SAMPLE_VALUES = [
 
 def _template_info(name: str, prof: dict, active: str) -> dict:
     new = prof.get("mode") == "new"
+    out = prof.get("output") or {}
     return {"name": name, "title": prof.get("title") or ("فایل شرکت" if not new else name), "mode": prof.get("mode", "append"),
-            "active": name == active, "target": excel_template.target_path(prof).name if new else Path(prof.get("excel_path", "")).name}
+            "active": name == active, "target": excel_template.target_path(prof).name if new else Path(prof.get("excel_path", "")).name,
+            # برای کارت مقصد: یک جمله ساده درباره اینکه ردیف‌ها کجا نوشته می‌شوند
+            "confirmed": bool(prof.get("confirmed")), "sheet": prof.get("sheet", ""),
+            "folder": out.get("folder", ""), "file": out.get("file", ""), "split": out.get("split", "none")}
 
 
 def _sample_records() -> list[dict]:
@@ -1661,27 +1667,36 @@ def _template_rows(body: dict) -> tuple[dict, list[list[str]], list[str]]:
 
 
 def _company_preview(body: dict) -> dict:
-    """پیش‌نمایش قالب فایل شرکت: ستون‌های خود فایل به ترتیب واقعی، با قالب مقادیرِ (ذخیره‌نشده) صفحه."""
+    """پیش‌نمایش «فایل موجود»: ستون‌های خود فایل به ترتیب واقعی، با ستون‌ها و قالب مقادیرِ (ذخیره‌نشده) صفحه."""
     from openpyxl.utils import column_index_from_string
 
-    prof = excel_mapping.load_profile(str(body.get("name") or ""))
-    if not prof or prof.get("mode") == "new":
+    name = str(body.get("name") or "")
+    saved = excel_mapping.load_profile(name) or {}
+    if (name != excel_mapping.COMPANY and not saved) or saved.get("mode") == "new":
         err(404, "قالب پیدا نشد.")
-    policy = {**prof.get("policy", {}), **{k: v for k, v in (body.get("policy") or {}).items()
-                                          if k in excel_mapping.VALUE_FORMAT_KEYS}}
+    headers = body.get("headers") if isinstance(body.get("headers"), dict) else saved.get("headers")
+    if not headers:
+        err(400, "اول فایل اکسل موجود را انتخاب کنید.")
+    headers = {str(c): str(h or "") for c, h in headers.items() if re.fullmatch(r"[A-Z]{1,3}", str(c))}
+    allowed = {k for k, _, _ in FIELD_DEFS} | set(COMPUTED_FIELDS) | {"followup"}
+    cols = body.get("columns") if isinstance(body.get("columns"), dict) else saved.get("columns") or {}
+    columns = {c: f for c, f in cols.items() if c in headers and f in allowed}
+    prot = body.get("protected") if isinstance(body.get("protected"), list) else saved.get("protected") or []
+    policy = {**saved.get("policy", excel_mapping.DEFAULT_POLICY), **{k: v for k, v in (body.get("policy") or {}).items()
+                                                                     if k in excel_mapping.VALUE_FORMAT_KEYS}}
     if "highlights" in policy:
         policy["highlights"] = excel_template.clean_highlights(policy["highlights"])
-    prof = {**prof, "policy": policy}
-    letters = sorted(set(prof.get("headers") or {}) | set(prof.get("columns") or {}), key=column_index_from_string)
+    prof = {**saved, "headers": headers, "columns": columns, "policy": policy}
+    letters = sorted(headers, key=column_index_from_string)
     today = format_jalali(today_jalali())
     rows, colors = [], []
     for i, rec in enumerate(_sample_records(), start=1):
         cells = excel_mapping.cell_values(prof, rec)
-        rows.append([str(i) if prof["columns"].get(c) == "row_number" else cells.get(c, "") for c in letters])
+        rows.append([str(i) if columns.get(c) == "row_number" else cells.get(c, "") for c in letters])
         colors.append(excel_template.highlight(policy, rec, today))
-    return {"headers": [str((prof.get("headers") or {}).get(c) or "") for c in letters], "letters": letters,
-            "fields": [prof["columns"].get(c, "") for c in letters], "rows": rows, "colors": colors,
-            "target": Path(prof.get("excel_path") or "").name, "demo": not _has_records()}
+    return {"headers": [headers[c] for c in letters], "letters": letters, "fields": [columns.get(c, "") for c in letters],
+            "protected": [c for c in prot if c in headers and c not in columns], "rows": rows, "colors": colors,
+            "target": Path(saved.get("excel_path") or "").name, "demo": not _has_records()}
 
 
 def _has_records() -> bool:

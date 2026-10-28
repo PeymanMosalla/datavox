@@ -24,9 +24,9 @@ ALIGNS = {"right": "راست", "center": "وسط", "left": "چپ"}
 _HEX = re.compile(r"^#?[0-9a-fA-F]{6}$")
 
 DEFAULT_STYLE = {
-    "header": {"font": "Tahoma", "size": 11, "bold": True, "color": "#FFFFFF", "fill": "#3355D6", "height": 28},
+    "header": {"font": "Tahoma", "size": 11, "bold": True, "color": "#FFFFFF", "fill": "#138A52", "height": 28},
     "body": {"font": "Tahoma", "size": 10, "color": "#1B2236", "align": "right", "wrap": True, "height": 0},
-    "border": True, "zebra": "#EEF2FC", "rtl": True, "freeze": True, "filter": True,
+    "border": True, "zebra": "#E8F6EF", "rtl": True, "freeze": True, "filter": True,
 }
 # قالب‌های رنگی آماده: (پس‌زمینه سرستون، متن سرستون، ردیف‌های راه‌راه)
 PRESETS = {
@@ -172,7 +172,7 @@ def writer_profile(tpl: dict, create: bool = True, visit_date: str | None = None
     path, sheet = target(tpl, visit_date)
     if create and not path.exists():
         if not path.parent.is_dir():
-            raise FileNotFoundError(f"پوشه خروجی «{path.parent}» پیدا نشد؛ در «قالب اکسل» پوشه را انتخاب کنید.")
+            raise FileNotFoundError(f"پوشه خروجی «{path.parent}» پیدا نشد؛ در «خروجی اکسل»، زبانه «فایل و پوشه» پوشه را انتخاب کنید.")
         create_workbook(tpl, path, sheet)
     letters = [get_column_letter(i) for i in range(1, len(tpl["columns_list"]) + 1)]
     columns = {}
