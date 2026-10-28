@@ -1742,6 +1742,7 @@ async function renderTemplates(el) {
       </select><span id="tp-active"></span><span id="tp-dirty"></span></div>
       <div class="row"><button class="btn" id="tp-new">${I.plus} قالب جدید</button>
         <button class="btn" id="tp-activate">${I.check} استفاده برای ثبت</button>
+        <button class="btn" id="tp-show" title="جدول نمونه با ستون‌ها، ترتیب و ظاهر همین قالب">${I.eye} پیش‌نمایش</button>
         <button class="btn ghost" id="tp-import" title="ورود قالبی که از رایانه دیگری خروجی گرفته شده">${I.upload} ورود قالب</button>
         <button class="btn ghost" id="tp-del" title="حذف قالب">${I.trash}</button>
         <input type="file" id="tp-import-file" accept=".json" hidden></div></div>
@@ -1752,6 +1753,7 @@ async function renderTemplates(el) {
     $("#tp-dirty").innerHTML = tplState.dirty ? chip("warn", "ذخیره نشده") : "";
     $("#tp-activate").disabled = tplState.name === meta.active || tplState.name === "__company";
     $("#tp-del").disabled = ["default", "__company", meta.active].includes(tplState.name);
+    $("#tp-show").disabled = tplState.name === "__company";
   };
   $("#tp-sel").onchange = async (e) => {
     if (tplState.dirty && !(await confirmBox("تغییرات ذخیره نشده", "تغییرات این قالب ذخیره نشده‌اند و از دست می‌روند. ادامه می‌دهید؟", "ادامه", "danger"))) { e.target.value = tplState.name; return; }
@@ -1808,6 +1810,7 @@ async function renderTemplates(el) {
         <a class="btn ghost" href="/api/templates/${esc(tplState.name)}/export" title="برای استفاده در رایانه یا مشتری دیگر (پوشه خروجی همراهش نیست)">${I.down} خروجی قالب</a>
         <input type="file" id="tp-like-file" accept=".xlsx,.xlsm" hidden>` : ""}</div>`;
   $$("[data-tt]", body).forEach((b) => b.onclick = () => { tplState.tab = b.dataset.tt; $$("[data-tt]", body).forEach((x) => x.classList.toggle("active", x === b)); drawTab(); });
+  $("#tp-show").onclick = () => showTemplatePreview(template, (meta.templates.find((t) => t.name === tplState.name) || {}).title || "");
   const changed = (values = false) => { tplState.dirty = true; drawHead(); if (values) loadPreview(); else drawPreview(); };
   const loadPreview = debounce(async () => {
     if (!isNew) return;
@@ -1942,14 +1945,7 @@ async function renderTemplates(el) {
 
   function drawPreview() {
     const box = $("#tp-preview");
-    if (!box) return;
-    const S = template.style, cols = template.columns_list;
-    const pt = (n) => `${Math.round(n * 1.33)}px`;
-    const bd = S.border ? "border:1px solid #c9cfdb;" : "";
-    box.innerHTML = `<table dir="${S.rtl ? "rtl" : "ltr"}" style="font-family:'${esc(S.body.font)}',Tahoma,sans-serif"><thead><tr>${cols.map((c) => `<th style="width:${Math.round(c.width * 7.5)}px;min-width:${Math.round(c.width * 7.5)}px;
-        font-family:'${esc(S.header.font)}',Tahoma;font-size:${pt(S.header.size)};font-weight:${S.header.bold ? 700 : 400};color:${S.header.color};background:${S.header.fill};${S.header.height ? `height:${pt(S.header.height)};` : ""}${bd}">${esc(c.title)}</th>`).join("")}</tr></thead>
-      <tbody>${tplState.rows.map((r, i) => `<tr style="background:${tplState.colors?.[i] || (S.zebra && i % 2 === 1 ? S.zebra : "#fff")};${S.body.height ? `height:${pt(S.body.height)};` : ""}">${cols.map((c, j) => `<td class="${c.field === "phone" ? "ltr-cell" : ""}" style="font-size:${pt(S.body.size)};color:${S.body.color};text-align:${c.align};
-        white-space:${S.body.wrap ? "pre-wrap" : "nowrap"};${bd}">${esc(r[j] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    if (box) box.innerHTML = sheetHtml(template.style, template.columns_list, tplState.rows, tplState.colors);
   }
 
   $("#tp-save").onclick = async () => {
@@ -1988,6 +1984,53 @@ async function renderTemplates(el) {
   if (isNew) loadPreview();
 }
 function fieldLabel(k) { return (state.tplMeta?.fields.find((f) => f.key === k) || {}).label || k; }
+
+/** جدول شبیه برگه اکسل با ظاهر قالب. letters: سرستون حرفی و شماره ردیف مثل خود Excel. */
+function sheetHtml(S, cols, rows, colors, letters = null) {
+  const pt = (n) => `${Math.round(n * 1.33)}px`;
+  const bd = S.border ? "border:1px solid #c9cfdb;" : "";
+  const rn = (n) => letters ? `<th class="xl-rn">${n}</th>` : "";
+  const filter = letters && S.filter ? `<span class="xl-filter">▾</span>` : "";
+  return `<table dir="${S.rtl ? "rtl" : "ltr"}" style="font-family:'${esc(S.body.font)}',Tahoma,sans-serif"><thead>
+    ${letters ? `<tr class="xl-letters"><th class="xl-h xl-rn"></th>${letters.map((l) => `<th class="xl-h">${esc(l)}</th>`).join("")}</tr>` : ""}
+    <tr class="xl-titles">${rn(1)}${cols.map((c) => `<th class="${c.unmapped ? "unmapped" : ""}" ${c.unmapped ? `title="این ستون نگاشت نشده و خالی می‌ماند"` : ""} style="width:${Math.round(c.width * 7.5)}px;min-width:${Math.round(c.width * 7.5)}px;
+      font-family:'${esc(S.header.font)}',Tahoma;font-size:${pt(S.header.size)};font-weight:${S.header.bold ? 700 : 400};color:${S.header.color};background:${S.header.fill};${S.header.height ? `height:${pt(S.header.height)};` : ""}${bd}">${esc(c.title)}${filter}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map((r, i) => `<tr style="background:${colors?.[i] || (S.zebra && i % 2 === 1 ? S.zebra : "#fff")};${S.body.height ? `height:${pt(S.body.height)};` : ""}">${rn(i + 2)}${cols.map((c, j) => `<td class="${c.field === "phone" ? "ltr-cell" : ""}" style="font-size:${pt(S.body.size)};color:${S.body.color};text-align:${c.align};
+      white-space:${S.body.wrap ? "pre-wrap" : "nowrap"};${bd}">${esc(r[j] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+// ظاهر خنثی برای فایل شرکت (ظاهر واقعی همان فایل می‌ماند)
+const COMPANY_SHEET_STYLE = { header: { font: "Vazirmatn", size: 10, bold: true, color: "#10233d", fill: "#e9edf3", height: 0 },
+  body: { font: "Vazirmatn", size: 10, color: "#10233d", wrap: true, height: 0 }, zebra: "", border: true, rtl: true, freeze: true, filter: false };
+const HIGHLIGHT_LABELS = [["followup", "پیگیری نزدیک"], ["warn", "ردیف ناقص"], ["today", "بازدید امروز"]];
+
+/** پیش‌نمایش بزرگ قالب (با تغییرات ذخیره‌نشده): نام و ترتیب ستون‌ها، ظاهر و چند ردیف نمونه. */
+async function showTemplatePreview(template, title) {
+  const isNew = template.mode === "new";
+  let p;
+  try { p = await api("/api/templates/preview", { method: "POST", body: isNew ? template : { name: template.name, mode: template.mode, policy: template.policy } }); }
+  catch (e) { return toastErr(e); }
+  const S = isNew ? template.style : COMPANY_SHEET_STYLE;
+  const cols = isNew ? template.columns_list : p.headers.map((h, i) => ({ title: h || `(${p.letters[i]})`, field: p.fields[i], width: 18, align: "right", unmapped: !p.fields[i] }));
+  const H = template.policy?.highlights || {};
+  const keys = HIGHLIGHT_LABELS.filter(([k]) => H[k]);
+  const notes = [
+    p.demo ? "هنوز رکوردی نیست؛ مقدارها نمونه ساختگی‌اند." : `مقدارها از ${fa(p.rows.length)} رکورد اخیر، با قالب مقادیر همین قالب.`,
+    isNew ? "" : "ظاهر، عرض و رنگ سرستون‌ها همان فایل شرکت می‌ماند؛ اینجا نام، ترتیب و مقدار ستون‌ها را می‌بینید." + (cols.some((c) => c.unmapped) ? " ستون‌های با کادر قرمز نگاشت نشده‌اند و خالی می‌مانند." : ""),
+    tplState.dirty ? "تغییرات ذخیره‌نشده هم در این پیش‌نمایش آمده‌اند." : "",
+  ].filter(Boolean);
+  const actions = [{ label: "بستن", cls: "primary", value: null }];
+  if (isNew) actions.unshift({ label: `${I.down} دریافت فایل نمونه`, cls: "ghost", onClick: async () => {
+    try { await downloadPost("/api/templates/sample", template, `${template.output.file || "نمونه"} (نمونه).xlsx`); } catch (e) { toastErr(e); }
+    return false;
+  } });
+  await openModal({ title: `پیش‌نمایش قالب «${esc(title)}»`, actions, onOpen: (m) => m.classList.add("xwide"),
+    body: `<div class="tpv-head"><span class="small muted">${fa(cols.length)} ستون${p.target ? ` · فایل: <b>${esc(p.target)}</b>` : ""}</span>
+        ${keys.length ? `<span class="tpv-keys">${keys.map(([k, l]) => `<span class="tpv-key"><i style="background:${esc(H[k])}"></i>${l}</span>`).join("")}</span>` : ""}</div>
+      <div class="tpv-order">${cols.map((c, i) => `<span class="tpv-col"><b>${esc(p.letters[i])}</b>${esc(c.title)}</span>`).join("")}</div>
+      <div class="tp-preview xl ${S.freeze ? "freeze" : ""}">${sheetHtml(S, cols, p.rows, p.colors, p.letters)}</div>
+      <div class="small muted" style="margin-top:10px">${notes.join(" ")}</div>` });
+}
 
 // ================= واژه‌نامه =================
 async function renderDictionary(el) {

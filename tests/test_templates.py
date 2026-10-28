@@ -65,6 +65,7 @@ def test_template_flow_new_file(db, settings, tmp_path):
         pv = c.post("/api/templates/preview", json=saved).json()
         assert pv["headers"] == ["ردیف", "تاریخ", "نام", "تلفن", "بازاریاب"] and pv["rows"][0][0] == "1"
         assert pv["rows"][0][4] == "آقای صالحی"
+        assert pv["letters"] == ["A", "B", "C", "D", "E"] and pv["demo"]
         sample = c.post("/api/templates/sample", json=saved)
         ws = openpyxl.load_workbook(io.BytesIO(sample.content))["Sheet1"]
         assert ws["A1"].value == "ردیف" and ws["A1"].fill.fgColor.rgb == "FF138A52" and ws.sheet_view.rightToLeft
@@ -110,6 +111,24 @@ def test_company_mapping_page_ignores_active_template(db, settings, tmp_path):
         assert excel_mapping.load_profile(name)["mode"] == "new"
         server.save_settings({"active_profile": excel_mapping.COMPANY})
         assert c.delete(f"/api/templates/{name}").json()["ok"]
+
+
+def test_company_template_preview(db, settings, tmp_path):
+    """پیش‌نمایش فایل شرکت: ستون‌های خود فایل به ترتیب حرف ستون، با قالب مقادیر ذخیره‌نشده صفحه."""
+    from .test_excel import make_company_like
+    with TestClient(server.app, client=("127.0.0.1", 50000), base_url="http://127.0.0.1:8765", headers=server.auth_headers()) as c:
+        prof = c.post("/api/excel/inspect", json={"path": str(make_company_like(tmp_path / "co.xlsx"))}).json()["profile"]
+        saved = c.put("/api/excel/profile", json=prof).json()["profile"]
+        _add_approved(db, settings, "مهندس رجبی شماره 09151234567 آدرس سجادیه 58", "p1")
+        body = {"name": saved["name"], "mode": saved.get("mode"), "policy": {"name_title": "drop", "phone_group": True}}
+        pv = c.post("/api/templates/preview", json=body).json()
+        letters = sorted(set(saved["headers"]) | set(saved["columns"]))
+        assert pv["letters"] == letters and pv["headers"] == [saved["headers"].get(x, "") for x in letters]
+        assert not pv["demo"] and pv["target"] == "co.xlsx"
+        row = dict(zip(pv["fields"], pv["rows"][-1]))
+        assert row["engineer_name"] == "رجبی" and row["phone"] == "0915 123 4567"
+        assert excel_mapping.load_profile(saved["name"])["policy"].get("name_title") != "drop"  # پیش‌نمایش چیزی ذخیره نمی‌کند
+        assert c.post("/api/templates/preview", json={"name": "nope"}).status_code == 404
 
 
 def test_new_template_writes_date_on_every_row(db, settings, tmp_path):

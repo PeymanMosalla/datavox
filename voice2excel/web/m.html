@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#3355d6">
+<meta name="theme-color" content="#08805a">
 <title>ارسال ویس — DataVox</title>
 <link rel="icon" type="image/png" href="/static/brand/mark.png">
 <style>
   @font-face { font-family: "Vazirmatn"; src: url("/static/fonts/Vazirmatn.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
-  :root { --bg: #f4f6fb; --card: #fff; --text: #1b2236; --muted: #6b7385; --border: #e3e7f0; --primary: #3355d6; --soft: #e9eefc;
+  :root { --bg: #f3f6f9; --card: #fff; --text: #10233d; --muted: #6b7385; --border: #e3e7f0; --primary: #08805a; --soft: #e0f3ea; --on-primary: #fff;
     --ok: #138a52; --ok-soft: #e3f5ec; --warn: #b26a00; --warn-soft: #fff3dc; --err: #cc2b3b; --err-soft: #fde8ea; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #0f1320; --card: #171c2c; --text: #e8ebf4; --muted: #8a93ad; --border: #2a3249;
-    --primary: #6f8cff; --soft: #222c4f; --ok: #3fcb85; --ok-soft: #14301f; --warn: #f0b44c; --warn-soft: #34290f; --err: #ff6b7a; --err-soft: #3a1820; } }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0a1424; --card: #0f1b2e; --text: #e8ebf4; --muted: #8a93ad; --border: #23344f;
+    --primary: #34d399; --soft: #11392f; --on-primary: #04223d; --ok: #3fcb85; --ok-soft: #14301f; --warn: #f0b44c; --warn-soft: #34290f; --err: #ff6b7a; --err-soft: #3a1820; } }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: "Vazirmatn", Tahoma, sans-serif; font-size: 16px; line-height: 1.8;
     padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
@@ -26,7 +26,7 @@
   .pin { letter-spacing: 8px; text-align: center; font-size: 22px; direction: ltr; }
   .btn { width: 100%; height: 54px; border-radius: 14px; border: none; font: inherit; font-weight: 700; font-size: 17px; cursor: pointer;
     display: flex; align-items: center; justify-content: center; gap: 8px; }
-  .btn.primary { background: var(--primary); color: #fff; }
+  .btn.primary { background: var(--primary); color: var(--on-primary, #fff); }
   .btn.soft { background: var(--soft); color: var(--primary); }
   .btn:disabled { opacity: .5; }
   .stack > * + * { margin-top: 12px; }

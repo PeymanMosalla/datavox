@@ -1660,11 +1660,44 @@ def _template_rows(body: dict) -> tuple[dict, list[list[str]], list[str]]:
     return tpl, rows, colors
 
 
+def _company_preview(body: dict) -> dict:
+    """پیش‌نمایش قالب فایل شرکت: ستون‌های خود فایل به ترتیب واقعی، با قالب مقادیرِ (ذخیره‌نشده) صفحه."""
+    from openpyxl.utils import column_index_from_string
+
+    prof = excel_mapping.load_profile(str(body.get("name") or ""))
+    if not prof or prof.get("mode") == "new":
+        err(404, "قالب پیدا نشد.")
+    policy = {**prof.get("policy", {}), **{k: v for k, v in (body.get("policy") or {}).items()
+                                          if k in excel_mapping.VALUE_FORMAT_KEYS}}
+    if "highlights" in policy:
+        policy["highlights"] = excel_template.clean_highlights(policy["highlights"])
+    prof = {**prof, "policy": policy}
+    letters = sorted(set(prof.get("headers") or {}) | set(prof.get("columns") or {}), key=column_index_from_string)
+    today = format_jalali(today_jalali())
+    rows, colors = [], []
+    for i, rec in enumerate(_sample_records(), start=1):
+        cells = excel_mapping.cell_values(prof, rec)
+        rows.append([str(i) if prof["columns"].get(c) == "row_number" else cells.get(c, "") for c in letters])
+        colors.append(excel_template.highlight(policy, rec, today))
+    return {"headers": [str((prof.get("headers") or {}).get(c) or "") for c in letters], "letters": letters,
+            "fields": [prof["columns"].get(c, "") for c in letters], "rows": rows, "colors": colors,
+            "target": Path(prof.get("excel_path") or "").name, "demo": not _has_records()}
+
+
+def _has_records() -> bool:
+    return db().one("SELECT COUNT(*) n FROM records WHERE review_state!='rejected'")["n"] > 0
+
+
 @app.post("/api/templates/preview")
 def template_preview(body: dict):
+    if body.get("mode") != "new":
+        return _company_preview(body)
+    from openpyxl.utils import get_column_letter
+
     tpl, rows, colors = _template_rows(body)
     return {"headers": [c["title"] for c in tpl["columns_list"]], "rows": rows, "colors": colors,
-            "target": excel_template.target_path(tpl).name}
+            "letters": [get_column_letter(i) for i in range(1, len(tpl["columns_list"]) + 1)],
+            "target": excel_template.target_path(tpl).name, "demo": not _has_records()}
 
 
 @app.post("/api/templates/sample")
