@@ -300,9 +300,9 @@ def main() -> int:
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون سریع)")
-    ap.add_argument("--win7", action="store_true", help="بسته جداگانه سازگار با ویندوز ۷")
+    ap.add_argument("--win7", action="store_true", help="(در شاخه windows7-only همیشه فعال است)")
     a = ap.parse_args()
-    win7 = a.win7
+    win7 = True  # شاخه windows7-only فقط بسته ویندوز ۷ می‌سازد؛ بسته ویندوز ۱۰ و ۱۱ از شاخه main ساخته می‌شود
     from voice2excel import __version__
 
     model_dir = ROOT / "models" / a.model
