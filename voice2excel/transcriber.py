@@ -97,6 +97,9 @@ class Transcriber:
             )
         from faster_whisper import WhisperModel
 
+        from .vad_numpy import install_fallback
+
+        install_fallback()  # ویندوز ۷: onnxruntime نیست و VAD با numpy اجرا می‌شود
         self._model = None  # آزادسازی مدل قبلی پیش از بارگذاری مدل جدید
         log.info("بارگذاری مدل %s", name)
         self._model = WhisperModel(

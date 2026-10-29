@@ -3,7 +3,7 @@
 استفاده:
     .venv\\Scripts\\python.exe scripts\\build_update.py [--notes "تغییرات این نسخه"]
 
-خروجی: dist/DataVox-update-<نسخه>.zip
+خروجی: dist/DataVox-update-<نسخه>.zip  (با --win7: dist/DataVox-update-<نسخه>-win7.zip برای بسته ویندوز ۷)
 شرط: کتابخانه‌ها (requirements.txt) و نسخه Python با بسته کاملِ نصب‌شده یکی باشد؛ وگرنه برنامه
 بسته را رد می‌کند و باید بسته کامل (build_portable.py) ساخته شود.
 """
@@ -48,8 +48,9 @@ def main() -> int:
     ap.add_argument("--src", default=str(ROOT / "voice2excel"), help="پوشه کد (برای آزمون)")
     ap.add_argument("--version", default=__version__, help="نسخه (برای آزمون)")
     ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون)")
+    ap.add_argument("--win7", action="store_true", help="برای بسته ویندوز ۷ (کتابخانه‌های requirements-win7.txt)")
     a = ap.parse_args()
-    out = ROOT / "dist" / f"DataVox-update-{a.version}.zip"
+    out = ROOT / "dist" / f"DataVox-update-{a.version}{'-win7' if a.win7 else ''}.zip"
     # راهنماها کنار exe با نام‌های Guide.html و Recording-Guide.html قرار دارند (منبع: صفحه‌های داخل برنامه)
     web = ROOT / "voice2excel" / "web"
     extras = []
@@ -65,7 +66,7 @@ def main() -> int:
             from compile_app import compile_package
             compile_package(pkg, Path(work) / "voice2excel")
             pkg = Path(work) / "voice2excel"
-        m = build_update_zip(pkg, out, compute_runtime_id(PY_VERSION, runtime_requirements()), a.version,
+        m = build_update_zip(pkg, out, compute_runtime_id(PY_VERSION, runtime_requirements(a.win7)), a.version,
                              extras, a.notes, signing_key=key)
     for tmp in extras:
         tmp.unlink(missing_ok=True)

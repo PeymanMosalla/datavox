@@ -1,0 +1,15 @@
+# بسته ویندوز ۷ (scripts/build_portable.py --win7): همان برنامه و همان موتور گفتار، با نسخه‌هایی از
+# کتابخانه‌ها که DLLهایشان به توابع ویندوز ۸ به بعد نیاز ندارند (بررسی خودکار: scripts/win7_check.py)
+faster-whisper==1.2.1
+ctranslate2==4.8.3
+av==18.0.0
+numpy==2.5.4
+fastapi==0.154.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+pydantic==2.10.6
+pydantic-core==2.27.2
+tokenizers==0.19.1
+openpyxl==3.1.5
+jdatetime==6.1.1
+psutil==7.2.2

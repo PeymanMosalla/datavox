@@ -1,7 +1,7 @@
 // DataVox.exe: اجراکننده نسخه قابل‌حمل.
 // - صفحه شروع طراحی‌شده (لوگو، نسخه، نوار پیشرفت) تا موتور برنامه آماده شود.
 // - برنامه در پنجره اختصاصی خودش (WebView2، بدون قاب ویندوز، با نوار عنوان طراحی‌شده در خود صفحه) باز می‌شود؛
-//   اگر WebView2 روی رایانه نباشد، مثل قبل در مرورگر پیش‌فرض.
+//   اگر WebView2 روی رایانه نباشد (یا ویندوز ۷ باشد)، در پنجره «برنامه»ی Edge/Chrome و در نبودشان در مرورگر پیش‌فرض.
 // - به‌روزرسانی سبک: پیش از اجرا، یا با یک کلیک از داخل برنامه (موتور خاموش، نسخه جدید جایگزین، موتور روشن،
 //   پنجره باز می‌ماند). اگر نسخه جدید بالا نیاید، خودکار نسخه قبلی برمی‌گردد.
 // - اجرای دوباره میان‌بر، همان پنجره باز را جلو می‌آورد.
@@ -57,6 +57,69 @@ static class Launcher
     public static void OpenExternal(string url)
     {
         try { Process.Start(url); } catch { }
+    }
+
+    // ویندوز ۷ و قدیمی‌تر: WebView2 آنجا دیگر پشتیبانی نمی‌شود؛ پنجره برنامه با Edge/Chrome ساخته می‌شود
+    public static bool LegacyWindows()
+    {
+        var v = Environment.OSVersion.Version;
+        return v.Major < 6 || (v.Major == 6 && v.Minor < 2);
+    }
+
+    // پیش‌نیازهای ویندوز ۷ (پوشه Windows7 بسته): KB3063858 برای بارگذاری DLLها و Universal CRT
+    public static string MissingWin7Prerequisites()
+    {
+        if (!LegacyWindows()) return null;
+        var missing = new System.Collections.Generic.List<string>();
+        if (Native.GetProcAddress(Native.GetModuleHandle("kernel32.dll"), "AddDllDirectory") == IntPtr.Zero)
+            missing.Add("به‌روزرسانی KB3063858 (یا KB2533623)");
+        if (!File.Exists(Path.Combine(Environment.SystemDirectory, "ucrtbase.dll")))
+            missing.Add("به‌روزرسانی KB2999226 (Universal C Runtime)");
+        return missing.Count == 0 ? null : string.Join("\n• ", missing.ToArray());
+    }
+
+    static string FindBrowser(params string[] exes)
+    {
+        foreach (string exe in exes)
+            foreach (var hive in new[] { Microsoft.Win32.Registry.CurrentUser, Microsoft.Win32.Registry.LocalMachine })
+            {
+                try
+                {
+                    using (var k = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\" + exe))
+                    {
+                        string path = k == null ? null : k.GetValue("") as string;
+                        if (!string.IsNullOrEmpty(path) && File.Exists(path.Trim('"'))) return path.Trim('"');
+                    }
+                }
+                catch { }
+            }
+        return null;
+    }
+
+    // بدون WebView2: پنجره جدا و بدون نوار نشانی (حالت app در Edge/Chrome)؛ در نبودشان مرورگر پیش‌فرض
+    public static void OpenAppWindow(string url)
+    {
+        string browser = FindBrowser("msedge.exe", "chrome.exe");
+        if (browser != null)
+        {
+            try
+            {
+                string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Voice2Excel", "Browser");
+                Process.Start(new ProcessStartInfo(browser, "--app=\"" + url + "\" --user-data-dir=\"" + profile +
+                    "\" --no-first-run --no-default-browser-check --window-size=1280,820") { UseShellExecute = false });
+                Log("opened app window: " + browser);
+                return;
+            }
+            catch (Exception e) { Log("app window failed: " + e.Message); }
+        }
+        // Firefox (روی ویندوز ۷ نسخه ESR 115 همراه بسته است)؛ Internet Explorer صفحه برنامه را درست نشان نمی‌دهد
+        string firefox = FindBrowser("firefox.exe");
+        if (firefox != null)
+        {
+            try { Process.Start(new ProcessStartInfo(firefox, "-new-window \"" + url + "\"") { UseShellExecute = false }); return; }
+            catch (Exception e) { Log("firefox failed: " + e.Message); }
+        }
+        OpenExternal(url);
     }
 
     public static void Log(string msg)
@@ -264,12 +327,22 @@ static class Launcher
             return 1;
         }
 
+        string prereq = MissingWin7Prerequisites();
+        if (prereq != null)
+        {
+            ShowError("برای اجرای DataVox روی ویندوز ۷ این پیش‌نیازها هنوز نصب نشده‌اند:\n• " + prereq +
+                "\n\nدر پوشه برنامه، داخل پوشه Windows7 روی فایل Install-Prerequisites.bat دوبار کلیک کنید، " +
+                "پس از پایان نصب رایانه را دوباره راه‌اندازی کنید و بعد DataVox را باز کنید.");
+            try { Process.Start(Path.Combine(baseDir, "Windows7")); } catch { }
+            return 1;
+        }
+
         dataDir = Path.Combine(baseDir, "data");
         if (!CanWrite(dataDir))
             dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Voice2Excel", "data");
         Directory.CreateDirectory(dataDir);
 
-        bool webview = WebViewVersion() != null;
+        bool webview = !LegacyWindows() && WebViewVersion() != null;
         var splash = new Splash(Version());
         splash.Show();
         splash.SetStatus("در حال آماده‌سازی…");
@@ -310,9 +383,9 @@ static class Launcher
 
         if (!webview)
         {
-            Log("WebView2 runtime not found; opening the default browser");
+            Log(LegacyWindows() ? "legacy Windows; opening a browser window" : "WebView2 runtime not found; opening a browser window");
             splash.FadeOutAndClose();
-            OpenExternal(Url);
+            OpenAppWindow(Url);
             return 0;
         }
         splash.SetStatus("باز کردن برنامه…");
@@ -480,7 +553,7 @@ sealed class AppWindow : Form
             {
                 Launcher.Log("webview init failed: " + ex.Message);
                 splash.Close();
-                Launcher.OpenExternal(Launcher.Url);  // بدون پنجره اختصاصی، مثل قبل در مرورگر
+                Launcher.OpenAppWindow(Launcher.Url);  // بدون WebView2، در پنجره مرورگر
                 Close();
             }
         };
@@ -670,6 +743,8 @@ static class Native
     [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr h, ref Margins m);
     [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr ctx);
     [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr GetModuleHandle(string name);
+    [DllImport("kernel32.dll", CharSet = CharSet.Ansi, BestFitMapping = false)] public static extern IntPtr GetProcAddress(IntPtr module, string name);
 
     /// <summary>اندازه‌ها به پیکسل واقعی نمایشگر (Per-Monitor v2؛ در ویندوزهای قدیمی‌تر System DPI).</summary>
     public static void EnableDpiAwareness()
