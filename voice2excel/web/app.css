@@ -213,7 +213,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .btn.primary:hover { background: var(--primary-2); }
 .btn.ok { background: var(--ok); border-color: var(--ok); color: #fff; }
 .btn.ok:hover { filter: brightness(.95); }
-.btn.danger { color: var(--err); border-color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--border)); }
+.btn.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--border)); }
 .btn.danger:hover { background: var(--err-soft); }
 .btn.ghost { border-color: transparent; background: transparent; }
 .btn.ghost:hover { background: var(--surface-3); }
@@ -250,13 +250,13 @@ textarea.input { height: auto; padding: 8px 12px; resize: vertical; line-height:
 .alert svg { margin-top: 2px; }
 .alert .alert-body { flex: 1; }
 .alert b { display: block; margin-bottom: 2px; }
-.alert.warn { background: var(--warn-soft); border-color: var(--warn); border-color: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--text); }
+.alert.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, transparent); color: var(--text); }
 .alert.warn svg { color: var(--warn); }
-.alert.err { background: var(--err-soft); border-color: var(--err); border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+.alert.err { background: var(--err-soft); border-color: color-mix(in srgb, var(--err) 30%, transparent); }
 .alert.err svg { color: var(--err); }
-.alert.info { background: var(--info-soft); border-color: var(--info); border-color: color-mix(in srgb, var(--info) 30%, transparent); }
+.alert.info { background: var(--info-soft); border-color: color-mix(in srgb, var(--info) 30%, transparent); }
 .alert.info svg { color: var(--info); }
-.alert.ok { background: var(--ok-soft); border-color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.alert.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
 .alert.ok svg { color: var(--ok); }
 
 .progress { height: 8px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
@@ -283,9 +283,9 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; }
 }
 .cell-input:hover { border-color: var(--border); background: var(--surface); }
 .cell-input:focus { border-color: var(--primary); background: var(--surface); box-shadow: 0 0 0 3px var(--primary-soft); }
-.cell-input.st-review { border-color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-soft); }
+.cell-input.st-review { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: var(--warn-soft); }
 .cell-input.st-missing { border-color: var(--border-strong); border-style: dashed; }
-.cell-input.st-invalid { border-color: var(--err); border-color: color-mix(in srgb, var(--err) 55%, transparent); background: var(--err-soft); }
+.cell-input.st-invalid { border-color: color-mix(in srgb, var(--err) 55%, transparent); background: var(--err-soft); }
 textarea.cell-input { resize: none; line-height: 1.5; min-height: 34px; }
 .empty {
   padding: 46px 20px; text-align: center; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -361,12 +361,12 @@ textarea.cell-input { resize: none; line-height: 1.5; min-height: 34px; }
 audio { width: 100%; height: 40px; }
 .transcript { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; line-height: 2.1; font-size: 14.5px; }
 .seg { border-radius: 5px; padding: 1px 4px; margin: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-.seg-name { background: var(--gray-soft); background: color-mix(in srgb, var(--c-name) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-name); }
-.seg-phone, .seg-phone_cue { background: var(--gray-soft); background: color-mix(in srgb, var(--c-phone) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-phone); }
-.seg-address { background: var(--gray-soft); background: color-mix(in srgb, var(--c-address) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-address); }
-.seg-tech { background: var(--gray-soft); background: color-mix(in srgb, var(--c-tech) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-tech); }
-.seg-project { background: var(--gray-soft); background: color-mix(in srgb, var(--c-project) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-project); }
-.seg-followup { background: var(--gray-soft); background: color-mix(in srgb, var(--c-followup) 12%, transparent); box-shadow: inset 0 -2px 0 var(--c-followup); }
+.seg-name { background: color-mix(in srgb, var(--c-name) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-name); }
+.seg-phone, .seg-phone_cue { background: color-mix(in srgb, var(--c-phone) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-phone); }
+.seg-address { background: color-mix(in srgb, var(--c-address) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-address); }
+.seg-tech { background: color-mix(in srgb, var(--c-tech) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-tech); }
+.seg-project { background: color-mix(in srgb, var(--c-project) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-project); }
+.seg-followup { background: color-mix(in srgb, var(--c-followup) 12%, transparent); box-shadow: inset 0 -2px 0 var(--c-followup); }
 .seg-note { box-shadow: inset 0 -2px 0 var(--border-strong); }
 .seg.other-block { opacity: .4; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
@@ -389,7 +389,7 @@ audio { width: 100%; height: 40px; }
 .suggest button { border: 1px dashed var(--primary); background: var(--primary-soft); color: var(--primary); border-radius: 8px; padding: 2px 10px; cursor: pointer; font-weight: 600; }
 .suggest button:hover { border-style: solid; }
 .dup { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); font-size: 13px; }
-.dup.strong { border-color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); background: var(--warn-soft); }
+.dup.strong { border-color: color-mix(in srgb, var(--warn) 50%, transparent); background: var(--warn-soft); }
 
 /* ---------- مودال و اعلان ---------- */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 20, 35, .45); z-index: 60; display: grid; place-items: center; padding: 20px; }
@@ -482,7 +482,7 @@ textarea.input.big { line-height: 1.6; }
 /* ---------- راهنمای اجرای اول و موارد دیگر ---------- */
 .onboard { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .ob-step { border: 1px solid var(--border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); }
-.ob-step.done { border-color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.ob-step.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
 .ob-step .ob-h { display: flex; gap: 8px; align-items: center; font-weight: 800; }
 .ob-step .ob-n { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); font-size: 13px; flex: none; }
 .ob-step.done .ob-n { background: var(--ok-soft); color: var(--ok); }
@@ -685,7 +685,7 @@ html.in-app .sidebar { top: var(--tb); height: calc(100vh - var(--tb)); }
 /* نصب به‌روزرسانی: پوشش تمام‌صفحه تا موتور با نسخه جدید برگردد */
 .update-overlay {
   position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center;
-  background: var(--bg); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(4px);
 }
 .update-overlay .card { padding: 28px 36px; text-align: center; min-width: 320px; }
 .update-overlay .spinner { width: 34px; height: 34px; margin: 0 auto 14px; }
