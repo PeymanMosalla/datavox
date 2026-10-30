@@ -2871,6 +2871,7 @@ async function reportUpdate() {
   setInterval(refreshStatus, 1500);
   setInterval(refreshLicense, 30000);  // شمار ویس و روز آزمایشی
   hasFallback();
+  window.__v2xReady = true;  // boot.js: صفحه کامل بالا آمد؛ پیام «بارگذاری نشد» لازم نیست
 })();
 
 /** مرورگرهای بدون :has() (Firefox 115 روی ویندوز ۷): وضعیت کشو و نوار ذخیره به‌صورت کلاس روی body */

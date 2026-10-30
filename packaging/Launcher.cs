@@ -1,7 +1,7 @@
 // DataVox.exe: اجراکننده نسخه قابل‌حمل.
 // - صفحه شروع طراحی‌شده (لوگو، نسخه، نوار پیشرفت) تا موتور برنامه آماده شود.
 // - برنامه در پنجره اختصاصی خودش (WebView2، بدون قاب ویندوز، با نوار عنوان طراحی‌شده در خود صفحه) باز می‌شود؛
-//   اگر WebView2 روی رایانه نباشد (یا ویندوز ۷ باشد)، در پنجره «برنامه»ی Edge/Chrome و در نبودشان در مرورگر پیش‌فرض.
+//   اگر WebView2 روی رایانه نباشد (یا ویندوز ۷ باشد)، در پنجره «برنامه»ی Edge/Chrome، سپس Firefox و در نبودشان مرورگر پیش‌فرض.
 // - به‌روزرسانی سبک: پیش از اجرا، یا با یک کلیک از داخل برنامه (موتور خاموش، نسخه جدید جایگزین، موتور روشن،
 //   پنجره باز می‌ماند). اگر نسخه جدید بالا نیاید، خودکار نسخه قبلی برمی‌گردد.
 // - اجرای دوباره میان‌بر، همان پنجره باز را جلو می‌آورد.
@@ -27,6 +27,7 @@ static class Launcher
 
     public static string baseDir;
     public static Process engine;  // موتوری که همین اجراکننده روشن کرده (برای کد خروج)
+    public static bool browserFallback;  // WebView2 هنگام باز کردن پنجره از کار افتاد و برنامه در مرورگر باز شد
     public static string dataDir;
 
     public static bool IsUp()
@@ -114,7 +115,8 @@ static class Launcher
             }
             catch (Exception e) { Log("app window failed: " + e.Message); }
         }
-        // Firefox (روی ویندوز ۷ نسخه ESR 115 همراه بسته است)؛ Internet Explorer صفحه برنامه را درست نشان نمی‌دهد
+        // Firefox (روی ویندوز ۷ نسخه ESR 115 همراه بسته است)؛ Internet Explorer و Edge قدیمی صفحه برنامه را اجرا نمی‌کنند
+        // (boot.js آنجا پیام راهنما نشان می‌دهد)
         string firefox = FindBrowser("firefox.exe");
         if (firefox != null)
         {
@@ -300,10 +302,10 @@ static class Launcher
         return true;
     }
 
-    // بدون پنجره اختصاصی (ویندوز ۷): اجراکننده پنهان می‌ماند تا مثل پنجره WebView2، به‌روزرسانی یک‌کلیکی را نصب و
+    // بدون پنجره اختصاصی (ویندوز ۷، یا WebView2 نیست یا راه نیفتاد): اجراکننده پنهان می‌ماند تا مثل پنجره WebView2، به‌روزرسانی یک‌کلیکی را نصب و
     // موتور را دوباره روشن کند، اگر موتور ناخواسته بسته شد دوباره اجرایش کند، و با اجرای دوباره میان‌بر، پنجره برنامه را باز کند.
     // با «خروج از برنامه» یا بسته شدن خودکار پس از بستن مرورگر (کد خروج ۰) کارش تمام می‌شود.
-    // آزمون خودکار روی رایانه سازنده: حالت ویندوز ۷ (بدون WebView2)، بی‌آنکه میان‌بر یا پنجره مرورگری ساخته شود
+    // آزمون خودکار روی رایانه سازنده: حالت بدون WebView2 (مثل ویندوز ۷)، بی‌آنکه میان‌بر یا پنجره مرورگری ساخته شود
     static bool TestMode() { return Environment.GetEnvironmentVariable("V2X_TEST_BROWSER_MODE") == "1"; }
 
     static void WatchBrowserMode()
@@ -443,6 +445,7 @@ static class Launcher
         splash.SetStatus("باز کردن برنامه…");
         var win = new AppWindow(exePath, splash);
         Application.Run(win);
+        if (browserFallback) WatchBrowserMode();
         GC.KeepAlive(mutex);
         return 0;
     }
@@ -605,6 +608,7 @@ sealed class AppWindow : Form
             {
                 Launcher.Log("webview init failed: " + ex.Message);
                 splash.Close();
+                Launcher.browserFallback = true;
                 Launcher.OpenAppWindow(Launcher.Url);  // بدون WebView2، در پنجره مرورگر
                 Close();
             }
