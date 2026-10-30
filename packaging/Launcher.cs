@@ -1,7 +1,7 @@
 // DataVox.exe: اجراکننده نسخه قابل‌حمل.
 // - صفحه شروع طراحی‌شده (لوگو، نسخه، نوار پیشرفت) تا موتور برنامه آماده شود.
 // - برنامه در پنجره اختصاصی خودش (WebView2، بدون قاب ویندوز، با نوار عنوان طراحی‌شده در خود صفحه) باز می‌شود؛
-//   اگر WebView2 روی رایانه نباشد، مثل قبل در مرورگر پیش‌فرض.
+//   اگر WebView2 روی رایانه نباشد، در پنجره «برنامه»ی Edge/Chrome، سپس Firefox و در نبودشان مرورگر پیش‌فرض.
 // - به‌روزرسانی سبک: پیش از اجرا، یا با یک کلیک از داخل برنامه (موتور خاموش، نسخه جدید جایگزین، موتور روشن،
 //   پنجره باز می‌ماند). اگر نسخه جدید بالا نیاید، خودکار نسخه قبلی برمی‌گردد.
 // - اجرای دوباره میان‌بر، همان پنجره باز را جلو می‌آورد.
@@ -26,6 +26,8 @@ static class Launcher
     static readonly string[] RootExtras = { "Guide.html", "Recording-Guide.html" };
 
     public static string baseDir;
+    public static Process engine;  // موتوری که همین اجراکننده روشن کرده (برای کد خروج)
+    public static bool browserFallback;  // WebView2 هنگام باز کردن پنجره از کار افتاد و برنامه در مرورگر باز شد
     public static string dataDir;
 
     public static bool IsUp()
@@ -57,6 +59,51 @@ static class Launcher
     public static void OpenExternal(string url)
     {
         try { Process.Start(url); } catch { }
+    }
+
+    static string FindBrowser(params string[] exes)
+    {
+        foreach (string exe in exes)
+            foreach (var hive in new[] { Microsoft.Win32.Registry.CurrentUser, Microsoft.Win32.Registry.LocalMachine })
+            {
+                try
+                {
+                    using (var k = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\" + exe))
+                    {
+                        string path = k == null ? null : k.GetValue("") as string;
+                        if (!string.IsNullOrEmpty(path) && File.Exists(path.Trim('"'))) return path.Trim('"');
+                    }
+                }
+                catch { }
+            }
+        return null;
+    }
+
+    // بدون WebView2: پنجره جدا و بدون نوار نشانی (حالت app در Edge/Chrome)؛ در نبودشان مرورگر پیش‌فرض
+    public static void OpenAppWindow(string url)
+    {
+        if (TestMode()) { Log("test: browser window for " + url); return; }
+        string browser = FindBrowser("msedge.exe", "chrome.exe");
+        if (browser != null)
+        {
+            try
+            {
+                string profile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Voice2Excel", "Browser");
+                Process.Start(new ProcessStartInfo(browser, "--app=\"" + url + "\" --user-data-dir=\"" + profile +
+                    "\" --no-first-run --no-default-browser-check --window-size=1280,820") { UseShellExecute = false });
+                Log("opened app window: " + browser);
+                return;
+            }
+            catch (Exception e) { Log("app window failed: " + e.Message); }
+        }
+        // Firefox؛ Internet Explorer و Edge قدیمی صفحه برنامه را اجرا نمی‌کنند (boot.js آنجا پیام راهنما نشان می‌دهد)
+        string firefox = FindBrowser("firefox.exe");
+        if (firefox != null)
+        {
+            try { Process.Start(new ProcessStartInfo(firefox, "-new-window \"" + url + "\"") { UseShellExecute = false }); return; }
+            catch (Exception e) { Log("firefox failed: " + e.Message); }
+        }
+        OpenExternal(url);
     }
 
     public static void Log(string msg)
@@ -204,7 +251,8 @@ static class Launcher
         psi.EnvironmentVariables["PYTHONNOUSERSITE"] = "1";
         psi.EnvironmentVariables.Remove("PYTHONPATH");
         psi.EnvironmentVariables.Remove("PYTHONHOME");
-        return Process.Start(psi);
+        engine = Process.Start(psi);
+        return engine;
     }
 
     /// <summary>منتظر آماده شدن موتور؛ رابط کاربری در این مدت زنده می‌ماند.</summary>
@@ -232,6 +280,53 @@ static class Launcher
         if (!WaitUntilUp(StartApp())) return false;
         ShowError("نسخه جدید اجرا نشد و برنامه خودکار به نسخه قبلی برگشت. اطلاعات شما دست نخورده است.");
         return true;
+    }
+
+    // بدون پنجره اختصاصی (WebView2 نیست یا راه نیفتاد): اجراکننده پنهان می‌ماند تا مثل پنجره WebView2، به‌روزرسانی یک‌کلیکی را نصب و
+    // موتور را دوباره روشن کند، اگر موتور ناخواسته بسته شد دوباره اجرایش کند، و با اجرای دوباره میان‌بر، پنجره برنامه را باز کند.
+    // با «خروج از برنامه» یا بسته شدن خودکار پس از بستن مرورگر (کد خروج ۰) کارش تمام می‌شود.
+    // آزمون خودکار روی رایانه سازنده: حالت بدون WebView2، بی‌آنکه میان‌بر یا پنجره مرورگری ساخته شود
+    static bool TestMode() { return Environment.GetEnvironmentVariable("V2X_TEST_BROWSER_MODE") == "1"; }
+
+    static void WatchBrowserMode()
+    {
+        var show = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\Voice2Excel.Show");
+        int down = 0, crashes = 0;
+        while (true)
+        {
+            for (int k = 0; k < 40; k++)
+            {
+                if (show.WaitOne(50)) OpenAppWindow(Url);
+                Application.DoEvents();
+            }
+            if (IsUp()) { down = 0; continue; }
+            if (++down < 2) continue;
+            down = 0;
+            int code = -1;
+            try { if (engine != null && engine.HasExited) code = engine.ExitCode; } catch { }
+            string quit = Path.Combine(dataDir, ".quit");
+            bool staged = HasStagedUpdate();
+            if (!staged && (File.Exists(quit) || code == 0 || engine == null))
+            {
+                try { File.Delete(quit); } catch { }
+                Log("engine closed (code " + code + "); launcher exits");
+                return;
+            }
+            if (!staged && ++crashes > 3)
+            {
+                Log("engine keeps stopping; giving up");
+                ShowError("موتور برنامه چند بار پشت سر هم بسته شد. برنامه را دوباره باز کنید.\nجزئیات: " +
+                          Path.Combine(dataDir, "logs", "console.log"));
+                return;
+            }
+            bool updated = staged && ApplyStagedUpdate();
+            Log(updated ? "update applied; restarting engine" : "engine stopped unexpectedly (code " + code + "); restarting");
+            if (!StartWithRollback(updated, null))
+            {
+                ShowError("موتور برنامه دوباره اجرا نشد. برنامه را ببندید و دوباره باز کنید.");
+                return;
+            }
+        }
     }
 
     public static string WebViewVersion()
@@ -269,7 +364,7 @@ static class Launcher
             dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Voice2Excel", "data");
         Directory.CreateDirectory(dataDir);
 
-        bool webview = WebViewVersion() != null;
+        bool webview = !TestMode() && WebViewVersion() != null;
         var splash = new Splash(Version());
         splash.Show();
         splash.SetStatus("در حال آماده‌سازی…");
@@ -306,18 +401,21 @@ static class Launcher
                 "\n\nاگر برنامه آنتی‌ویروس دارید، پوشه برنامه را در فهرست مجاز آن قرار دهید.");
             return 1;
         }
-        CreateDesktopShortcut(exePath);
+        if (!TestMode()) CreateDesktopShortcut(exePath);
 
         if (!webview)
         {
-            Log("WebView2 runtime not found; opening the default browser");
+            Log("WebView2 runtime not found; opening a browser window");
             splash.FadeOutAndClose();
-            OpenExternal(Url);
+            OpenAppWindow(Url);
+            WatchBrowserMode();
+            GC.KeepAlive(mutex);
             return 0;
         }
         splash.SetStatus("باز کردن برنامه…");
         var win = new AppWindow(exePath, splash);
         Application.Run(win);
+        if (browserFallback) WatchBrowserMode();
         GC.KeepAlive(mutex);
         return 0;
     }
@@ -480,7 +578,8 @@ sealed class AppWindow : Form
             {
                 Launcher.Log("webview init failed: " + ex.Message);
                 splash.Close();
-                Launcher.OpenExternal(Launcher.Url);  // بدون پنجره اختصاصی، مثل قبل در مرورگر
+                Launcher.browserFallback = true;
+                Launcher.OpenAppWindow(Launcher.Url);  // بدون WebView2، در پنجره مرورگر
                 Close();
             }
         };

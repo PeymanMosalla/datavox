@@ -165,9 +165,15 @@ try {
     check("دکمه پخش بخش شماره", hasSeg);
     if (hasSeg) {
       await click('#drawer [data-segk="phone"]');
-      await sleep(1200);
-      const played = await evaluate("(() => { const a = document.querySelector('#dr-audio'); return a.currentTime > 0.2; })()");
-      check("پخش بخش شماره از ویس", played, "زمان: " + (await evaluate("document.querySelector('#dr-audio').currentTime.toFixed(2)")));
+      // زیر بار پردازش، بارگذاری صدا گاهی بیش از یک ثانیه طول می‌کشد
+      let played = false;
+      for (let i = 0; i < 8 && !played; i++) {
+        await sleep(500);
+        played = await evaluate("(() => { const a = document.querySelector('#dr-audio'); return a.currentTime > 0.2; })()");
+      }
+      check("پخش بخش شماره از ویس", played, "زمان: " + (await evaluate(`(() => { const a = document.querySelector('#dr-audio');
+        return a.currentTime.toFixed(2) + (a.currentTime > 0.2 ? "" : " | ready=" + a.readyState + " net=" + a.networkState + " paused=" + a.paused
+          + " err=" + (a.error && a.error.code) + " stopAt=" + a.dataset.stopAt + " bound=" + a.dataset.segBound); })()`)));
       await evaluate("document.querySelector('#dr-audio').pause()");
     }
     check("نمایش گروه‌بندی‌شده شماره", /^0\d{3} \d{3} \d{4}$/.test(await evaluate("document.querySelector('#drawer .phone-view span')?.textContent || ''")),

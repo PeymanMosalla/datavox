@@ -2870,4 +2870,5 @@ async function reportUpdate() {
   route();
   setInterval(refreshStatus, 1500);
   setInterval(refreshLicense, 30000);  // شمار ویس و روز آزمایشی
+  window.__v2xReady = true;  // boot.js: صفحه کامل بالا آمد؛ پیام «بارگذاری نشد» لازم نیست
 })();

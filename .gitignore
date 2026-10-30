@@ -1,5 +1,6 @@
 # محیط اجرا و وابستگی‌ها (با install.bat یا build_portable.py ساخته می‌شوند)
 .venv/
+.venv-win7/
 __pycache__/
 *.pyc
 .pytest_cache/
