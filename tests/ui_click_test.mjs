@@ -122,6 +122,18 @@ try {
   await sleep(400);
   const modalClosed = await evaluate("getComputedStyle(document.querySelector('#modal-backdrop')).display === 'none'");
   check("«انصراف» پنجره را می‌بندد و صفحه دوباره قابل کلیک است", r3.hit && modalClosed);
+  // صفحه «اشتراک و پشتیبانی»: وضعیت بالای صفحه، کد رایانه، پیوند پیام‌رسان‌ها و فعال‌سازی فقط با مجوز واردشده
+  await click(`#nav a[data-page="activate"]`);
+  await sleep(1500);
+  const act = await evaluate(`(() => ({ hero: !!document.querySelector(".act-hero h2"), code: document.querySelector("#act-code")?.textContent.trim() || "",
+    goOff: document.querySelector("#act-go")?.disabled, links: document.querySelectorAll(".act-link").length,
+    logos: [...document.querySelectorAll("img.logo")].every((i) => i.complete && i.naturalWidth > 0) }))()`);
+  check("اشتراک و پشتیبانی: کارت وضعیت و کد رایانه", act.hero && /^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$/.test(act.code), act.code);
+  check("لوگوی پیام‌رسان‌ها بارگذاری شد", act.logos);
+  await evaluate(`(() => { const t = document.querySelector("#act-text"); t.value = "V2X1.x"; t.dispatchEvent(new Event("input")); })()`);
+  const goOn = await evaluate(`!document.querySelector("#act-go").disabled`);
+  check("«فعال‌سازی» فقط پس از وارد کردن مجوز روشن می‌شود", act.goOff === true && goOn);
+  await evaluate(`(() => { const t = document.querySelector("#act-text"); t.value = ""; t.dispatchEvent(new Event("input")); })()`);
   if (process.argv.includes("--full")) {
     // مسیر کامل: ویس نمونه ← پردازش ← بازبینی ← تأیید ← اکسل نمونه ← خروجی
     await click(`#nav a[data-page="dashboard"]`);

@@ -694,3 +694,78 @@ html.in-app .sidebar { top: var(--tb); height: calc(100vh - var(--tb)); }
 .update-overlay .card { padding: 28px 36px; text-align: center; min-width: 320px; }
 .update-overlay .spinner { width: 34px; height: 34px; margin: 0 auto 14px; }
 html.in-app .drawer, html.in-app .drawer-backdrop, html.in-app .modal-backdrop { top: var(--tb); }
+
+/* ---------- اشتراک و پشتیبانی ---------- */
+.act { max-width: 1080px; display: flex; flex-direction: column; gap: 16px; }
+.act .muted { color: var(--text-2); }  /* خوانایی بیشتر متن‌های توضیحی در این صفحه */
+.act-hero { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 22px 24px; border-radius: var(--radius); border: 1px solid var(--border); }
+.act-hero.info { background: var(--info-soft); border-color: var(--info); border-color: color-mix(in srgb, var(--info) 35%, transparent); --tone: var(--info); }
+.act-hero.ok { background: var(--ok-soft); border-color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); --tone: var(--ok); }
+.act-hero.warn { background: var(--warn-soft); border-color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); --tone: var(--warn); }
+.act-hero-t { display: flex; gap: 14px; align-items: flex-start; flex: 1 1 320px; }
+.act-hero-t > svg { width: 30px; height: 30px; flex: none; color: var(--tone); margin-top: 2px; }
+.act-hero h2 { margin: 0 0 4px; font-size: 21px; font-weight: 800; }
+.act-hero p { margin: 0; color: var(--text-2); line-height: 1.8; }
+.act-hero p b { color: var(--text); }
+.act-meters { display: flex; gap: 28px; flex-wrap: wrap; }
+.act-meter { min-width: 130px; }
+.act-meter b { font-size: 34px; font-weight: 800; line-height: 1.1; color: var(--tone); }
+.act-meter span { color: var(--text-2); font-weight: 600; }
+.act-meter .bar { height: 8px; margin-top: 8px; border-radius: 99px; background: var(--surface); overflow: hidden; }
+.act-meter .bar i { display: block; height: 100%; border-radius: 99px; background: var(--tone); }
+
+.act-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.act-steps li { display: flex; gap: 12px; align-items: center; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; position: relative; }
+.act-steps li:not(:last-child)::after { content: "←"; position: absolute; left: -10px; top: 50%; transform: translate(-50%, -50%); color: var(--muted); font-weight: 700; }
+.act-steps .n, .act .card-h .n { width: 28px; height: 28px; flex: none; border-radius: 50%; display: inline-grid; place-items: center; background: var(--primary-soft); color: var(--primary); font-weight: 800; }
+.act-steps b { display: block; font-size: 14px; }
+.act-steps li span:not(.n) { display: block; font-size: 12.5px; color: var(--text-2); }
+
+.act-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 18px; align-items: start; }
+.act-main { display: flex; flex-direction: column; gap: 18px; }
+.act-main .card + .card { margin-top: 0; }
+.act .card-h h2 { font-size: 17px; }
+.act-label { display: block; margin-bottom: 7px; font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+.act-label i { font-style: normal; font-weight: 400; color: var(--muted); }
+.act-code { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 18px;
+  border-radius: 12px; background: var(--primary-soft); border: 1px dashed var(--primary); }
+.act-code b { font: 800 26px/1.2 Consolas, "Cascadia Mono", monospace; letter-spacing: 3px; direction: ltr; color: var(--text); }
+.act-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.act-fields .input { width: 100%; }
+.act-send { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.act .logo { width: 22px; height: 22px; flex: none; }
+.act .btn.lg .logo { width: 26px; height: 26px; }
+.act .btn.primary .logo { background: #fff; border-radius: 50%; padding: 1px; }
+.act svg.logo.mail { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; color: var(--info); }
+.act-preview summary, .act-paste summary { font-size: 13.5px; }
+.act-preview textarea, .act-paste textarea { width: 100%; margin-top: 8px; }
+
+.act-drop { display: grid; justify-items: center; gap: 8px; padding: 22px 16px; text-align: center; border: 2px dashed var(--border-strong);
+  border-radius: 12px; background: var(--surface-2); transition: border-color .15s, background .15s; }
+.act-drop > svg { width: 30px; height: 30px; color: var(--primary); }
+.act-drop b { font-size: 15px; }
+.act-drop.over { border-color: var(--primary); background: var(--primary-soft); }
+.act-drop.has { border-style: solid; border-color: var(--primary); background: var(--primary-soft); }
+.act-import > summary.card-h { list-style: none; cursor: pointer; }
+.act-import > summary.card-h::-webkit-details-marker { display: none; }
+.act-import > summary.card-h::after { content: "▾"; color: var(--muted); }
+.act-import:not([open]) > summary.card-h { border-bottom: 0; }
+
+.act-support { position: sticky; top: 16px; }
+.act-seller { font-size: 17px; font-weight: 800; }
+.act-phone-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.act-phone { font: 800 21px Consolas, "Cascadia Mono", monospace; color: var(--text); text-decoration: none; letter-spacing: 1px; }
+.act-contact { display: grid; gap: 8px; }
+.act-link { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s; }
+.act-link:hover { background: var(--surface-3); border-color: var(--border-strong); }
+.act-link .handle { margin-inline-start: auto; font-weight: 400; font-size: 13px; color: var(--text-2); }
+
+@media (max-width: 1100px) {
+  .act-grid { grid-template-columns: minmax(0, 1fr); }
+  .act-support { position: static; }
+}
+@media (max-width: 700px) {
+  .act-steps, .act-fields { grid-template-columns: minmax(0, 1fr); }
+  .act-steps li:not(:last-child)::after { display: none; }
+}
