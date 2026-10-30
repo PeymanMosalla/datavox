@@ -2736,53 +2736,127 @@ function waNumber(n) {
   return d.startsWith("00") ? d.slice(2) : d.startsWith("0") ? "98" + d.slice(1) : d;
 }
 
+// لوگوی پیام‌رسان‌ها (فایل‌های web/brand؛ رایانه مشتری اینترنت لازم ندارد)
+const MESSENGERS = {
+  telegram: { label: "تلگرام", logo: "/static/brand/telegram.svg" },
+  whatsapp: { label: "واتس‌اپ", logo: "/static/brand/whatsapp.svg" },
+  bale: { label: "بله", logo: "/static/brand/bale.svg" },
+  email: { label: "ایمیل", logo: "" },
+};
+const MAIL_ICON = '<svg class="logo mail" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M3.5 7l8.5 6 8.5-6"/></svg>';
+const msgrLogo = (k) => MESSENGERS[k].logo ? `<img class="logo" src="${MESSENGERS[k].logo}" alt="">` : MAIL_ICON;
+
+/** کارت وضعیت بالای صفحه: مهم‌ترین چیزی که کاربر باید ببیند. */
+function activationHero(lic) {
+  const T = lic.trial || {};
+  const meter = (left, total, unit) => `<div class="act-meter"><b>${fa(left)}</b> <span>${unit} مانده</span>
+    <div class="bar"><i style="width:${Math.max(0, Math.min(100, Math.round(100 * left / total)))}%"></i></div></div>`;
+  if (lic.mode === "trial") return `<section class="act-hero info">
+    <div class="act-hero-t">${I.info}<div><h2>نسخه آزمایشی</h2><p>هرکدام زودتر تمام شود، دوره آزمایشی پایان می‌یابد. برای ادامه، اشتراک بگیرید.</p></div></div>
+    <div class="act-meters">${meter(T.days_left, 10, "روز")}${meter(T.voices_left, 10, "ویس")}</div></section>`;
+  if (lic.mode === "expired") return `<section class="act-hero warn">
+    <div class="act-hero-t">${I.alert}<div><h2>${lic.lapsed ? "اشتراک شما تمام شده است" : "دوره آزمایشی تمام شد"}</h2>
+      <p>${lic.lapsed ? "برای پردازش ویس تازه، اشتراک را تمدید کنید." : (T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است.") + " برای ادامه، اشتراک بگیرید."}
+      رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</p></div></div></section>`;
+  const soon = lic.days_left != null && lic.days_left <= 15;
+  const left = lic.expires_jalali ? `<div class="act-meters"><div class="act-meter"><b>${fa(Math.max(0, lic.days_left ?? 0))}</b> <span>روز مانده</span></div></div>` : "";
+  return `<section class="act-hero ${soon ? "warn" : "ok"}">
+    <div class="act-hero-t">${soon ? I.alert : I.ok}<div><h2>${soon ? "اشتراک به‌زودی تمام می‌شود" : "برنامه فعال است"}</h2>
+      <p>${lic.customer ? `<b>${esc(lic.customer)}</b> — ` : ""}${lic.expires_jalali ? `اشتراک تا ${fa(lic.expires_jalali)}` : "اشتراک نامحدود"}</p></div></div>${left}</section>`;
+}
+
 async function renderActivation(el) {
   const lic = state.lic = await api("/api/license");
   const T = lic.trial, C = lic.contact || {};
+  const kind = requestKind(lic);
+  const licensed = lic.mode === "licensed" || lic.mode === "dev";
   const saved = (k) => { try { return localStorage.getItem(k) || ""; } catch { return ""; } };
-  el.innerHTML = `<div class="stack" style="max-width:680px">
-    ${lic.mode === "licensed" ? `<div class="alert ok">${I.ok}<div class="alert-body"><b>برنامه فعال است</b>${esc(lic.customer || "")}${lic.expires_jalali ? ` — اشتراک تا ${fa(lic.expires_jalali)}` : " — اشتراک نامحدود"}</div></div>` : ""}
-    ${lic.mode === "trial" ? `<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است.</div></div>` : ""}
-    ${lic.mode === "expired" && lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
-    ${lic.mode === "expired" && !lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>${T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است."} رکوردهای قبلی در دسترس‌اند.</div></div>` : ""}
+  const channels = ["telegram", "whatsapp", "bale", "email"].filter((k) => C[k]);
+  const [mainCh, ...otherCh] = channels;
+  const sendBtn = (k, main) => `<${k === "bale" ? "button" : "a"} class="btn ${main ? "primary lg" : ""}" data-send="${k}" ${k === "bale" ? "" : `target="_blank" rel="noopener"`}>
+    ${msgrLogo(k)} ${main ? "ارسال در " : ""}${MESSENGERS[k].label}</${k === "bale" ? "button" : "a"}>`;
+  // مسیرهای تماس مستقیم با پشتیبانی (بدون پیام آماده)
+  const handle = (k) => k === "telegram" ? "@" + C.telegram.replace(/^@/, "") : C[k];
+  const contactHref = (k) => k === "telegram" ? `https://t.me/${encodeURIComponent(C.telegram.replace(/^@/, ""))}`
+    : k === "whatsapp" ? `https://wa.me/${waNumber(C.whatsapp)}` : k === "email" ? `mailto:${C.email}`
+    : /[a-z_]/i.test(C.bale) ? `https://ble.ir/${encodeURIComponent(C.bale)}` : "";
+  // مراحل گرفتن مجوز فقط وقتی لازم است: بدون اشتراک، یا اشتراکی که کمتر از ۱۵ روز مانده
+  const needsLicense = !licensed || lic.lapsed || (lic.days_left != null && lic.days_left <= 15);
+  const steps = kind === "support" || !needsLicense ? "" : `<ol class="act-steps">
+      <li><span class="n">۱</span><div><b>کد رایانه را بفرستید</b><span>با یک کلیک در پیام‌رسان</span></div></li>
+      <li><span class="n">۲</span><div><b>فایل مجوز را بگیرید</b><span>فروشنده پس از پرداخت می‌فرستد</span></div></li>
+      <li><span class="n">۳</span><div><b>اینجا واردش کنید</b><span>بدون نیاز به اینترنت</span></div></li></ol>`;
+
+  el.innerHTML = `<div class="act">
+    ${activationHero(lic)}
     ${T?.clock_back ? `<div class="alert warn">${I.alert}<div class="alert-body">تاریخ رایانه عقب‌تر از تاریخ‌های قبلی است؛ تاریخ و ساعت ویندوز را درست کنید.</div></div>` : ""}
     ${lic.error && !lic.lapsed ? `<div class="alert warn">${I.alert}<div class="alert-body">${esc(lic.error)}</div></div>` : ""}
-    <div class="card"><div class="card-h"><h2><span class="n">۱</span> ${REQUEST_TITLE[requestKind(lic)]}</h2></div><div class="card-b stack">
-      <div class="row"><span class="muted small">کد این رایانه:</span><b class="ltr" style="font-size:18px;letter-spacing:2px">${esc(lic.machine)}</b>
-        <button class="btn sm" id="act-copy">کپی کد</button></div>
-      <div class="row"><input class="input" id="act-name" placeholder="نام شما یا نام شرکت" value="${esc(saved("v2x.act.name") || lic.customer || "")}" style="max-width:260px">
-        <input class="input ltr" id="act-phone" placeholder="شماره تماس شما" value="${esc(saved("v2x.act.phone"))}" style="max-width:200px"></div>
-      <div class="muted small">پیام زیر با کد رایانه آماده شده است؛ با یکی از راه‌های زیر برای ${esc(C.name || "فروشنده")} بفرستید:</div>
-      <textarea class="input" id="act-msg" rows="5" readonly style="width:100%"></textarea>
-      <div class="row">
-        ${C.telegram ? `<a class="btn" id="act-tg" target="_blank" rel="noopener">ارسال در تلگرام</a>` : ""}
-        ${C.whatsapp ? `<a class="btn" id="act-wa" target="_blank" rel="noopener">ارسال در واتس‌اپ</a>` : ""}
-        ${C.bale ? `<button class="btn" id="act-bale">ارسال در بله</button>` : ""}
-        ${C.email ? `<a class="btn" id="act-mail">ارسال ایمیل</a>` : ""}
-        <button class="btn" id="act-copymsg">کپی پیام</button>
+    ${steps}
+    <div class="act-grid">
+      <div class="act-main">
+        <div class="card"><div class="card-h"><h2>${kind === "support" ? "" : `<span class="n">۱</span> `}${REQUEST_TITLE[kind]}</h2></div><div class="card-b stack">
+          <div>
+            <span class="act-label">کد این رایانه${kind === "support" ? " (برای پشتیبانی)" : ""}</span>
+            <div class="act-code"><b id="act-code">${esc(lic.machine)}</b><button class="btn" id="act-copy">${I.file} کپی کد</button></div>
+          </div>
+          <div class="act-fields">
+            <label><span class="act-label">نام شما یا نام شرکت <i>(اختیاری)</i></span>
+              <input class="input" id="act-name" value="${esc(saved("v2x.act.name") || lic.customer || "")}"></label>
+            <label><span class="act-label">شماره تماس شما <i>(اختیاری)</i></span>
+              <input class="input ltr" id="act-phone" value="${esc(saved("v2x.act.phone"))}"></label>
+          </div>
+          ${channels.length ? `<div>
+            <span class="act-label">پیام آماده (با کد رایانه) را برای ${esc(C.name || "فروشنده")} بفرستید:</span>
+            <div class="act-send">${sendBtn(mainCh, true)}${otherCh.map((k) => sendBtn(k, false)).join("")}
+              <button class="btn ghost" id="act-copymsg">کپی پیام</button></div>
+          </div>` : `<div class="act-send"><button class="btn primary lg" id="act-copymsg">کپی پیام</button>
+            <span class="muted">پیام را کپی کنید و برای فروشنده بفرستید.</span></div>`}
+          <details class="act-preview"><summary>پیش‌نمایش پیام</summary>
+            <textarea class="input" id="act-msg" rows="5" readonly></textarea></details>
+        </div></div>
+
+        <${licensed ? "details" : "div"} class="card act-import"><${licensed ? "summary" : "div"} class="card-h"><h2>${licensed ? "" : `<span class="n">۲</span> `}${licensed ? "وارد کردن مجوز تازه" : "وارد کردن مجوز"}</h2></${licensed ? "summary" : "div"}>
+          <div class="card-b stack">
+            <div class="act-drop" id="act-drop">
+              ${I.upload}
+              <b id="act-drop-t">فایل مجوز را اینجا بکشید</b>
+              <span class="muted">فایلی که فروشنده فرستاده (با پسوند ‎.v2x)</span>
+              <input type="file" id="act-file" accept=".v2x,.txt" hidden>
+              <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
+            </div>
+            <details class="act-paste"><summary>یا متن مجوز را بچسبانید</summary>
+              <textarea class="input ltr" id="act-text" rows="3" placeholder="V2X1...."></textarea></details>
+            <div class="row"><button class="btn primary lg" id="act-go" disabled>${I.check} فعال‌سازی</button>
+              <span class="muted small" id="act-go-hint">اول فایل مجوز را انتخاب کنید.</span></div>
+          </div></${licensed ? "details" : "div"}>
       </div>
-      ${C.phone || C.email ? `<div class="row small">
-        ${C.phone ? `<span>تلفن: <a class="ltr" href="tel:${esc(C.phone)}">${esc(C.phone)}</a></span> <button class="btn sm ghost" id="act-copyphone">کپی شماره</button>` : ""}
-        ${C.email ? `<span>ایمیل: <span class="ltr">${esc(C.email)}</span></span>` : ""}</div>` : ""}
-      ${!C.telegram && !C.whatsapp && !C.phone && !C.bale && !C.email ? `<div class="muted small">پیام را کپی کنید و برای فروشنده بفرستید.</div>` : ""}
-      ${requestKind(lic) === "support" ? "" : `<div class="muted small">فروشنده پس از پرداخت، یک فایل مجوز (یا یک متن که با V2X1 شروع می‌شود) برایتان می‌فرستد. برای این کار اینترنت لازم نیست.</div>`}
-    </div></div>
-    <${lic.mode === "licensed" ? "details" : "div"} class="card"><${lic.mode === "licensed" ? "summary" : "div"} class="card-h"><h2><span class="n">۲</span> ${lic.mode === "licensed" ? "وارد کردن مجوز تازه" : "وارد کردن مجوز"}</h2></${lic.mode === "licensed" ? "summary" : "div"}><div class="card-b stack">
-      <label class="stack" style="gap:6px">فایل مجوز را انتخاب کنید یا متن آن را اینجا بچسبانید:
-        <textarea class="input ltr" id="act-text" rows="3" placeholder="V2X1...." style="width:100%"></textarea></label>
-      <div class="row"><input type="file" id="act-file" accept=".v2x,.txt" hidden>
-        <button class="btn" id="act-pick">${I.folder} انتخاب فایل مجوز</button>
-        <button class="btn primary" id="act-go">${I.check} فعال‌سازی</button></div>
-    </div></${lic.mode === "licensed" ? "details" : "div"}>
+
+      <aside class="card act-support"><div class="card-h"><h2>پشتیبانی</h2></div><div class="card-b stack">
+        ${C.name ? `<div class="act-seller">${esc(C.name)}</div>` : ""}
+        ${C.phone ? `<div class="act-phone-row"><a class="act-phone ltr" href="tel:${esc(C.phone)}">${esc(C.phone)}</a>
+          <button class="btn sm" id="act-copyphone">کپی شماره</button></div>` : ""}
+        ${channels.length ? `<div class="act-contact">${channels.map((k) => {
+          const href = contactHref(k);
+          const inner = `${msgrLogo(k)}<span>${MESSENGERS[k].label}</span><span class="handle ltr">${esc(handle(k))}</span>`;
+          return href ? `<a class="act-link" href="${esc(href)}" target="_blank" rel="noopener">${inner}</a>`
+            : `<button class="act-link" data-copy="${esc(C[k])}">${inner}</button>`;
+        }).join("")}</div>` : ""}
+        ${!C.name && !C.phone && !channels.length ? `<div class="muted">اطلاعات تماس فروشنده در این نسخه ثبت نشده است.</div>` : ""}
+      </div></aside>
+    </div>
   </div>`;
+
   const update = () => {
     const name = $("#act-name").value.trim(), phone = $("#act-phone").value.trim();
     try { localStorage.setItem("v2x.act.name", name); localStorage.setItem("v2x.act.phone", phone); } catch { }
     const msg = requestMessage(lic, name, phone);
     $("#act-msg").value = msg;
-    if ($("#act-tg")) $("#act-tg").href = `https://t.me/${encodeURIComponent(C.telegram.replace(/^@/, ""))}?text=${encodeURIComponent(msg)}`;
-    if ($("#act-wa")) $("#act-wa").href = `https://wa.me/${waNumber(C.whatsapp)}?text=${encodeURIComponent(msg)}`;
-    if ($("#act-mail")) $("#act-mail").href = `mailto:${C.email}?subject=${encodeURIComponent(msg.split("\n")[0])}&body=${encodeURIComponent(msg)}`;
+    $$("[data-send]", el).forEach((b) => {
+      const k = b.dataset.send;
+      if (k === "telegram") b.href = `https://t.me/${encodeURIComponent(C.telegram.replace(/^@/, ""))}?text=${encodeURIComponent(msg)}`;
+      if (k === "whatsapp") b.href = `https://wa.me/${waNumber(C.whatsapp)}?text=${encodeURIComponent(msg)}`;
+      if (k === "email") b.href = `mailto:${C.email}?subject=${encodeURIComponent(msg.split("\n")[0])}&body=${encodeURIComponent(msg)}`;
+    });
   };
   $("#act-name").oninput = $("#act-phone").oninput = update;
   update();
@@ -2792,16 +2866,32 @@ async function renderActivation(el) {
   $("#act-copy").onclick = () => copy(lic.machine, "کد کپی شد.");
   $("#act-copymsg").onclick = () => copy($("#act-msg").value, "پیام کپی شد.");
   $("#act-copyphone")?.addEventListener("click", () => copy(C.phone, "شماره کپی شد."));
-  $("#act-bale")?.addEventListener("click", async () => {
+  $$("[data-copy]", el).forEach((b) => b.onclick = () => copy(b.dataset.copy, "کپی شد."));
+  $('[data-send="bale"]', el)?.addEventListener("click", async () => {
     // پیوند مستقیم بله فقط با آیدی کار می‌کند و متن آماده نمی‌پذیرد؛ پس پیام کپی می‌شود
     const isId = /[a-z_]/i.test(C.bale);
     await copy($("#act-msg").value, isId ? "پیام کپی شد؛ در بله بچسبانید و بفرستید." : `پیام کپی شد؛ در بله به شماره ${C.bale} بفرستید.`);
     if (isId) window.open(`https://ble.ir/${encodeURIComponent(C.bale)}`, "_blank", "noopener");
   });
+
+  // وارد کردن مجوز: کشیدن فایل، انتخاب فایل یا چسباندن متن؛ «فعال‌سازی» فقط وقتی چیزی وارد شده روشن است
+  const drop = $("#act-drop"), text = $("#act-text");
+  const ready = (fileName) => {
+    const has = !!text.value.trim();
+    $("#act-go").disabled = !has;
+    drop.classList.toggle("has", has && !!fileName);
+    if (fileName) $("#act-drop-t").textContent = `«${fileName}» آماده فعال‌سازی است`;
+    $("#act-go-hint").textContent = has ? "" : "اول فایل مجوز را انتخاب کنید.";
+  };
+  const readFile = async (f) => { if (!f) return; text.value = (await f.text()).trim(); ready(f.name); };
+  text.oninput = () => ready();
   $("#act-pick").onclick = () => $("#act-file").click();
-  $("#act-file").onchange = async (e) => { const f = e.target.files[0]; if (f) $("#act-text").value = (await f.text()).trim(); };
+  $("#act-file").onchange = (e) => readFile(e.target.files[0]);
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); readFile(e.dataTransfer.files[0]); };
   $("#act-go").onclick = async () => {
-    try { await api("/api/license", { method: "POST", body: { text: $("#act-text").value } }); toast("برنامه فعال شد.", "ok"); location.hash = "#/today"; setTimeout(() => location.reload(), 600); }
+    try { await api("/api/license", { method: "POST", body: { text: text.value } }); toast("برنامه فعال شد.", "ok"); location.hash = "#/today"; setTimeout(() => location.reload(), 600); }
     catch (e) { toastErr(e); }
   };
 }

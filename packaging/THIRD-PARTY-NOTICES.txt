@@ -50,3 +50,6 @@ Application window
   PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY
   DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES ARISING IN ANY WAY OUT OF THE USE
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Telegram, WhatsApp and Bale logos (voice2excel/web/brand/telegram.svg, whatsapp.svg, bale.svg) are trademarks of their respective owners and are used only to identify the seller's contact links. Telegram and WhatsApp glyphs: Simple Icons (CC0 1.0, https://simpleicons.org); Bale mark: from the official site bale.ai.
+لوگوهای تلگرام، واتس‌اپ و بله علامت تجاری صاحبانشان هستند و فقط برای نشان دادن راه‌های تماس با فروشنده به‌کار رفته‌اند.
