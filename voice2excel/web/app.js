@@ -2870,4 +2870,16 @@ async function reportUpdate() {
   route();
   setInterval(refreshStatus, 1500);
   setInterval(refreshLicense, 30000);  // شمار ویس و روز آزمایشی
+  hasFallback();
 })();
+
+/** مرورگرهای بدون :has() (Firefox 115 روی ویندوز ۷): وضعیت کشو و نوار ذخیره به‌صورت کلاس روی body */
+function hasFallback() {
+  try { if (CSS.supports("selector(:has(*))")) return; } catch { }
+  const sync = () => {
+    document.body.classList.toggle("x-drawer-open", !!document.querySelector(".drawer.open"));
+    document.body.classList.toggle("x-save-dirty", !!document.querySelector(".save-bar.dirty"));
+  };
+  new MutationObserver(sync).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  sync();
+}

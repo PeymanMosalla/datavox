@@ -496,6 +496,9 @@ textarea.input.big { line-height: 1.6; }
 body:has(.drawer.open) .toasts { left: calc(min(640px, 96vw) + 20px); }
 body.no-scroll .toasts { bottom: 86px; }
 @media (max-width: 860px) { body:has(.drawer.open) .toasts { left: 20px; bottom: 96px; } }
+/* مرورگرهای بدون :has() (Firefox 115 روی ویندوز ۷): همان قاعده با کلاس‌هایی که app.js روی body می‌گذارد */
+body.x-drawer-open .toasts { left: calc(min(640px, 96vw) + 20px); }
+@media (max-width: 860px) { body.x-drawer-open .toasts { left: 20px; bottom: 96px; } }
 /* میان‌بر صفحه‌کلید روی دکمه‌های رنگی خوانا بماند */
 .btn.ok .kbd, .btn.primary .kbd { color: rgba(255, 255, 255, .9); border-color: rgba(255, 255, 255, .55); }
 /* عنوان کارت‌های آمار زیر آیکون نرود و بریده نشود */
@@ -620,6 +623,7 @@ body.no-scroll .toasts { bottom: 86px; }
 .save-bar.dirty #dv-save-msg { color: var(--warn); font-weight: 700; }
 /* اعلان‌ها روی دکمه‌های نوار ذخیره نیفتند */
 body:has(.save-bar.dirty) .toasts { bottom: 86px; }
+body.x-save-dirty .toasts { bottom: 86px; }
 /* تأیید تغییر مقصد: «تا الان» ← «از این پس» */
 .dest-switch { display: flex; align-items: stretch; gap: 10px; }
 .ds-box { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); min-width: 0; }
