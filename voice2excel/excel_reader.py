@@ -183,6 +183,23 @@ def inspect_workbook(path: str | Path) -> dict:
     return report
 
 
+def data_summary(path: Path, sheet: str, header_row: int, columns: list[str]) -> dict:
+    """تعداد ردیف‌های داده و آخرین ردیف داده در ستون‌های داده‌شده (خواندن سریع، بدون باز کردن کامل فایل)."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        if sheet not in wb.sheetnames:
+            return {"rows": 0, "last_row": 0}
+        ws = wb[sheet]
+        idx = [openpyxl.utils.column_index_from_string(c) - 1 for c in columns]
+        rows, last = 0, header_row
+        for i, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
+            if any(ci < len(row) and row[ci] is not None and str(row[ci]).strip() != "" for ci in idx):
+                rows, last = rows + 1, i
+        return {"rows": rows, "last_row": last}
+    finally:
+        wb.close()
+
+
 def read_rows(path: Path, sheet: str, header_row: int, columns: dict[str, str], raw: bool = False) -> list[dict]:
     """خواندن ردیف‌های موجود (فقط مقدار). columns: {حرف ستون: کلید فیلد}.
 

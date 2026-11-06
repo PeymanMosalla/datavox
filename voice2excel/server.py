@@ -25,8 +25,8 @@ from pydantic import BaseModel
 from . import (__version__, backup, dictionary, excel_mapping, excel_template, knowledge, lan, learning, licensing,
                pipeline, updater)
 from .audio_processor import MAX_AUDIO_BYTES, is_supported, looks_like_audio
-from .config import (AVAILABLE_MODELS, DATA_DIR, MODELS_DIR, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS, WEB_DIR,
-                     ensure_dirs, load_settings, save_settings)
+from .config import (AVAILABLE_MODELS, DATA_DIR, EDITION, MODELS_DIR, OLDCPU, SAMPLES_DIR, SUPPORTED_AUDIO_EXTENSIONS,
+                     WEB_DIR, ensure_dirs, load_settings, save_settings)
 from .database import Database, get_db, now
 from .dates_fa import date_from_filename, format_jalali, from_gregorian, parse_jalali, today_jalali
 from .deduplicator import file_sha256
@@ -138,7 +138,7 @@ _SECURITY_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DE
 _APP_PAGES = {"/", "/m", "/m/"}
 MAX_REQUEST_BYTES = 4 * 1024 ** 3
 _INTAKE = {"/api/upload", "/api/m/upload", "/api/import-folder", "/api/queue/start", "/api/files/retry-failed"}
-_TRIAL_OVER = "دوره آزمایشی تمام شده است؛ برای پردازش ویس تازه، برنامه را فعال کنید. رکوردهای قبلی در دسترس‌اند."
+_TRIAL_OVER = "دوره آزمایشی تمام شده است؛ برای پردازش ویس تازه، برنامه را فعال کنید. ردیف‌های قبلی در دسترس‌اند."
 
 
 def _is_intake(path: str) -> bool:
@@ -206,13 +206,13 @@ def set_worker(w: Worker | None) -> None:
     _worker = w
 
 
-def _write_profile(create: bool = False, visit_date: str | None = None) -> dict | None:
-    """نگاشت قالب فعال برای ثبت؛ قالب «فایل جدید» به نگاشت فایل خود برنامه تبدیل می‌شود.
+def _write_profile(create: bool = False, visit_date: str | None = None, name: str | None = None) -> dict | None:
+    """نگاشت یک فایل (پیش‌فرض: فایل ویس‌های خودکار) برای ثبت؛ قالب «فایل جدید» به نگاشت فایل خود برنامه تبدیل می‌شود.
 
     create: اگر فایل خروجی قالب هنوز ساخته نشده، با سرستون ساخته شود (فقط هنگام ثبت و پیش‌نمایش).
     visit_date: برای قالبی که فایل یا شیت هر روز/ماه را جدا می‌کند (پیش‌فرض: امروز).
     """
-    prof = excel_mapping.load_profile(load_settings().active_profile)
+    prof = excel_mapping.load_profile(name or load_settings().active_profile)
     if prof and prof.get("mode") == "new":
         try:
             return excel_template.writer_profile(prof, create, visit_date)
@@ -248,6 +248,9 @@ def _startup() -> None:
     if n:
         db().log_event(f"{n} فایل نیمه‌کاره پس از بسته‌شدن برنامه به صف برگشت.", "warning")
     pipeline.set_excel_candidates_provider(_excel_candidates)
+    n = db().bind_unassigned(load_settings().active_profile)  # ویس‌های نسخه‌های قبل: به فایلی که تا الان فعال بود
+    if n:
+        log.info("%s ویس قبلی به فایل «%s» وصل شد.", n, load_settings().active_profile)
     from .extractor import EXTRACTOR_VERSION
     if db().get_meta("extractor_version") != EXTRACTOR_VERSION:
         try:
@@ -278,7 +281,7 @@ def inbox_poll_once(box: Inbox) -> int:
         try:
             visit = format_jalali(from_gregorian(datetime.fromtimestamp(f.stat().st_mtime).date()))
             with open(f, "rb") as fh:
-                added += _register_file(fh, f.name, batch, visit, True)["result"] == "added"
+                added += _register_file(fh, f.name, batch, visit, True, s.active_profile)["result"] == "added"
         except OSError:
             log.exception("inbox file failed: %s", f)
     if added:
@@ -353,6 +356,7 @@ def status():
         "progress": progress,
         "model": {"name": s.model_name, "available": model_available(s.model_name)},
         "version": __version__,
+        "edition": EDITION,
         "today": format_jalali(today_jalali()),
         "pending_replace": d.one("SELECT COUNT(*) n FROM exports WHERE status='created' AND replaced_original_at IS NULL")["n"],
         "setup": _setup_state(),
@@ -416,7 +420,7 @@ def _license_out() -> dict:
     st = licensing.status()
     exp = st.get("expires")
     return {**st, "expires_jalali": format_jalali(from_gregorian(datetime.fromisoformat(exp).date())) if exp else None,
-            "contact": licensing.contact(), "version": __version__}
+            "contact": licensing.contact(), "version": f"{__version__}-{EDITION}" if EDITION else __version__}
 
 
 @app.get("/api/license")
@@ -441,7 +445,8 @@ def license_install(body: LicenseIn):
 
 
 # ---------- فایل‌های صوتی ----------
-def _register_file(src_stream, original_name: str, batch_id: int, visit_date: str, use_filename_date: bool) -> dict:
+def _register_file(src_stream, original_name: str, batch_id: int, visit_date: str, use_filename_date: bool,
+                   dest: str) -> dict:
     uploads = DATA_DIR / "uploads"
     ext = Path(original_name).suffix.lower()
     tmp = uploads / f".incoming_{uuid.uuid4().hex}{ext}"
@@ -476,7 +481,7 @@ def _register_file(src_stream, original_name: str, batch_id: int, visit_date: st
         fd = date_from_filename(original_name)
         if fd:
             vd, source = format_jalali(fd), "filename"
-    aid = db().add_audio(batch_id, original_name, stored, sha, size, vd, source)
+    aid = db().add_audio(batch_id, original_name, stored, sha, size, vd, source, dest)
     return {"name": original_name, "result": "added", "id": aid, "visit_date": vd, "date_source": source}
 
 
@@ -487,9 +492,19 @@ def _check_visit_date(visit_date: str) -> str:
     return format_jalali(d)
 
 
-async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: str, use_filename_date: bool) -> list[dict]:
+def _check_dest(dest: str) -> str:
+    """نام فایل اکسلی که ویس‌ها به آن اضافه می‌شوند؛ خالی = فایل ویس‌های خودکار (پوشه ورودی و گوشی)."""
+    dest = (dest or "").strip() or load_settings().active_profile
+    if not excel_mapping.load_profile(dest) and dest != excel_mapping.COMPANY:
+        err(404, "این فایل اکسل در فهرست فایل‌ها نیست.")
+    return dest
+
+
+async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: str, use_filename_date: bool,
+                         dest: str = "") -> list[dict]:
     """ذخیره فایل‌های آپلودی (رایانه یا گوشی) و افزودن به صف؛ مدل هم از همین حالا آماده می‌شود."""
     vd = _check_visit_date(visit_date or format_jalali(today_jalali()))
+    dest = _check_dest(dest)
     batch = db().create_batch(batch_name, vd)
     results = []
     for f in files:
@@ -498,7 +513,7 @@ async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: s
             results.append({"name": name, "result": "error", "message": "قالب این فایل پشتیبانی نمی‌شود."})
             continue
         try:
-            results.append(_register_file(f.file, name, batch, vd, use_filename_date))
+            results.append(_register_file(f.file, name, batch, vd, use_filename_date, dest))
         except Exception as e:
             results.append({"name": name, "result": "error", "message": f"ذخیره فایل ناموفق بود: {e}"})
         finally:
@@ -509,8 +524,9 @@ async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: s
 
 
 @app.post("/api/upload")
-async def upload(files: list[UploadFile] = File(...), visit_date: str = Form(""), use_filename_date: bool = Form(True)):
-    return {"results": await _store_uploads(files, f"آپلود {datetime.now():%H:%M}", visit_date, use_filename_date)}
+async def upload(files: list[UploadFile] = File(...), visit_date: str = Form(""), use_filename_date: bool = Form(True),
+                 dest: str = Form("")):
+    return {"results": await _store_uploads(files, f"آپلود {datetime.now():%H:%M}", visit_date, use_filename_date, dest)}
 
 
 # ---------- آپلود از گوشی (شبکه محلی) ----------
@@ -637,6 +653,7 @@ class FolderImport(BaseModel):
     visit_date: str = ""
     use_filename_date: bool = True
     recursive: bool = False
+    dest: str = ""
 
 
 @app.post("/api/import-folder")
@@ -645,6 +662,7 @@ def import_folder(body: FolderImport):
     if not folder.is_dir():
         err(400, "پوشه پیدا نشد.")
     vd = _check_visit_date(body.visit_date or format_jalali(today_jalali()))
+    dest = _check_dest(body.dest)
     it = folder.rglob("*") if body.recursive else folder.iterdir()
     files = sorted(p for p in it if p.is_file() and is_supported(p.name))
     if not files:
@@ -654,7 +672,7 @@ def import_folder(body: FolderImport):
     for p in files:
         try:
             with open(p, "rb") as fh:
-                results.append(_register_file(fh, p.name, batch, vd, body.use_filename_date))
+                results.append(_register_file(fh, p.name, batch, vd, body.use_filename_date, dest))
         except OSError as e:
             results.append({"name": p.name, "result": "error", "message": f"خواندن فایل ناموفق بود: {e.strerror}"})
     if any(r["result"] == "added" for r in results) and model_available(load_settings().model_name):
@@ -663,23 +681,23 @@ def import_folder(body: FolderImport):
 
 
 @app.post("/api/samples/import")
-def import_samples():
+def import_samples(dest: str = ""):
     """افزودن ویس‌های نمونه (گفتار مصنوعی با اطلاعات ساختگی) برای امتحان برنامه."""
     voices, _ = _sample_files()
     if not voices:
         err(404, "ویس نمونه‌ای همراه برنامه نیست.")
-    return import_folder(FolderImport(path=str(SAMPLES_DIR), visit_date="", use_filename_date=False))
+    return import_folder(FolderImport(path=str(SAMPLES_DIR), visit_date="", use_filename_date=False, dest=dest))
 
 
 @app.get("/api/files")
-def list_files():
+def list_files(dest: str = ""):
     rows = db().q(
         """SELECT a.id, a.original_name, a.size, a.duration, a.visit_date, a.date_source, a.status, a.error,
-                  a.attempts, a.model, a.processing_seconds, a.peak_rss_mb, a.audio_deleted, a.created_at,
+                  a.attempts, a.model, a.processing_seconds, a.peak_rss_mb, a.audio_deleted, a.created_at, a.dest,
                   (SELECT COUNT(*) FROM records r WHERE r.audio_id=a.id) AS records,
                   (SELECT COUNT(*) FROM records r WHERE r.audio_id=a.id AND r.review_state='pending') AS pending,
                   (SELECT COUNT(*) FROM records r WHERE r.audio_id=a.id AND r.exported_at IS NOT NULL) AS exported
-           FROM audio_files a ORDER BY a.id DESC""")
+           FROM audio_files a WHERE ?='' OR a.dest=? ORDER BY a.id DESC""", (dest, dest))
     return {"files": rows}
 
 
@@ -702,7 +720,7 @@ def delete_file(fid: int):
     if f["status"] == "processing":
         err(409, "این فایل در حال پردازش است.")
     if db().one("SELECT COUNT(*) n FROM records WHERE audio_id=? AND exported_at IS NOT NULL", (fid,))["n"]:
-        err(409, "رکوردهای این فایل در اکسل ثبت شده‌اند و حذف آن مجاز نیست.")
+        err(409, "ردیف‌های این ویس در اکسل ثبت شده‌اند و حذف آن مجاز نیست.")
     with db().tx() as c:
         c.execute("DELETE FROM records WHERE audio_id=?", (fid,))
         c.execute("DELETE FROM transcripts WHERE audio_id=?", (fid,))
@@ -712,13 +730,28 @@ def delete_file(fid: int):
     return {"ok": True}
 
 
+class FileMove(BaseModel):
+    dest: str
+
+
+@app.patch("/api/files/{fid}")
+def move_file(fid: int, body: FileMove):
+    """انتقال ویس (و ردیف‌های ثبت‌نشده‌اش) به فایل اکسل دیگر."""
+    _get_file(fid)
+    dest = _check_dest(body.dest)
+    if db().one("SELECT COUNT(*) n FROM records WHERE audio_id=? AND exported_at IS NOT NULL", (fid,))["n"]:
+        err(409, "ردیف‌های این ویس در اکسل ثبت شده‌اند؛ برای انتقال، اول آن ثبت را برگردانید.")
+    db().set_audio(fid, dest=dest)
+    return {"ok": True, "dest": dest}
+
+
 @app.post("/api/files/{fid}/retry")
 def retry_file(fid: int):
     f = _get_file(fid)
     if f["status"] == "processing":
         err(409, "این فایل در حال پردازش است.")
     if f["status"] == "done" and _protected_records(fid):
-        err(409, "رکوردهای این فایل اصلاح، تأیید یا ثبت شده‌اند؛ پردازش دوباره آن‌ها را بازنویسی نمی‌کند. "
+        err(409, "ردیف‌های این ویس اصلاح، تأیید یا ثبت شده‌اند؛ پردازش دوباره آن‌ها را بازنویسی نمی‌کند. "
                  "در صورت نیاز، رکوردها را در بخش بازبینی اصلاح کنید.")
     if f["audio_deleted"]:
         err(409, "فایل صوتی این مورد پاک شده است.")
@@ -792,19 +825,22 @@ _FILTERS = {
 
 
 @app.get("/api/records")
-def list_records(filter: str = "review", audio_id: int | None = None):
+def list_records(filter: str = "review", audio_id: int | None = None, dest: str = ""):
     where = _FILTERS.get(filter, "1=1")
     args: tuple = ()
     if audio_id:
         where += " AND r.audio_id=?"
         args = (audio_id,)
+    if dest:
+        where += " AND a.dest=?"
+        args = (*args, dest)
     return {"records": [_record_out(r) for r in db().list_records(where, args)]}
 
 
 def _get_record(rid: int) -> dict:
     r = db().list_records("r.id=?", (rid,))
     if not r:
-        err(404, "رکورد پیدا نشد.")
+        err(404, "ردیف پیدا نشد.")
     return r[0]
 
 
@@ -827,7 +863,7 @@ class RecordPatch(BaseModel):
 def patch_record(rid: int, body: RecordPatch):
     r = _get_record(rid)
     if r["exported_at"]:
-        err(409, "این رکورد در اکسل ثبت شده است؛ برای ویرایش ابتدا ثبت آن را بازگردانید.")
+        err(409, "این ردیف در اکسل ثبت شده است؛ برای ویرایش، اول آن ثبت را از «تاریخچه ثبت‌ها» برگردانید.")
     values = dict(r["values"])
     changed = False
     for k, v in body.values.items():
@@ -858,7 +894,7 @@ class RecordAction(BaseModel):
 def record_action(rid: int, body: RecordAction):
     r = _get_record(rid)
     if r["exported_at"]:
-        err(409, "این رکورد در اکسل ثبت شده است.")
+        err(409, "این ردیف در اکسل ثبت شده است.")
     if body.action == "approve":
         if body.add_to_dictionary:
             _add_values_to_dictionary(r["values"], "تأیید رکورد")
@@ -917,7 +953,7 @@ class AcceptSuggestion(BaseModel):
 def accept_suggestion(rid: int, body: AcceptSuggestion):
     r = _get_record(rid)
     if r["exported_at"]:
-        err(409, "این رکورد در اکسل ثبت شده است.")
+        err(409, "این ردیف در اکسل ثبت شده است.")
     values = dict(r["values"])
     db().log_edit(rid, body.field, values.get(body.field, ""), body.value, "accept")
     if not _is_map_revert(r, body.field, body.value):
@@ -960,7 +996,7 @@ def undo_last(rid: int):
     """بازگشت آخرین تغییرِ بازنگشته این رکورد (اصلاح فیلد، پذیرش پیشنهاد، تأیید، رد یا تصمیم تکرار)."""
     r = _get_record(rid)
     if r["exported_at"]:
-        err(409, "این رکورد در اکسل ثبت شده است؛ ابتدا آن خروجی را بازگردانید.")
+        err(409, "این ردیف در اکسل ثبت شده است؛ اول آن ثبت را از «تاریخچه ثبت‌ها» برگردانید.")
     e = db().one(f"SELECT * FROM record_edits WHERE record_id=? AND undone=0 AND action IN ({','.join('?' * len(_UNDOABLE))}) "
                  "ORDER BY id DESC LIMIT 1", (rid, *_UNDOABLE))
     if not e:
@@ -1149,14 +1185,14 @@ async def dictionary_import(file: UploadFile = File(...), password: str = Form("
 
 
 @app.post("/api/dictionary/seed-from-excel")
-def dict_seed():
-    """یادگیری از فایل اکسل شرکتِ نگاشت‌شده (همان «آموزش از اکسل» با ستون‌های نگاشت)."""
-    prof = excel_mapping.load_profile(excel_mapping.COMPANY)
-    if not prof:
-        err(400, "ابتدا در بخش «خروجی اکسل» فایل شرکت و نگاشت ستون‌ها را مشخص کنید.")
+def dict_seed(name: str = ""):
+    """یادگیری از یک فایل اکسل موجود فهرست (همان «آموزش از اکسل» با ستون‌های تأییدشده آن)."""
+    prof = excel_mapping.load_profile(name or excel_mapping.COMPANY)
+    if not prof or prof.get("mode") == "new":
+        err(400, "اول از «فایل‌های من» فایل اکسل را اضافه و ستون‌هایش را تأیید کنید.")
     roles = {c: _PROFILE_ROLES[f] for c, f in prof["columns"].items() if f in _PROFILE_ROLES}
     if not roles:
-        err(400, "ستون نام یا آدرس در نگاشت مشخص نشده است.")
+        err(400, "در ستون‌های این فایل، ستون نام یا آدرس مشخص نشده است.")
     p = Path(prof["excel_path"])
     if not p.exists():
         err(404, "فایل اکسل شرکت پیدا نشد.")
@@ -1293,33 +1329,71 @@ class PathIn(BaseModel):
     path: str
 
 
+class InspectIn(BaseModel):
+    path: str
+    name: str = ""  # فایلی از فهرست که فایل اکسلش عوض می‌شود؛ خالی = فایل تازه در فهرست
+
+
+def _append_profiles() -> list[dict]:
+    return [p for n in excel_mapping.list_profiles() if (p := excel_mapping.load_profile(n)) and p.get("mode") != "new"]
+
+
+def _same_path(a: str, b: str) -> bool:
+    try:
+        return bool(a and b) and Path(a).resolve() == Path(b).resolve()
+    except OSError:
+        return False
+
+
+def _name_for_file(path: Path) -> str:
+    """نام فایل در فهرست برای یک فایل اکسل موجود: همان قبلی اگر این فایل در فهرست هست، وگرنه نام تازه."""
+    for prof in _append_profiles():
+        if _same_path(prof.get("excel_path", ""), str(path)):
+            return prof["name"]
+    if not excel_mapping.load_profile(excel_mapping.COMPANY):
+        return excel_mapping.COMPANY
+    return "f_" + uuid.uuid4().hex[:8]
+
+
 @app.post("/api/excel/inspect")
-def excel_inspect(body: PathIn):
+def excel_inspect(body: InspectIn):
     p = Path(body.path.strip().strip('"'))
-    rep = inspect_workbook(p)
-    if not rep.get("exists"):
+    if not body.path.strip() or not p.is_file():
         err(404, "فایل پیدا نشد.")
-    prof = excel_mapping.load_profile(excel_mapping.COMPANY)
-    if prof and Path(prof.get("excel_path", "")) == p:
+    rep = inspect_workbook(p)
+    name = body.name.strip() or _name_for_file(p)
+    prof = excel_mapping.load_profile(name)
+    if prof and prof.get("mode") != "new" and _same_path(prof.get("excel_path", ""), str(p)):
         suggested = prof
     else:
         sheets = rep.get("sheets", [])
         main = max(sheets, key=lambda s: s["data_rows"]) if sheets else None
-        suggested = excel_mapping.new_profile(excel_mapping.COMPANY, str(p), main["name"], main["header_row"],
+        suggested = excel_mapping.new_profile(name, str(p), main["name"], main["header_row"],
                                               main["headers"]) if main else None
     return {"report": rep, "profile": suggested}
 
 
 @app.get("/api/excel/profile")
-def excel_profile():
-    return {"profile": excel_mapping.load_profile(excel_mapping.COMPANY)}
+def excel_profile(name: str = ""):
+    prof = excel_mapping.load_profile(name or excel_mapping.COMPANY)
+    return {"profile": prof if prof and prof.get("mode") != "new" else None}
+
+
+_APPEND_NAME = re.compile(r"f_[0-9a-f]{8}")
 
 
 @app.put("/api/excel/profile")
 def excel_profile_save(profile: dict):
+    name = str(profile.get("name") or excel_mapping.COMPANY)
+    existing = excel_mapping.load_profile(name)
+    if (existing and existing.get("mode") == "new") or (
+            not existing and name != excel_mapping.COMPANY and not _APPEND_NAME.fullmatch(name)):
+        err(400, "این فایل در فهرست فایل‌ها نیست.")
     p = Path(profile.get("excel_path", ""))
     if not p.exists():
-        err(400, "فایل اکسل این نگاشت پیدا نشد.")
+        err(400, "فایل اکسل پیدا نشد.")
+    if any(o["name"] != name and _same_path(o.get("excel_path", ""), str(p)) for o in _append_profiles()):
+        err(409, f"«{p.name}» قبلاً در فهرست فایل‌ها هست؛ همان را باز کنید.")
     rep = inspect_workbook(p)
     sheet = next((s for s in rep.get("sheets", []) if s["name"] == profile.get("sheet")), None)
     if not sheet:
@@ -1336,11 +1410,11 @@ def excel_profile_save(profile: dict):
     fields_allowed = {k for k, _, _ in FIELD_DEFS} | set(COMPUTED_FIELDS) | {"followup"}
     columns = {c: f for c, f in (profile.get("columns") or {}).items() if f in fields_allowed and c in headers}
     if not columns:
-        err(400, "دست‌کم یک ستون باید به یک فیلد نگاشت شود.")
+        err(400, "دست‌کم یک ستون باید اطلاعاتی بگیرد.")
     if len(set(columns.values())) != len(columns):
-        err(400, "یک فیلد به بیش از یک ستون نگاشت شده است.")
+        err(400, "یک اطلاعات به بیش از یک ستون داده شده است.")
     clean = {
-        "name": excel_mapping.COMPANY,
+        "name": name,
         "excel_path": str(p),
         "sheet": sheet["name"],
         "header_row": hr,
@@ -1359,25 +1433,34 @@ def excel_profile_save(profile: dict):
         rows = read_rows(p, sheet["name"], hr, style_cols, raw=True) if style_cols else []
         samples = [r.get(f, "") for r in rows for f in style_cols.values()]
         clean["policy"]["text_style"] = infer_style(samples)
+    first = not excel_mapping.load_profile(load_settings().active_profile)
     excel_mapping.save_profile(clean)
-    save_settings({"last_excel_path": str(p)})
+    # اولین فایل فهرست، فایل ویس‌های خودکار (پوشه ورودی و گوشی) هم می‌شود
+    save_settings({"last_excel_path": str(p), **({"active_profile": name} if first else {})})
     _excel_cache["key"] = None
+    _rows_cache.clear()
     return {"profile": clean}
 
 
-def _approved_records() -> list[dict]:
-    rows = db().list_records("r.review_state='approved' AND r.exported_at IS NULL")
+def _approved_records(dest: str) -> list[dict]:
+    rows = db().list_records("r.review_state='approved' AND r.exported_at IS NULL AND a.dest=?", (dest,))
     for r in rows:
         t = db().one("SELECT processed_text FROM transcripts WHERE audio_id=?", (r["audio_id"],))
         r["transcript"] = (t or {}).get("processed_text", "")
     return rows
 
 
+class DestIn(BaseModel):
+    dest: str = ""
+
+
 @app.post("/api/excel/preview")
-def excel_preview():
-    prof = _confirmed_profile()
-    recs = _approved_records()
-    pending = db().one("SELECT COUNT(*) n FROM records WHERE review_state='pending' AND exported_at IS NULL")["n"]
+def excel_preview(body: DestIn | None = None):
+    dest = _check_dest(body.dest if body else "")
+    prof = _confirmed_profile(dest)
+    recs = _approved_records(dest)
+    pending = db().one("""SELECT COUNT(*) n FROM records r JOIN audio_files a ON a.id=r.audio_id
+                          WHERE r.review_state='pending' AND r.exported_at IS NULL AND a.dest=?""", (dest,))["n"]
     if not recs:
         return {"rows": [], "pending": pending, "profile": prof, "lock": lock_status(Path(prof["excel_path"]))}
     try:
@@ -1393,22 +1476,23 @@ def excel_preview():
 
 class ExportIn(BaseModel):
     record_ids: list[int] | None = None
+    dest: str = ""
 
 
 _export_lock = threading.Lock()
 
 
-def _confirmed_profile() -> dict:
-    prof = _write_profile(create=True)
+def _confirmed_profile(dest: str) -> dict:
+    prof = _write_profile(create=True, name=dest)
     if not prof or not prof.get("confirmed"):
-        err(400, "هنوز مقصد ثبت آماده نیست؛ در «خروجی اکسل» فایل مقصد و ستون‌هایش را مشخص و ذخیره کنید.")
+        err(400, "ستون‌های این فایل هنوز تأیید نشده‌اند؛ از «تنظیمات فایل» تأییدشان کنید.")
     return prof
 
 
-def _export(prof: dict, record_ids: list[int] | None = None) -> dict:
+def _export(prof: dict, dest: str, record_ids: list[int] | None = None) -> dict:
     """ساخت خروجی (روی کپی) و ثبت آن؛ باید زیر _export_lock صدا زده شود."""
     import json
-    recs = _approved_records()
+    recs = _approved_records(dest)
     if record_ids:
         recs = [r for r in recs if r["id"] in set(record_ids)]
     try:
@@ -1434,9 +1518,10 @@ def _export(prof: dict, record_ids: list[int] | None = None) -> dict:
 
 @app.post("/api/excel/export")
 def excel_export(body: ExportIn):
-    prof = _confirmed_profile()
+    dest = _check_dest(body.dest)
+    prof = _confirmed_profile(dest)
     with _export_lock:
-        return _export(prof, body.record_ids)
+        return _export(prof, dest, body.record_ids)
 
 
 @app.post("/api/excel/commit")
@@ -1444,25 +1529,35 @@ def excel_commit(body: ExportIn):
     """ثبت یک‌مرحله‌ای: نوشتن روی کپی، بررسی، و جایگزینی فایل اصلی (با پشتیبانی که پیش از نوشتن گرفته شده).
 
     اگر جایگزینی ممکن نباشد (مثلاً فایل در Excel باز شد)، خروجی ساخته‌شده می‌ماند و بعداً قابل اعمال است.
+    با گزینه «اول در کپی» (review_copy_first) فایل اصلی دست نمی‌خورد تا کاربر کپی را ببیند و از تاریخچه اعمالش کند.
     """
-    tpl = excel_mapping.load_profile(load_settings().active_profile)
-    recs = [r for r in _approved_records() if not body.record_ids or r["id"] in set(body.record_ids)]
+    copy_first = load_settings().review_copy_first
+    dest = _check_dest(body.dest)
+    tpl = excel_mapping.load_profile(dest)
+    recs = [r for r in _approved_records(dest) if not body.record_ids or r["id"] in set(body.record_ids)]
     if not recs:
-        err(400, "هیچ رکورد تأییدشده‌ای برای ثبت وجود ندارد.")
+        err(400, "ردیف تأییدشده‌ای برای ثبت نیست.")
     # قالبی که فایل یا شیت هر روز/ماه را جدا می‌کند، چند مقصد دارد؛ هر مقصد ثبت (و پشتیبان) جداگانه دارد
     groups = excel_template.group_records(tpl, recs) if tpl and tpl.get("mode") == "new" else [(None, recs)]
-    targets = [(_write_profile(create=True, visit_date=vd) if vd is not None else _confirmed_profile(), grp)
+    targets = [(_write_profile(create=True, visit_date=vd, name=dest) if vd is not None else _confirmed_profile(dest), grp)
                for vd, grp in groups]
     for prof, _ in targets:
         if not prof or not prof.get("confirmed"):
-            err(400, "هنوز مقصد ثبت آماده نیست؛ در «خروجی اکسل» فایل مقصد و ستون‌هایش را مشخص و ذخیره کنید.")
+            err(400, "ستون‌های این فایل هنوز تأیید نشده‌اند؛ از «تنظیمات فایل» تأییدشان کنید.")
         lock = lock_status(Path(prof["excel_path"]))
-        if lock["write_blocked"] or lock["owner_file"]:
+        if not copy_first and (lock["write_blocked"] or lock["owner_file"]):
             err(409, lock["message"] or "فایل اکسل باز است؛ آن را ببندید و دوباره تلاش کنید.")
     done: list[dict] = []
+    _rows_cache.clear()
     with _export_lock:
         for prof, grp in targets:
-            rep = _export(prof, [r["id"] for r in grp])
+            rep = _export(prof, dest, [r["id"] for r in grp])
+            if copy_first:
+                rep["applied"], rep["copy_only"] = False, True
+                rep["message"] = (f"ردیف‌ها در یک کپی از «{Path(rep['target_path']).name}» نوشته شدند و فایل اصلی دست نخورد. "
+                                  "کپی را ببینید و اگر درست بود، از «تاریخچه ثبت‌ها» «اعمال روی فایل اصلی» را بزنید.")
+                done.append(rep)
+                continue
             try:
                 replace_original(rep["output_path"], rep["target_path"], rep["target_sha"], backup_path=rep["backup_path"])
             except ExcelWriteError as e:
@@ -1474,7 +1569,8 @@ def excel_commit(body: ExportIn):
                 rep["applied"] = True
             done.append(rep)
     first = done[0]
-    return {**first, "applied": all(r["applied"] for r in done), "message": " ".join(r.get("message", "") for r in done).strip(),
+    return {**first, "applied": all(r["applied"] for r in done), "copy_only": copy_first,
+            "message": " ".join(r.get("message", "") for r in done if not copy_first or r is first).strip(),
             "rows": [x for r in done for x in r["rows"]], "export_ids": [r["export_id"] for r in done],
             "files": sorted({Path(r["target_path"]).name for r in done})}
 
@@ -1530,7 +1626,7 @@ def templates_list():
 def template_get(name: str):
     prof = excel_mapping.load_profile(name)
     if not prof:
-        err(404, "قالب پیدا نشد.")
+        err(404, "این فایل در فهرست نیست.")
     return {"template": prof, "target": str(excel_template.target_path(prof)) if prof.get("mode") == "new" else prof.get("excel_path", "")}
 
 
@@ -1542,19 +1638,27 @@ class TemplateNew(BaseModel):
 def template_create(body: TemplateNew):
     title = body.title.strip()[:60]
     if not title:
-        err(400, "نام قالب را بنویسید.")
+        err(400, "نام فایل را بنویسید.")
     name = "t_" + uuid.uuid4().hex[:8]
     folder = Path.home() / "Documents"
     tpl = excel_template.new_template(name, title, str(folder if folder.is_dir() else Path.home()))
-    excel_mapping.save_profile(tpl)
+    _save_new_dest(tpl)
     return {"name": name}
+
+
+def _save_new_dest(tpl: dict) -> None:
+    """اولین فایل فهرست، فایل ویس‌های خودکار (پوشه ورودی و گوشی) هم می‌شود."""
+    first = not excel_mapping.load_profile(load_settings().active_profile)
+    excel_mapping.save_profile(tpl)
+    if first:
+        save_settings({"active_profile": tpl["name"]})
 
 
 @app.put("/api/templates/{name}")
 def template_save(name: str, body: dict):
     prof = excel_mapping.load_profile(name)
     if not prof:
-        err(404, "قالب پیدا نشد.")
+        err(404, "این فایل در فهرست نیست.")
     if prof.get("mode") != "new":
         # فایل شرکت: فقط قالب مقادیر؛ ستون‌ها و ظاهر فایل موجود دست نمی‌خورد
         prof["policy"] = {**prof.get("policy", {}), **{k: v for k, v in (body.get("policy") or {}).items()
@@ -1565,7 +1669,7 @@ def template_save(name: str, body: dict):
         return {"template": prof}
     tpl = _clean_template({**body, "name": name})
     if not Path(tpl["output"]["folder"]).is_dir():
-        err(400, "پوشه خروجی پیدا نشد.")
+        err(400, "پوشه فایل پیدا نشد.")
     tpl["policy"] = {k: v for k, v in (tpl.get("policy") or {}).items() if k in excel_mapping.VALUE_FORMAT_KEYS}
     warning = ""
     target = excel_template.target_path(tpl)
@@ -1609,7 +1713,7 @@ async def template_from_file(file: UploadFile = File(...)):
 def template_export(name: str):
     prof = excel_mapping.load_profile(name)
     if not prof or prof.get("mode") != "new":
-        err(404, "فقط قالب‌های «فایل جدید» قابل انتقال‌اند.")
+        err(404, "فقط تنظیمات «فایل تازه» به رایانه دیگر منتقل می‌شود.")
     import json
     data = json.dumps(excel_template.to_export(prof), ensure_ascii=False, indent=1).encode("utf-8")
     return StreamingResponse(io.BytesIO(data), media_type="application/json",
@@ -1622,31 +1726,304 @@ async def template_import(file: UploadFile = File(...)):
     try:
         data = json.loads((await _read_upload(file, 1024 * 1024)).decode("utf-8"))
     except (ValueError, UnicodeDecodeError):
-        err(400, "این فایل، قالب «DataVox» نیست.")
+        err(400, "این فایل، تنظیمات فایل «DataVox» نیست.")
     name = "t_" + uuid.uuid4().hex[:8]
     folder = Path.home() / "Documents"
     try:
         tpl = excel_template.from_export(data, name, str(folder if folder.is_dir() else Path.home()))
     except ValueError as e:
         err(400, str(e))
-    excel_mapping.save_profile(tpl)
+    _save_new_dest(tpl)
     return {"name": name}
 
 
 @app.delete("/api/templates/{name}")
 def template_delete(name: str):
-    if name == excel_mapping.COMPANY:
-        err(400, "قالب فایل شرکت حذف نمی‌شود.")
+    if not excel_mapping.load_profile(name):
+        err(404, "این فایل در فهرست نیست.")
     if name == load_settings().active_profile:
-        err(400, "قالب فعال حذف نمی‌شود؛ اول قالب دیگری را فعال کنید.")
+        err(400, "ویس‌های گوشی و پوشه ورودی به این فایل می‌آیند؛ اول فایل دیگری را برای آن‌ها انتخاب کنید.")
+    busy = db().one("""SELECT COUNT(*) n FROM audio_files a WHERE a.dest=? AND (a.status IN ('queued','processing')
+                       OR EXISTS(SELECT 1 FROM records r WHERE r.audio_id=a.id AND r.exported_at IS NULL
+                                 AND r.review_state!='rejected'))""", (name,))["n"]
+    if busy:
+        err(409, f"{busy} ویس این فایل هنوز ثبت نشده است؛ اول آن‌ها را ثبت، رد یا به فایل دیگری منتقل کنید.")
     excel_mapping.delete_profile(name)
     return {"ok": True}
+
+
+_rows_cache: dict = {}
+
+
+def _file_rows(prof: dict) -> dict | None:
+    """تعداد ردیف‌های داده و آخرین ردیف فایل (با حافظه تا وقتی فایل تغییر نکرده)."""
+    try:
+        wp = excel_template.writer_profile(prof, create=False) if prof.get("mode") == "new" else prof
+        path = Path(wp.get("excel_path") or "")
+        if not path.is_file():
+            return {"rows": 0, "last_row": 0, "exists": False}
+        key = (str(path), path.stat().st_mtime, wp.get("sheet"), wp.get("header_row"), tuple(wp.get("headers") or {}))
+        if key not in _rows_cache:
+            from .excel_reader import data_summary
+            _rows_cache[key] = {**data_summary(path, wp["sheet"], int(wp.get("header_row") or 1), list(wp.get("headers") or {})),
+                                "exists": True}
+        return _rows_cache[key]
+    except Exception:
+        log.exception("reading row count failed")
+        return None
+
+
+_STAT_KEYS = ("voices", "converting", "failed", "no_rows", "review", "ready", "written", "rejected")
+
+
+def _dest_stats() -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for r in db().q("""SELECT a.dest d, COUNT(*) voices, SUM(a.status IN ('queued','processing')) converting,
+                              SUM(a.status='failed') failed,
+                              SUM(a.status='done' AND NOT EXISTS(SELECT 1 FROM records r WHERE r.audio_id=a.id)) no_rows
+                       FROM audio_files a GROUP BY a.dest"""):
+        out[r["d"] or ""] = {k: r[k] or 0 for k in ("voices", "converting", "failed", "no_rows")}
+    for r in db().q("""SELECT a.dest d, CASE WHEN r.exported_at IS NOT NULL THEN 'written'
+                              WHEN r.review_state='rejected' THEN 'rejected' WHEN r.review_state='approved' THEN 'ready'
+                              ELSE 'review' END k, COUNT(*) n
+                       FROM records r JOIN audio_files a ON a.id=r.audio_id GROUP BY d, k"""):
+        out.setdefault(r["d"] or "", {})[r["k"]] = r["n"]
+    return {d: {k: v.get(k, 0) for k in _STAT_KEYS} for d, v in out.items()}
+
+
+def _dest_info(name: str, prof: dict, active: str, stats: dict) -> dict:
+    new = prof.get("mode") == "new"
+    path = str(excel_template.target_path(prof)) if new else prof.get("excel_path", "")
+    folder_ok = Path(path).parent.is_dir() if path else False
+    last = db().one("""SELECT created_at, rows_written, first_row, last_row, status FROM exports
+                       WHERE profile=? AND status!='undone' ORDER BY id DESC LIMIT 1""", (name,))
+    return {"name": name, "mode": prof.get("mode", "append"), "title": prof.get("title") or Path(path).name,
+            "file": Path(path).name, "path": path, "split": (prof.get("output") or {}).get("split", "none"),
+            "confirmed": bool(prof.get("confirmed")), "configured": bool(prof.get("confirmed")) and folder_ok
+            and (new or Path(path).is_file()), "missing": not new and bool(path) and not Path(path).is_file(),
+            "auto": name == active, "file_rows": _file_rows(prof), "last_commit": last,
+            "pending_apply": db().one("SELECT COUNT(*) n FROM exports WHERE profile=? AND status='created'", (name,))["n"],
+            **stats.get(name, dict.fromkeys(_STAT_KEYS, 0))}
+
+
+@app.get("/api/dests")
+def dests_list():
+    """فایل‌های اکسل فهرست، هرکدام با وضعیت ویس‌ها و ردیف‌هایش. orphans: ویس‌هایی که فایلشان در فهرست نیست."""
+    active = load_settings().active_profile
+    stats = _dest_stats()
+    names = [n for n in excel_mapping.list_profiles() if excel_mapping.load_profile(n)]
+    items = [_dest_info(n, excel_mapping.load_profile(n), active, stats) for n in names]
+    orphans = [{"dest": d, **v} for d, v in stats.items() if d not in names and (v["converting"] or v["review"] or v["ready"]
+                                                                               or v["failed"] or v["no_rows"])]
+    return {"dests": items, "active": active, "orphans": orphans}
+
+
+@app.get("/api/dests/{name}")
+def dest_get(name: str):
+    prof = excel_mapping.load_profile(name)
+    if not prof:
+        err(404, "این فایل در فهرست نیست.")
+    return _dest_info(name, prof, load_settings().active_profile, _dest_stats())
+
+
+def _voice_stage(f: dict, recs: list[dict]) -> str:
+    """سرنوشت یک ویس: در حال تبدیل، ناموفق، بدون ردیف، نیاز به بررسی، آماده ثبت، ثبت‌شده یا ردشده."""
+    if f["status"] in ("queued", "processing"):
+        return f["status"]
+    if f["status"] == "failed":
+        return "failed"
+    if not recs:
+        return "no_rows"
+    open_recs = [r for r in recs if not r["exported_at"]]
+    if any(r["review_state"] == "pending" for r in open_recs):
+        return "review"
+    if any(r["review_state"] == "approved" for r in open_recs):
+        return "ready"
+    if any(r["exported_at"] for r in recs):
+        return "written"
+    return "rejected"
+
+
+@app.get("/api/dests/{name}/voices")
+def dest_voices(name: str):
+    """ویس‌های یک فایل، هر ویس با سرنوشتش و ردیف‌هایی که از آن ساخته یا در اکسل ثبت شده است."""
+    import json
+    files = db().q("""SELECT a.id, a.original_name, a.visit_date, a.date_source, a.status, a.error, a.duration,
+                             a.audio_deleted, a.created_at FROM audio_files a WHERE a.dest=? ORDER BY a.id DESC""", (name,))
+    recs: dict[int, list[dict]] = {}
+    for r in db().q("""SELECT r.id, r.audio_id, r.building_index, r.review_state, r.status, r.exported_at, r.export_row,
+                              r.export_id, r.values_json, e.target_path
+                       FROM records r JOIN audio_files a ON a.id=r.audio_id LEFT JOIN exports e ON e.id=r.export_id
+                       WHERE a.dest=? ORDER BY r.audio_id, r.building_index""", (name,)):
+        v = json.loads(r.pop("values_json") or "{}")
+        r["name"] = v.get("engineer_name", "")
+        r["file"] = Path(r.pop("target_path")).name if r["target_path"] else ""
+        recs.setdefault(r["audio_id"], []).append(r)
+    out = []
+    for f in files:
+        rs = recs.get(f["id"], [])
+        f["records"] = rs
+        f["stage"] = _voice_stage(f, rs)
+        out.append(f)
+    current = worker().state().get("current_id")
+    return {"voices": out, "current_id": current}
+
+
+@app.get("/api/dests/{name}/cells")
+def dest_cells(name: str, filter: str = "review"):
+    """ردیف‌های یک فایل به شکل خود اکسل: ستون‌های فایل به ترتیب واقعی و مقدار هر خانه، همان‌طور که نوشته می‌شود."""
+    from openpyxl.utils import column_index_from_string
+    prof = excel_mapping.load_profile(name)
+    if not prof:
+        err(404, "این فایل در فهرست نیست.")
+    wp = excel_template.writer_profile(prof, create=False) if prof.get("mode") == "new" else prof
+    headers = wp.get("headers") or {}
+    letters = sorted(headers, key=column_index_from_string)
+    prot = set(wp.get("protected") or [])
+    columns = [{"letter": c, "title": str(headers[c] or "").replace("\n", " "), "field": (wp.get("columns") or {}).get(c, ""),
+                "protected": c in prot} for c in letters]
+    recs = db().list_records(_FILTERS.get(filter, "1=1") + " AND a.dest=?", (name,))
+    rows = {}
+    for r in recs:
+        t = db().one("SELECT processed_text FROM transcripts WHERE audio_id=?", (r["audio_id"],))
+        cells = excel_mapping.cell_values(wp, {**r, "transcript": (t or {}).get("processed_text", "")})
+        rows[r["id"]] = {c: cells.get(c, "") for c in letters}
+    info = _file_rows(prof) or {}
+    return {"columns": columns, "rows": rows, "next_row": (info.get("last_row") or wp.get("header_row") or 1) + 1}
+
+
+_check_cache: dict = {}
+
+
+def _sheet_headers(path: Path, sheet: str, header_row: int) -> dict[str, str] | None:
+    """عنوان ستون‌های ردیف عنوان (خواندن سریع، با حافظه تا وقتی فایل تغییر نکرده). None: شیت نیست."""
+    import openpyxl
+    from openpyxl.utils import get_column_letter
+    key = (str(path), path.stat().st_mtime, sheet, header_row)
+    if key not in _check_cache:
+        wb = openpyxl.load_workbook(path, read_only=True)
+        try:
+            if sheet not in wb.sheetnames:
+                _check_cache[key] = None
+            else:
+                row = next(wb[sheet].iter_rows(min_row=header_row, max_row=header_row, values_only=True), ())
+                _check_cache[key] = {get_column_letter(i): str(v) for i, v in enumerate(row, 1) if v not in (None, "")}
+        finally:
+            wb.close()
+    return _check_cache[key]
+
+
+@app.get("/api/dests/{name}/check")
+def dest_check(name: str):
+    """وضعیت فایل پیش از ثبت، با جمله‌های ساده: [{level: ok|warn|block, text, fix}]؛ fix: columns یا file."""
+    from .normalizer import normalize_text
+    prof = excel_mapping.load_profile(name)
+    if not prof:
+        err(404, "این فایل در فهرست نیست.")
+    new = prof.get("mode") == "new"
+    out: list[dict] = []
+    add = lambda level, text, fix=None: out.append({"level": level, "text": text, "fix": fix})  # noqa: E731
+    if not prof.get("confirmed"):
+        add("block", "ستون‌های این فایل هنوز تأیید نشده‌اند.", "columns")
+        return {"items": out, "blocked": True}
+    wp = excel_template.writer_profile(prof, create=False) if new else prof
+    path = Path(wp.get("excel_path") or "")
+    if new and not path.parent.is_dir():
+        add("block", f"پوشه‌ای که فایل باید در آن ساخته شود («{path.parent}») پیدا نشد.", "columns")
+    elif not path.is_file():
+        if new:
+            add("ok", f"«{path.name}» در اولین ثبت با ستون‌های خودش ساخته می‌شود.")
+        else:
+            add("block", f"فایل «{path.name}» در مسیرش پیدا نشد؛ اگر جابه‌جا شده، از «تنظیمات فایل» دوباره انتخابش کنید.", "file")
+    else:
+        lock = lock_status(path)
+        if lock["write_blocked"] or lock["owner_file"]:
+            if load_settings().review_copy_first:
+                add("warn", "فایل در Excel باز است؛ ثبت در کپی انجام می‌شود، ولی برای اعمال روی فایل اصلی باید آن را ببندید.")
+            else:
+                add("block", "فایل در Excel باز است. تغییراتش را ذخیره کنید و Excel را ببندید، بعد «ثبت» را بزنید.")
+        try:
+            heads = _sheet_headers(path, wp["sheet"], int(wp.get("header_row") or 1))
+        except Exception:
+            heads = None
+            add("block", "فایل باز نشد؛ ممکن است خراب یا رمزدار باشد.", "file")
+        else:
+            if heads is None:
+                add("block", f"شیت «{wp['sheet']}» در فایل پیدا نشد؛ ستون‌ها را دوباره تأیید کنید.", "columns")
+            elif not new:
+                changed = [(c, h, heads.get(c, "")) for c, h in (wp.get("headers") or {}).items()
+                           if normalize_text(str(h or "")) != normalize_text(heads.get(c, ""))]
+                if changed:
+                    c, was, now_ = changed[0]
+                    add("block", f"ستون‌های فایل از زمان تأیید عوض شده‌اند (مثلاً ستون {c} قبلاً «{was}» بود و حالا «{now_ or 'خالی'}» است). "
+                                 "ستون‌ها را دوباره تأیید کنید تا ردیف‌ها در ستون اشتباه نوشته نشوند.", "columns")
+                extra = [f"«{h}»" for c, h in heads.items() if c not in (wp.get("headers") or {})]
+                if extra:
+                    add("warn", f"ستون تازه {'، '.join(extra[:3])} به فایل اضافه شده و برنامه چیزی در آن نمی‌نویسد. "
+                                "اگر باید پر شود، ستون‌ها را دوباره تأیید کنید.", "columns")
+        try:
+            key = ("risks", str(path), path.stat().st_mtime)
+            if key not in _check_cache:
+                _check_cache[key] = inspect_workbook(path)["risks"]
+            for r in _check_cache[key]:
+                add("block" if r["level"] == "block" else "warn", r["message"])
+        except Exception:
+            log.exception("inspect for check failed")
+    if not any(x["level"] == "block" for x in out):
+        rows = _file_rows(prof) or {}
+        if path.is_file():
+            from .normalizer import to_persian_digits
+            add("ok", f"فایل آماده ثبت است؛ ردیف‌های تازه زیر آخرین ردیف (ردیف {to_persian_digits(str(rows.get('last_row', '؟')))}) نوشته می‌شوند"
+                      " و پیش از ثبت از فایل پشتیبان گرفته می‌شود.")
+    return {"items": out, "blocked": any(x["level"] == "block" for x in out)}
+
+
+@app.get("/api/files/{fid}/why")
+def file_why(fid: int):
+    """چرا از این ویس ردیفی ساخته نشد: متن ویس و راهنمای کیفیت ضبط."""
+    f = _get_file(fid)
+    t = db().transcript(fid) or {}
+    return {"status": f["status"], "error": f["error"] or "", "text": t.get("processed_text") or t.get("raw_text") or "",
+            "audio": not f["audio_deleted"]}
+
+
+@app.post("/api/dests/{name}/open")
+def dest_open(name: str):
+    """باز کردن خود فایل اکسل (یا پوشه‌اش اگر هنوز ساخته نشده)؛ فقط فایل‌های همین فهرست."""
+    prof = excel_mapping.load_profile(name)
+    if not prof:
+        err(404, "این فایل در فهرست نیست.")
+    path = excel_template.target_path(prof) if prof.get("mode") == "new" else Path(prof.get("excel_path") or "")
+    target = path if path.is_file() else path.parent
+    if not str(path) or not target.exists():
+        err(404, "فایل یا پوشه‌اش پیدا نشد.")
+    if hasattr(os, "startfile"):
+        os.startfile(str(target))  # noqa: S606 - فقط فایل‌های فهرست
+    return {"opened": str(target), "file": path.is_file()}
+
+
+class AdoptIn(BaseModel):
+    source: str  # نام فایلی که دیگر در فهرست نیست
+
+
+@app.post("/api/dests/{name}/adopt")
+def dest_adopt(name: str, body: AdoptIn):
+    """ویس‌های ثبت‌نشده‌ای که فایلشان از فهرست حذف شده، به این فایل منتقل می‌شوند."""
+    if not excel_mapping.load_profile(name):
+        err(404, "این فایل در فهرست نیست.")
+    if excel_mapping.load_profile(body.source):
+        err(400, "آن فایل هنوز در فهرست هست؛ ویس‌ها را از خود آن منتقل کنید.")
+    with db().tx() as c:
+        n = c.execute("""UPDATE audio_files SET dest=? WHERE COALESCE(dest,'')=? AND NOT EXISTS(
+                           SELECT 1 FROM records r WHERE r.audio_id=audio_files.id AND r.exported_at IS NOT NULL)""",
+                      (name, body.source)).rowcount
+    return {"moved": n}
 
 
 @app.post("/api/templates/{name}/activate")
 def template_activate(name: str):
     if not excel_mapping.load_profile(name):
-        err(404, "قالب پیدا نشد.")
+        err(404, "این فایل در فهرست نیست.")
     save_settings({"active_profile": name})
     _excel_cache["key"] = None
     return {"ok": True}
@@ -1673,7 +2050,7 @@ def _company_preview(body: dict) -> dict:
     name = str(body.get("name") or "")
     saved = excel_mapping.load_profile(name) or {}
     if (name != excel_mapping.COMPANY and not saved) or saved.get("mode") == "new":
-        err(404, "قالب پیدا نشد.")
+        err(404, "این فایل در فهرست نیست.")
     headers = body.get("headers") if isinstance(body.get("headers"), dict) else saved.get("headers")
     if not headers:
         err(400, "اول فایل اکسل موجود را انتخاب کنید.")
@@ -1724,15 +2101,49 @@ def template_sample(body: dict):
 
 
 @app.get("/api/exports")
-def exports():
-    return {"exports": db().q("SELECT id, created_at, target_path, output_path, backup_path, rows_written, first_row, "
-                              "last_row, status, replaced_original_at FROM exports ORDER BY id DESC")}
+def exports(dest: str = "", limit: int = 300):
+    """تاریخچه ثبت‌ها: هر ثبت با تاریخ شمسی، فایل، ردیف‌ها و نام ساختمان‌های هر ردیف."""
+    import json
+    rows = db().q("""SELECT id, created_at, target_path, output_path, backup_path, profile, rows_written, first_row,
+                            last_row, status, replaced_original_at, report_json FROM exports
+                     WHERE ?='' OR profile=? ORDER BY id DESC LIMIT ?""", (dest, dest, max(1, min(limit, 2000))))
+    for e in rows:
+        rep = json.loads(e.pop("report_json") or "{}")
+        ids = [x["record_id"] for x in rep.get("rows", [])]
+        names = {r["id"]: (r["values"].get("engineer_name", ""), r["original_name"])
+                 for r in db().list_records(f"r.id IN ({','.join('?' * len(ids))})", tuple(ids))} if ids else {}
+        e["items"] = [{"row": x["row"], "name": names.get(x["record_id"], ("", ""))[0], "voice": names.get(x["record_id"], ("", ""))[1]}
+                      for x in rep.get("rows", [])]
+        e["file"] = Path(e["target_path"]).name
+        prof = excel_mapping.load_profile(e["profile"] or "")
+        e["dest_listed"] = bool(prof)
+        try:
+            dt = datetime.fromisoformat(e["created_at"])
+            e["date_jalali"], e["time"] = format_jalali(from_gregorian(dt.date())), dt.strftime("%H:%M")
+        except (TypeError, ValueError):
+            e["date_jalali"], e["time"] = "", ""
+    return {"exports": rows}
+
+
+@app.post("/api/exports/{eid}/open")
+def export_open(eid: int):
+    """باز کردن فایلی که این ثبت در آن نوشته شده (یا فایل کپی، اگر هنوز روی فایل اصلی اعمال نشده)."""
+    e = _get_export(eid)
+    p = Path(e["output_path"] if e["status"] == "created" else e["target_path"])
+    if not p.is_file():
+        err(404, "فایل پیدا نشد؛ ممکن است جابه‌جا یا پاک شده باشد.")
+    # مسیر از سابقه خود برنامه می‌آید، نه از درخواست؛ کپی ثبت‌نشده فقط از پوشه داده‌های برنامه
+    if e["status"] == "created" and not p.resolve().is_relative_to(DATA_DIR.resolve()):
+        err(403, "باز کردن این مسیر مجاز نیست.")
+    if hasattr(os, "startfile"):
+        os.startfile(str(p))  # noqa: S606 - فایلی که خود برنامه در آن ثبت کرده
+    return {"opened": str(p)}
 
 
 def _get_export(eid: int) -> dict:
     e = db().one("SELECT * FROM exports WHERE id=?", (eid,))
     if not e:
-        err(404, "خروجی پیدا نشد.")
+        err(404, "این ثبت پیدا نشد.")
     return e
 
 
@@ -1741,7 +2152,7 @@ def export_replace(eid: int):
     import json
     e = _get_export(eid)
     if e["status"] != "created":
-        err(409, "این خروجی قابل جایگزینی نیست.")
+        err(409, "این ثبت قبلاً روی فایل اعمال یا برگردانده شده است.")
     rep = json.loads(e["report_json"])
     try:
         res = replace_original(e["output_path"], e["target_path"], rep["target_sha"])
@@ -1759,7 +2170,7 @@ def export_undo(eid: int):
     import json
     e = _get_export(eid)
     if e["status"] == "undone":
-        err(409, "این خروجی قبلاً بازگردانده شده است.")
+        err(409, "این ثبت قبلاً برگردانده شده است.")
     restored = False
     if e["status"] == "applied":
         rep = json.loads(e["report_json"] or "{}")
@@ -1774,9 +2185,9 @@ def export_undo(eid: int):
     with db().tx() as c:
         c.execute("UPDATE records SET exported_at=NULL, export_id=NULL, export_row=NULL WHERE export_id=?", (eid,))
         c.execute("UPDATE exports SET status='undone' WHERE id=?", (eid,))
-    msg = "رکوردها به حالت «آماده ثبت» برگشتند."
+    msg = "ردیف‌ها به حالت «آماده ثبت» برگشتند."
     if restored:
-        msg = "ثبت برگشت خورد: فایل اکسل به حالت پیش از ثبت برگشت و رکوردها دوباره آماده ثبت‌اند."
+        msg = "ثبت برگشت: فایل اکسل به حالت پیش از ثبت برگشت و ردیف‌ها دوباره آماده ثبت‌اند."
     elif e["replaced_original_at"]:
         msg += " فایل اصلی پس از ثبت تغییر کرده بود و دست نخورد؛ نسخه پیش از ثبت در پوشه backups هست."
     return {"ok": True, "restored": restored, "message": msg}
@@ -1787,7 +2198,7 @@ def export_download(eid: int):
     e = _get_export(eid)
     p = Path(e["output_path"])
     if not p.exists():
-        err(404, "فایل خروجی پیدا نشد.")
+        err(404, "فایل این ثبت پیدا نشد.")
     return FileResponse(p, filename=p.name)
 
 
@@ -1800,9 +2211,10 @@ def open_folder(body: OpenIn):
     p = Path(body.path)
     target = p if p.is_dir() else p.parent
     allowed = [DATA_DIR.resolve()]
-    prof = _write_profile()
-    if prof:
-        allowed.append(Path(prof["excel_path"]).resolve().parent)
+    for n in excel_mapping.list_profiles():
+        prof = _write_profile(name=n)
+        if prof and prof.get("excel_path"):
+            allowed.append(Path(prof["excel_path"]).resolve().parent)
     if not target.is_dir() or not any(target.resolve().is_relative_to(a) for a in allowed):  # نه «data-دیگر»
         err(403, "باز کردن این مسیر مجاز نیست.")
     if hasattr(os, "startfile"):
@@ -1934,15 +2346,33 @@ def get_settings():
                    "models_dir": str(MODELS_DIR)},
         "license": _license_out(),
         "performance": perf,
+        "edition": EDITION,
+        "engine": _engine_status(),
     }
+
+
+def _engine_status() -> dict | None:
+    """نسخه oldcpu: وضعیت موتور آنلاین و موتور روی همین رایانه."""
+    if not OLDCPU:
+        return None
+    from .transcriber import OldCpuTranscriber
+
+    t = worker().transcriber
+    if not isinstance(t, OldCpuTranscriber):
+        return None
+    t.settings = load_settings()
+    return OldCpuTranscriber.status.as_dict(t.settings.speech_engine, t.cloud, t.local)
 
 
 @app.put("/api/settings")
 def put_settings(updates: dict):
     allowed = {"model_name", "compute_type", "cpu_threads", "beam_size", "vad_filter", "initial_prompt",
                "use_dictionary_hotwords", "hotwords_limit", "review_spoken_phones", "learn_auto_threshold", "kb_auto_spelling","model_idle_minutes", "required_fields", "default_area_code", "default_city",
-               "similarity_suggest", "min_duration_sec", "open_browser", "inbox_dir"}
+               "similarity_suggest", "min_duration_sec", "open_browser", "inbox_dir", "review_copy_first",
+               "speech_engine"}
     clean = {k: v for k, v in updates.items() if k in allowed}
+    if "speech_engine" in clean and clean["speech_engine"] not in ("online", "offline"):
+        err(400, "موتور گفتار نامعتبر است.")
     if "model_name" in clean and clean["model_name"] not in AVAILABLE_MODELS:
         err(400, "مدل نامعتبر است.")
     if "inbox_dir" in clean:
@@ -2058,6 +2488,7 @@ def backups_restore(name: str):
     except backup.BackupError as e:
         err(400, str(e))
     _excel_cache["key"] = None
+    db().bind_unassigned(load_settings().active_profile)
     db().log_event(f"اطلاعات از پشتیبان «{name}» بازگردانده شد (پشتیبان وضعیت قبلی: {res['safety_backup']}).", "warning")
     return res
 

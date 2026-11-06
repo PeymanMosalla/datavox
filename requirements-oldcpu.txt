@@ -1,0 +1,16 @@
+# بسته oldcpu (scripts/build_portable.py در شاخه oldcpu): رایانه‌هایی که پردازنده‌شان SSE4.1 ندارد
+# (Pentium Dual-Core، Core 2 قدیمی) و ویندوز ۷ به بعد. faster-whisper/ctranslate2 روی این پردازنده‌ها اجرا
+# نمی‌شوند؛ تبدیل گفتار با voice2excel/engines_oldcpu.py (آنلاین + whisper.cpp ساخته‌شده برای Core 2).
+# numpy 2.3.x: پایه SSE3 (از 2.4 به بعد پایه x86-64-v2/SSE4.2 است و روی این پردازنده‌ها بارگذاری نمی‌شود)
+av==18.0.0
+numpy==2.3.5
+fastapi==0.154.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+pydantic==2.10.6
+pydantic-core==2.27.2
+openpyxl==3.1.5
+jdatetime==6.1.1
+psutil==7.2.2
+# ریشه‌های گواهی برای اتصال امن به موتور آنلاین (ویندوز ۷ بدون به‌روزرسانی ریشه‌های قدیمی دارد)
+certifi==2026.7.22

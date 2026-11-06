@@ -173,19 +173,18 @@ async function pickPath(kind, start = "") {
 }
 
 // ---------------- وضعیت سراسری ----------------
-const state = { meta: null, status: null, page: "today", profile: null };
+const state = { meta: null, status: null, page: "files", profile: null };
 
 async function refreshStatus() {
   let s;
   try { s = await api("/api/status"); } catch { return; }
   const prev = state.status;
   state.status = s;
+  // نسخه oldcpu: تبدیل گفتار آنلاین است (فایل اکسل و ردیف‌ها روی همین رایانه می‌مانند)
+  if (s.edition === "oldcpu") $("#offline-text").textContent = "فایل‌ها و ردیف‌ها روی همین رایانه";
   const w = s.worker;
   const q = s.files.queued + s.files.processing;
-  $("#nav-queue").textContent = q ? fa(q) : "";
-  $("#nav-review").textContent = s.records.review ? fa(s.records.review) : "";
-  $("#nav-today").textContent = s.records.review ? fa(s.records.review) : "";
-  $("#nav-approved").textContent = s.records.approved ? fa(s.records.approved) : "";
+  $("#nav-files").textContent = s.records.review ? fa(s.records.review) : "";
   const pill = $("#worker-pill");
   pill.className = "worker-pill" + (w.running ? " running" : w.last_error ? " error" : "");
   $("#worker-text").textContent = w.running ? (w.stopping ? "در حال توقف..." : "در حال پردازش") : w.last_error ? "متوقف (خطا)" : q ? `${fa(q)} فایل در صف` : "آماده";
@@ -206,8 +205,8 @@ async function refreshStatus() {
 
 /** پایان پردازش صف: اعلان در برنامه، صدای کوتاه و (اگر پنجره دیده نمی‌شود) اعلان ویندوز. */
 function notifyDone(s, n) {
-  const msg = `پردازش ${fa(n)} ویس تمام شد${s.records.review ? `؛ ${fa(s.records.review)} رکورد منتظر بازبینی است` : ""}.`;
-  toast(msg, "ok", s.records.review && state.page !== "today" ? { label: "بازبینی", onClick: () => { location.hash = "#/today"; } } : null);
+  const msg = `پردازش ${fa(n)} ویس تمام شد${s.records.review ? `؛ ${fa(s.records.review)} ردیف منتظر بررسی است` : ""}.`;
+  toast(msg, "ok", s.records.review && state.page !== "file" ? { label: "فایل‌های من", onClick: () => { location.hash = "#/files"; } } : null);
   if (localStorage.getItem("v2x.sound") !== "0") chime();
   if (document.hidden && "Notification" in window && Notification.permission === "granted") {
     try { new Notification("DataVox", { body: msg, lang: "fa", dir: "rtl" }); } catch { }
@@ -245,25 +244,20 @@ function renderBanners() {
     const T = L.trial;
     if (L.mode === "trial") out.push(`<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است؛ هرکدام زودتر تمام شود.</div><a class="btn sm" href="#/activate">فعال‌سازی</a></div>`);
     else if (L.mode === "expired") out.push(L.lapsed
-      ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">تمدید اشتراک</a></div>`
-      : `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>برای پردازش ویس تازه، برنامه را فعال کنید. رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">فعال‌سازی</a></div>`);
+      ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">تمدید اشتراک</a></div>`
+      : `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>برای پردازش ویس تازه، برنامه را فعال کنید. ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">فعال‌سازی</a></div>`);
     else if (L.mode === "licensed" && L.days_left != null && L.days_left <= 15) out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما ${L.days_left <= 0 ? "امروز" : `تا ${fa(L.days_left)} روز دیگر`} تمام می‌شود</b>برای ادامه کار بدون وقفه، اشتراک را تمدید کنید.</div><a class="btn sm" href="#/activate">تمدید اشتراک</a></div>`);
-  }
-  if (s.pending_replace && state.page === "excel") {
-    out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>خروجی اکسل هنوز جایگزین فایل اصلی نشده</b>${fa(s.pending_replace)} خروجی ساخته شده که هنوز روی فایل اصلی شرکت اعمال نشده است. پس از بررسی، از بخش «ثبت در اکسل» جایگزینش کنید.</div><a class="btn sm" href="#/excel">مشاهده</a></div>`);
   }
   $("#banners").innerHTML = out.join("");
 }
 
 // ---------------- مسیریابی ----------------
 const PAGES = {
-  today: { title: "کار امروز", sub: "ویس بدهید، موارد مشکوک را ببینید، در اکسل ثبت کنید", render: renderToday },
-  templates: { title: "خروجی اکسل", sub: "ثبت‌ها کجا بروند و هر ستون چه اطلاعاتی بگیرد", render: renderTemplates },
-  dashboard: { title: "داشبورد", sub: "نمای کلی ویس‌ها، پردازش و رکوردها", render: renderDashboard },
-  voices: { title: "ویس‌ها و پردازش", sub: "افزودن ویس، صف پردازش و وضعیت هر فایل", render: renderVoices },
-  review: { title: "بازبینی اطلاعات", sub: "بررسی، اصلاح و تأیید اطلاعات استخراج‌شده پیش از ثبت", render: renderReview },
-  excel: { title: "ثبت در اکسل", sub: "پیش‌نمایش ردیف‌های آماده، ثبت روی کپی و سوابق ثبت", render: renderExcel },
-  dictionary: { title: "واژه‌نامه", sub: "نام‌های تأییدشده مهندس‌ها، پروژه‌ها و خیابان‌ها", render: renderDictionary },
+  files: { title: "فایل‌های من", sub: "هر فایل اکسل، ویس‌ها و ردیف‌های خودش را دارد", render: renderFiles },
+  file: { title: "میز کار فایل", sub: "افزودن ویس، بررسی ردیف‌ها و ثبت در همین فایل", render: renderFile },
+  history: { title: "تاریخچه ثبت‌ها", sub: "هر بار که ردیف‌ها در یک فایل اکسل ثبت شدند؛ با امکان باز کردن و برگرداندن", render: renderHistory },
+  templates: { title: "تنظیمات فایل", sub: "هر ستون چه اطلاعاتی بگیرد، شکل نوشتن مقادیر و ظاهر", render: renderTemplates, parent: "files" },
+  dictionary: { title: "واژه‌نامه", sub: "نام‌های تأییدشده مهندس‌ها، پروژه‌ها و خیابان‌ها", render: renderDictionary, parent: "settings" },
   settings: { title: "تنظیمات", sub: "مدل گفتار، قواعد اعتبارسنجی و نگهداری", render: renderSettings },
   activate: { title: "اشتراک و پشتیبانی", sub: "وضعیت اشتراک، تماس با فروشنده و وارد کردن مجوز", render: (el) => renderActivation(el) },
 };
@@ -273,298 +267,750 @@ let routeSeq = 0;
 function setHook(seq, fn) { if (seq === routeSeq) pageHooks.onStatus = fn; }
 
 function route() {
-  const name = (location.hash.replace(/^#\//, "").split("?")[0]) || "today";
-  const p = PAGES[name] || PAGES.today;
-  state.page = PAGES[name] ? name : "today";
-  $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === state.page));
+  const name = (location.hash.replace(/^#\//, "").split("?")[0]) || "files";
+  const p = PAGES[name] || PAGES.files;
+  state.page = PAGES[name] ? name : "files";
+  const navPage = state.page === "file" ? "files" : p.parent || state.page;
+  $$("#nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === navPage));
   renderBanners();
   $("#page-title").textContent = p.title;
   $("#tb-page").textContent = p.title;
   $("#page-sub").textContent = p.sub;
   pageHooks = {};
-  reviewState.reload = reviewState.updateRow = null;  // قلاب‌های صفحه بازبینیِ قبلی به DOM حذف‌شده اشاره دارند
+  reviewState.reload = reviewState.updateRow = null;  // قلاب‌های صفحه بررسیِ قبلی به DOM حذف‌شده اشاره دارند
   routeSeq++;
   closeDrawer();
   $("#page").innerHTML = '<div class="row"><span class="spinner"></span></div>';
   p.render($("#page")).catch(toastErr);
 }
 window.addEventListener("hashchange", route);
+window.addEventListener("focus", () => pageHooks.onFocus && pageHooks.onFocus());
 
-// ================= کار امروز =================
-/** صفحه اصلی: سه گام کار روزانه — ویس‌ها، موارد نیازمند نگاه کاربر، ثبت در اکسل. */
-const todayState = { lastCommit: null };
+// ================= فایل‌های من =================
+/** صفحه اول: هر فایل اکسل یک کارت. ویس‌ها در «میز کار» همان فایل اضافه می‌شوند و همیشه مال همان فایل‌اند. */
+const filesState = { dests: [], orphans: [], active: "" };
 
-async function renderToday(el) {
+async function loadDests() {
+  const d = await api("/api/dests");
+  Object.assign(filesState, d);
+  return d;
+}
+const destLabel = (d) => (d ? (d.mode === "new" ? d.title : d.file || d.title) : "");
+const fileHref = (name) => `#/file?f=${encodeURIComponent(name)}`;
+/** «امروز»، «دیروز» یا «۳ روز پیش» از زمان ISO */
+function agoText(iso) {
+  if (!iso) return "";
+  const day = (t) => Math.floor(new Date(t).setHours(0, 0, 0, 0) / 86400000);
+  const n = day(Date.now()) - day(iso.slice(0, 10) + "T00:00:00");
+  return n <= 0 ? "امروز" : n === 1 ? "دیروز" : `${fa(n)} روز پیش`;
+}
+/** وضعیت ویس‌ها و ردیف‌های یک فایل، هر کدام یک برچسب رنگی */
+function destParts(d) {
+  const p = [];
+  if (d.converting) p.push(["info", `${fa(d.converting)} ویس در حال تبدیل`]);
+  if (d.failed) p.push(["err", `${fa(d.failed)} ویس ناموفق`]);
+  if (d.review) p.push(["warn", `${fa(d.review)} ردیف نیاز به بررسی`]);
+  if (d.ready) p.push(["ok", `${fa(d.ready)} ردیف آماده ثبت`]);
+  if (d.no_rows) p.push(["missing", `${fa(d.no_rows)} ویس بدون ردیف`]);
+  if (d.pending_apply) p.push(["warn", `${fa(d.pending_apply)} ثبت در کپی، منتظر اعمال روی فایل`]);
+  return p;
+}
+function fileSub(d) {
+  if (d.missing) return `<span class="err-text">فایل در این مسیر پیدا نشد</span>`;
+  if (!d.configured) return `<span class="warn-text">ستون‌ها هنوز تأیید نشده‌اند</span>`;
+  const r = d.file_rows;
+  return [r ? (r.exists ? `${fa(r.rows)} ردیف` : "هنوز ساخته نشده") : "", d.last_commit ? `آخرین ثبت: ${agoText(d.last_commit.created_at)}` : ""]
+    .filter(Boolean).join(" · ");
+}
+function fileCard(d) {
+  const parts = destParts(d);
+  return `<a class="file-card ${parts.length ? "busy" : ""}" href="${fileHref(d.name)}" data-file="${esc(d.name)}">
+    <div class="fc-top"><span class="fc-ico">${d.mode === "new" ? I.file : I.table}</span>
+      <div class="fc-names"><b class="fc-title">${fname(destLabel(d))}</b><span class="small muted">${fileSub(d)}</span></div></div>
+    <div class="fc-status">${parts.length ? parts.map(([c, t]) => chip(c, t)).join("")
+      : `<span class="small muted">${d.written ? `${I.check} همه ردیف‌های ویس‌ها ثبت شده‌اند` : "هنوز ویسی به این فایل اضافه نشده"}</span>`}</div>
+    ${d.auto ? `<div class="fc-auto small">${I.mic} ویس‌های گوشی و پوشه ورودی به این فایل می‌آیند</div>` : ""}</a>`;
+}
+
+async function renderFiles(el) {
   const seq = routeSeq;
-  api("/api/model/warmup", { method: "POST" }).catch(() => {});
-  const s0 = state.status || (await api("/api/status"));
-  const exts = (state.meta?.audio_extensions || []).join(",");
-  el.innerHTML = onboardingCard(s0) + `<div class="today">
-    <section class="card"><div class="card-h"><h2><span class="t-n">${fa(1)}</span> ویس‌ها</h2>
-        <label class="t-date small muted">تاریخ بازدید <input class="input sm ltr" id="t-date" value="${esc(s0.today)}"></label></div>
-      <div class="card-b stack">
-        <div class="dropzone slim" id="t-dz"><div class="dz-ico">${I.upload}</div>
-          <div><b>ویس‌ها را اینجا رها کنید</b> یا <button class="btn sm" id="t-pick">انتخاب فایل</button>
-            <div class="muted small">پردازش خودکار شروع می‌شود. اگر نام فایل تاریخ داشته باشد، همان تاریخ ثبت می‌شود.</div></div>
-          <input type="file" id="t-files" multiple accept="${esc(exts)},audio/*" hidden></div>
-        <div class="small muted">${s0.setup.inbox ? `${I.folder} ویس‌های تازه پوشه «${esc(s0.setup.inbox.split(/[\\/]/).filter(Boolean).pop())}» هم خودکار برداشته می‌شوند.`
-          : `<a href="#/settings">${I.folder} تنظیم پوشه ورودی خودکار</a> — مثلاً پوشه دانلود تلگرام، تا ویس‌ها بدون دانلود و انتخاب دستی برسند.`}</div>
-        <div id="t-progress"></div></div></section>
-    <section class="card"><div class="card-h"><h2><span class="t-n">${fa(2)}</span> نیاز به نگاه شما</h2><div class="row" id="t-rv-actions"></div></div>
-      <div id="t-review"></div></section>
-    <section class="card"><div class="card-h"><h2><span class="t-n">${fa(3)}</span> ثبت در اکسل</h2></div>
-      <div class="card-b" id="t-excel"></div></section></div>`;
-  bindOnboarding();
+  const draw = async () => {
+    const d = await loadDests();
+    if (seq !== routeSeq) return;
+    if (!d.dests.length) return renderWelcome(el);
+    el.innerHTML = `${orphansHtml(d)}<div class="file-grid">${d.dests.map(fileCard).join("")}
+      <button class="file-card file-add" id="fl-add">${I.plus}<b>افزودن فایل اکسل</b><span>فایلی که دارید، یا یک فایل تازه</span></button></div>`;
+    $("#fl-add").onclick = addFileFlow;
+    bindOrphans(el, d);
+  };
+  await draw();
+  setHook(seq, () => draw().catch(() => {}));
+}
 
-  const dz = $("#t-dz");
-  const add = async (list) => {
+/** سه گام راه‌اندازی؛ done: تعداد گام‌های انجام‌شده */
+function setupSteps(done) {
+  const steps = ["فایل اکسل را انتخاب کنید", "ستون‌ها را تأیید کنید", "اولین ویس را اضافه کنید"];
+  return `<ol class="setup-steps">${steps.map((t, i) => `<li class="${i < done ? "done" : i === done ? "now" : ""}"><span class="ss-n">${i < done ? I.check : fa(i + 1)}</span>${t}</li>`).join("")}</ol>`;
+}
+
+/** اجرای اول (هنوز هیچ فایلی در فهرست نیست): فقط یک سؤال — ردیف‌ها به کدام فایل اکسل بروند؟ */
+function renderWelcome(el) {
+  el.innerHTML = `<div class="card welcome"><div class="card-b stack">
+      <div><h2 style="margin:0 0 4px">به DataVox خوش آمدید</h2>
+        <div class="muted">در سه گام آماده کار می‌شوید. ویس‌های بازدید به متن تبدیل و به‌صورت ردیف به فایل اکسل شما اضافه می‌شوند.</div></div>
+      ${setupSteps(0)}
+      <div><b>گام ۱ از ۳: ردیف‌ها به کدام فایل اکسل اضافه شوند؟</b></div>
+      ${destChoicesHtml()}
+      ${state.meta?.samples?.excel ? `<div class="row small"><span class="muted">فایل اکسلی دم دست ندارید؟</span><button class="btn sm ghost" id="wl-sample">${I.table} امتحان با فایل اکسل نمونه</button></div>` : ""}
+      <div class="small muted">${I.info} پیش از شروع، <a href="/static/recording-guide.html" target="_blank">راهنمای ضبط ویس</a> را برای بازاریاب‌ها چاپ کنید تا ویس‌ها دقیق‌تر خوانده شوند.</div></div></div>`;
+  $("#wl-sample", el)?.addEventListener("click", () => addExistingFile("", "", true, state.meta.samples.excel));
+  $$("[data-choice]", el).forEach((b) => b.onclick = () => {
+    if (b.dataset.choice === "append") return addExistingFile("", "", true);
+    if (b.dataset.choice === "new") return addNewFile();
+    importTemplateFile();
+  });
+}
+
+/** ویس‌هایی که فایلشان دیگر در فهرست نیست: با یک انتخاب به فایل دیگری منتقل می‌شوند */
+function orphansHtml(d) {
+  if (!d.orphans.length || !d.dests.length) return "";
+  const n = d.orphans.reduce((a, o) => a + o.voices, 0);
+  return `<div class="alert warn" style="margin-bottom:18px">${I.alert}<div class="alert-body"><b>${fa(n)} ویس به فایلی وصل‌اند که در فهرست نیست</b>
+      آن‌ها را به یکی از فایل‌ها منتقل کنید تا بشود ردیف‌هایشان را ثبت کرد.</div>
+    <select class="select sm" id="fl-orphan-to">${d.dests.map((x) => `<option value="${esc(x.name)}">${esc(destLabel(x))}</option>`).join("")}</select>
+    <button class="btn sm primary" id="fl-orphan-go">انتقال</button></div>`;
+}
+function bindOrphans(el, d) {
+  $("#fl-orphan-go", el)?.addEventListener("click", async () => {
+    const to = $("#fl-orphan-to").value;
+    try {
+      let n = 0;
+      for (const o of d.orphans) n += (await api(`/api/dests/${encodeURIComponent(to)}/adopt`, { method: "POST", body: { source: o.dest } })).moved;
+      toast(`${fa(n)} ویس منتقل شد.`, "ok");
+      refreshStatus();
+    } catch (e) { toastErr(e); }
+  });
+}
+
+/** افزودن فایل به فهرست: فایلی که کاربر دارد (انتخاب و تأیید ستون‌ها) یا فایل تازه */
+async function addFileFlow() {
+  const choice = await openModal({ title: "افزودن فایل اکسل", body: destChoicesHtml(), wide: true,
+    actions: [{ label: "انصراف", cls: "ghost", value: null }],
+    onOpen: (m) => $$("[data-choice]", m).forEach((b) => b.onclick = () => closeModal(b.dataset.choice)) });
+  if (choice === "append") return addExistingFile();
+  if (choice === "new") return addNewFile();
+  if (choice === "import") return importTemplateFile();
+}
+
+/** انتخاب فایل اکسل موجود ← تأیید ستون‌ها ← باز شدن میز کار همان فایل. name: عوض کردن فایلِ یکی از فایل‌های فهرست */
+async function addExistingFile(name = "", start = "", firstRun = false, given = "") {
+  const path = given || await pickPath("excel", start);
+  if (!path) return null;
+  let res;
+  try { res = await api("/api/excel/inspect", { method: "POST", body: { path, name } }); }
+  catch (e) { toastErr(e); return null; }
+  const block = (res.report.risks || []).filter((r) => r.level === "block");
+  if (block.length || !res.profile) {
+    await openModal({ title: "این فایل قابل استفاده نیست", body: `<ul class="reasons invalid">${(block.length ? block.map((r) => r.message) : ["در این فایل سرستونی پیدا نشد."]).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`,
+      actions: [{ label: "متوجه شدم", cls: "primary" }] });
+    return null;
+  }
+  if (res.profile.confirmed && !name) {
+    toast(`«${res.report.name}» از قبل در فهرست هست.`, "ok");
+    location.hash = fileHref(res.profile.name);
+    return res.profile;
+  }
+  const saved = await confirmColumns(res.profile, res.report,
+    firstRun ? { title: `گام ۲ از ۳: ستون‌های «${esc(res.report.name)}»`, okLabel: "تأیید و رفتن به گام آخر" } : {});
+  if (saved) location.hash = fileHref(saved.name) + (firstRun ? "&first=1" : "");
+  return saved;
+}
+
+/** تأیید ستون‌ها: برنامه برای هر ستون حدس زده چه اطلاعاتی بگیرد؛ کاربر فقط بررسی و تأیید می‌کند */
+async function confirmColumns(profile, report, { title = "", okLabel = "تأیید ستون‌ها" } = {}) {
+  const draft = JSON.parse(JSON.stringify(profile));
+  const fields = state.meta.fields.concat(state.meta.computed).concat([{ key: "followup", label: "پیگیری (اقدام + تاریخ)" }]);
+  const render = (m) => {
+    const sheet = report.sheets.find((s) => s.name === draft.sheet) || report.sheets[0];
+    const prot = new Set(draft.protected || []);
+    const cur = (col) => draft.columns[col] || (prot.has(col) ? "__protect" : "");
+    const entries = Object.entries(sheet.headers);
+    $(".modal-b", m).innerHTML = `<div class="stack">
+      <div class="small">برنامه از روی عنوان ستون‌های «${fname(report.name)}» حدس زده هر ستون چه اطلاعاتی از ویس بگیرد. بررسی کنید و هرجا لازم بود عوض کنید.</div>
+      ${report.sheets.length > 1 ? `<div class="row"><div class="field"><label>شیت</label><select class="select" id="cc-sheet">${report.sheets.map((s) => `<option ${s.name === sheet.name ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></div>
+        <span class="small muted">${fa(sheet.data_rows)} ردیف داده</span></div>` : ""}
+      <div class="table-wrap cc-table"><table class="table"><thead><tr><th>ستون</th><th>عنوان در فایل</th><th>چه اطلاعاتی نوشته شود</th></tr></thead><tbody>
+        ${entries.map(([col, h]) => `<tr class="${cur(col) ? "" : "map-empty"}"><td><b class="ltr">${esc(col)}</b></td><td>${esc(h).replace(/\n/g, " ")}</td>
+          <td><select class="select map-select" data-col="${esc(col)}">
+            <option value="" ${!cur(col) ? "selected" : ""}>— خالی بماند —</option>
+            <option value="__protect" ${cur(col) === "__protect" ? "selected" : ""}>🔒 دست نخورد (مثلاً ستونی که همکاران پر می‌کنند)</option>
+            <optgroup label="اطلاعات ویس">${fields.map((f) => `<option value="${f.key}" ${cur(col) === f.key ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</optgroup></select></td></tr>`).join("")}
+      </tbody></table></div>
+      <div class="small muted">ردیف‌های قبلی فایل هرگز تغییر نمی‌کنند؛ ردیف‌های تازه زیر آخرین ردیف (ردیف ${fa(sheet.last_data_row)}) اضافه می‌شوند.</div></div>`;
+    $$("[data-col]", m).forEach((s) => s.onchange = () => {
+      const col = s.dataset.col;
+      delete draft.columns[col];
+      draft.protected = (draft.protected || []).filter((c) => c !== col);
+      if (s.value === "__protect") draft.protected.push(col);
+      else if (s.value) {
+        // هر اطلاعات فقط در یک ستون: ستون قبلی همان اطلاعات خالی می‌شود
+        for (const [c, f] of Object.entries(draft.columns)) if (f === s.value) delete draft.columns[c];
+        draft.columns[col] = s.value;
+      }
+      render(m);
+    });
+    $("#cc-sheet", m)?.addEventListener("change", (e) => {
+      const s = report.sheets.find((x) => x.name === e.target.value);
+      Object.assign(draft, { sheet: s.name, header_row: s.header_row, headers: s.headers, columns: {}, protected: [] });
+      render(m);
+    });
+  };
+  return openModal({ title: title || `ستون‌های «${esc(report.name)}»`, wide: true, body: "", onOpen: render,
+    actions: [{ label: `${I.check} ${okLabel}`, cls: "primary", onClick: async () => {
+      if (!Object.keys(draft.columns).length) { toast("دست‌کم یک ستون باید اطلاعاتی بگیرد.", "err"); return false; }
+      try {
+        const saved = (await api("/api/excel/profile", { method: "PUT", body: draft })).profile;
+        // واژه‌نامه از نام‌ها و خیابان‌های همین فایل پر می‌شود تا املای درست پیشنهاد شود
+        api(`/api/dictionary/seed-from-excel?name=${encodeURIComponent(saved.name)}`, { method: "POST" }).then((sd) => {
+          if (sd.added?.engineer || sd.added?.street) toast(`واژه‌نامه پر شد: ${fa(sd.added.engineer)} نام و ${fa(sd.added.street)} خیابان از همین فایل.`, "ok");
+        }).catch(() => {});
+        await refreshStatus();
+        return saved;
+      } catch (e) { toastErr(e); return false; }
+    } }, { label: "انصراف", cls: "ghost", value: null }] });
+}
+
+async function addNewFile() {
+  const title = await openModal({ title: "فایل اکسل تازه", body: `<div class="field"><label>نام فایل</label><input class="input" id="m-in" placeholder="مثلاً گزارش مدیر"></div>
+      <div class="small muted" style="margin-top:8px">در گام بعد ستون‌ها، ظاهر و پوشه فایل را می‌چینید.</div>`,
+    actions: [{ label: "ساخت", cls: "primary", onClick: (m) => $("#m-in", m).value.trim() || false }, { label: "انصراف", cls: "ghost", value: null }],
+    onOpen: (m) => { const i = $("#m-in", m); setTimeout(() => i.focus(), 50); i.onkeydown = (e) => { if (e.key === "Enter") $('[data-mi="0"]', m).click(); }; } });
+  if (!title) return;
+  try {
+    const { name } = await api("/api/templates", { method: "POST", body: { title } });
+    toast("فایل تازه به فهرست اضافه شد؛ ستون‌ها و پوشه‌اش را بچینید و ذخیره کنید.", "ok");
+    location.hash = `#/templates?dest=${encodeURIComponent(name)}&tab=columns`;
+  } catch (e) { toastErr(e); }
+}
+
+function importTemplateFile() {
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = ".json";
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append("file", f, f.name);
+    try {
+      const { name } = await api("/api/templates/import", { method: "POST", form: fd });
+      toast("تنظیمات فایل وارد شد؛ پوشه فایل را بررسی و ذخیره کنید.", "ok");
+      location.hash = `#/templates?dest=${encodeURIComponent(name)}&tab=output`;
+    } catch (e) { toastErr(e); }
+  };
+  inp.click();
+}
+
+// ================= میز کار یک فایل =================
+/** همه کار یک فایل در یک صفحه: افزودن ویس، وضعیت ویس‌ها، بررسی ردیف‌ها و ثبت. */
+const fileState = { name: "", info: null, lastCommit: null, filter: "all", showAll: false, check: null };
+/** سرنوشت هر ویس: [کلاس رنگ، برچسب] */
+const STAGE = {
+  queued: ["queued", "در صف تبدیل"], processing: ["processing", "در حال تبدیل…"], failed: ["failed", "تبدیل نشد"],
+  no_rows: ["missing", "ردیفی پیدا نشد"], review: ["review", "نیاز به بررسی"], ready: ["ready", "آماده ثبت"],
+  written: ["exported", "ثبت شد"], rejected: ["rejected", "رد شد"],
+};
+const STAGE_TABS = [["all", "همه", null], ["work", "در حال تبدیل", ["queued", "processing"]], ["review", "نیاز به بررسی", ["review"]],
+  ["ready", "آماده ثبت", ["ready"]], ["written", "ثبت شد", ["written"]], ["problem", "مشکل‌دار", ["failed", "no_rows"]], ["rejected", "رد شده", ["rejected"]]];
+
+async function renderFile(el) {
+  const seq = routeSeq;
+  const name = new URLSearchParams(location.hash.split("?")[1] || "").get("f") || "";
+  let info;
+  try { info = await api(`/api/dests/${encodeURIComponent(name)}`); }
+  catch (e) { toastErr(e); location.hash = "#/files"; return; }
+  if (seq !== routeSeq) return;
+  if (fileState.name !== name) Object.assign(fileState, { lastCommit: null, check: null });
+  Object.assign(fileState, { name, info });
+  $("#page-title").textContent = destLabel(info);
+  $("#tb-page").textContent = destLabel(info);
+  api("/api/model/warmup", { method: "POST" }).catch(() => {});
+  const firstRun = new URLSearchParams(location.hash.split("?")[1] || "").get("first") === "1" && !info.voices;
+  el.innerHTML = `<div id="fw-head" class="fw-head"></div><div class="fw">
+    ${firstRun ? `<div class="card welcome"><div class="card-b stack">${setupSteps(2)}
+      <div><b>گام ۳ از ۳: اولین ویس را اضافه کنید.</b> <span class="muted">ویس‌ها را در کادر «افزودن ویس» رها کنید؛ تبدیل خودکار شروع می‌شود و ردیف‌ها برای بررسی اینجا می‌آیند.</span></div></div></div>` : ""}
+    <div id="fw-next"></div>
+    <section class="card" id="fw-add"></section>
+    <section class="card" id="fw-review"><div class="card-h"><h2>${I.eye} ردیف‌هایی که نیاز به بررسی دارند</h2><div class="row" id="fw-rv-actions"></div></div><div id="fw-rv"></div></section>
+    <section class="card" id="fw-commit"><div class="card-h"><h2>${I.table} ثبت در فایل</h2></div><div class="card-b" id="fw-cm"></div></section>
+    <section class="card" id="fw-voices"><div class="card-h"><h2>${I.music} ویس‌های این فایل</h2><div class="tabs sm" id="fw-v-tabs"></div></div><div id="fw-v"></div></section></div>`;
+  drawHead();
+  drawNext();
+  drawAdd();
+  drawCommit();
+  loadCheck();
+  await Promise.all([drawReview(), drawVoices()]);
+
+  async function reloadInfo() {
+    try { fileState.info = info = await api(`/api/dests/${encodeURIComponent(name)}`); } catch { }
+  }
+  function drawHead() {
+    fileBar($("#fw-head"), info, () => reloadInfo().then(drawHead));
+  }
+
+  /** وضعیت فایل پیش از ثبت (باز بودن در Excel، تغییر ستون‌ها، …)؛ پس از هر تغییر وضعیت و برگشتن به پنجره دوباره خوانده می‌شود */
+  async function loadCheck() {
+    try { fileState.check = await api(`/api/dests/${encodeURIComponent(name)}/check`); } catch { return; }
+    if (seq !== routeSeq) return;
+    drawNext(); drawCommit();
+  }
+  function checkBlock() { return (fileState.check?.items || []).find((x) => x.level === "block"); }
+  function fixBtn(b, cls = "btn") {
+    return b?.fix === "columns" ? `<a class="${cls}" href="#/templates?dest=${encodeURIComponent(name)}">${I.edit} تأیید دوباره ستون‌ها</a>`
+      : b?.fix === "file" ? `<button class="${cls}" data-refile>${I.folder} انتخاب دوباره فایل</button>` : `<button class="${cls}" data-recheck>${I.retry} دوباره بررسی کن</button>`;
+  }
+  function bindFix(box) {
+    $$("[data-recheck]", box).forEach((b) => b.onclick = loadCheck);
+    $$("[data-refile]", box).forEach((b) => b.onclick = async () => { if (await addExistingFile(name)) { await reloadInfo(); loadCheck(); drawHead(); } });
+  }
+
+  /** گام بعد: فقط یک دکمه اصلی در صفحه، بسته به اینکه کار در چه مرحله‌ای است */
+  function drawNext() {
+    const box = $("#fw-next");
+    if (!box || seq !== routeSeq) return;
+    const w = state.status?.worker || {};
+    let icon = I.info, text, btn = "";
+    if (!info.configured) {
+      text = info.missing ? "فایل اکسل در مسیرش پیدا نشد؛ از «تنظیمات فایل» دوباره انتخابش کنید." : "اول ستون‌های این فایل را تأیید کنید تا بشود ردیف‌ها را در آن ثبت کرد.";
+      btn = `<a class="btn primary lg" href="#/templates?dest=${encodeURIComponent(name)}">${I.edit} ${info.missing ? "انتخاب دوباره فایل" : "تأیید ستون‌ها"}</a>`;
+    } else if (info.review) {
+      icon = I.eye;
+      text = `${fa(info.review)} ردیف منتظر نگاه شماست. هر ردیف را با ویس مقایسه کنید و «درست است» بزنید.`;
+      btn = `<button class="btn primary lg" id="fw-next-go">${I.eye} بررسی ${fa(info.review)} ردیف</button>`;
+    } else if (info.ready && checkBlock()) {
+      icon = I.alert;
+      text = `${fa(info.ready)} ردیف آماده است، ولی فعلاً ثبت نمی‌شود: ${esc(checkBlock().text)}`;
+      btn = fixBtn(checkBlock(), "btn primary lg");
+    } else if (info.ready) {
+      icon = I.table;
+      text = `${fa(info.ready)} ردیف آماده است.${info.converting ? ` (${fa(info.converting)} ویس دیگر هنوز در حال تبدیل است.)` : ""}`;
+      btn = `<button class="btn primary lg" id="fw-next-go">${I.table} ثبت ${fa(info.ready)} ردیف در «${esc(destLabel(info))}»</button>`;
+    } else if (info.converting) {
+      icon = `<span class="spinner"></span>`;
+      text = `${fa(info.converting)} ویس در حال تبدیل به متن است${w.running ? "" : " (تبدیل متوقف است)"}. پس از تبدیل، ردیف‌ها اینجا آماده بررسی می‌شوند.`;
+      if (!w.running) btn = `<button class="btn primary lg" id="fw-next-go">${I.play} ادامه تبدیل</button>`;
+    } else {
+      icon = I.ok;
+      text = info.voices ? "همه ویس‌های این فایل تعیین تکلیف شده‌اند. ویس‌های تازه را اضافه کنید." : "برای شروع، ویس‌های بازدید را به این فایل اضافه کنید.";
+      btn = `<button class="btn primary lg" id="fw-next-go">${I.upload} افزودن ویس</button>`;
+    }
+    box.innerHTML = `<div class="next-step ${icon === I.alert ? "warn" : ""}"><span class="ns-ico">${icon}</span><div class="ns-text"><span class="small muted">گام بعد</span><b>${text}</b></div>${btn}</div>`;
+    bindFix(box);
+    $("#fw-next-go")?.addEventListener("click", async (e) => {
+      if (info.review) {
+        const { records } = await api(`/api/records?filter=review&dest=${encodeURIComponent(name)}`);
+        return openFocus(records.map((r) => r.id));
+      }
+      if (info.ready) return doCommit(e.currentTarget);
+      if (info.converting) return startQueue();
+      $("#fw-files").click();
+    });
+  }
+
+  function drawAdd() {
+    const exts = (state.meta?.audio_extensions || []).join(",");
+    $("#fw-add").innerHTML = `<div class="card-h"><h2>${I.upload} افزودن ویس</h2>
+        <label class="t-date small muted">تاریخ بازدید <input class="input sm ltr" id="fw-date" value="${esc(state.status?.today || "")}"></label></div>
+      <div class="card-b stack"><div class="dropzone slim" id="fw-dz"><div class="dz-ico">${I.upload}</div>
+        <div><b>ویس‌ها را اینجا رها کنید</b> یا <button class="btn sm" id="fw-pick">انتخاب فایل</button> <button class="btn sm ghost" id="fw-pickdir">انتخاب پوشه</button>
+          <div class="muted small">ویس‌ها فقط به «${fname(destLabel(info))}» اضافه می‌شوند و تبدیل به متن خودکار شروع می‌شود. اگر نام فایل ویس تاریخ داشته باشد (مثل ویس واتساپ)، همان تاریخ ثبت می‌شود.</div></div>
+        <input type="file" id="fw-files" multiple accept="${esc(exts)},audio/*" hidden><input type="file" id="fw-dir" webkitdirectory multiple hidden></div>
+        ${!info.voices && state.meta?.samples?.voices ? `<div class="row small"><span class="muted">ویسی برای امتحان ندارید؟</span><button class="btn sm ghost" id="fw-samples">${I.play} امتحان با ${fa(state.meta.samples.voices)} ویس نمونه</button></div>` : ""}
+        <div id="fw-progress"></div></div>`;
+    const dz = $("#fw-dz");
+    $("#fw-pick").onclick = () => $("#fw-files").click();
+    $("#fw-pickdir").onclick = () => $("#fw-dir").click();
+    $("#fw-files").onchange = (e) => { add(e.target.files); e.target.value = ""; };
+    $("#fw-dir").onchange = (e) => { add(e.target.files); e.target.value = ""; };
+    dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("over"); });
+    dz.addEventListener("dragleave", () => dz.classList.remove("over"));
+    dz.addEventListener("drop", async (e) => { e.preventDefault(); dz.classList.remove("over"); add(await droppedFiles(e)); });
+    $("#fw-samples")?.addEventListener("click", async () => {
+      try { reportUpload((await api(`/api/samples/import?dest=${encodeURIComponent(name)}`, { method: "POST" })).results); await startQueue(); }
+      catch (e) { toastErr(e); }
+      await refreshStatus();
+    });
+    drawProgress();
+  }
+  async function add(list) {
     const files = audioOnly(list);
     if (!files.length) return;
-    $("#t-progress").innerHTML = `<div class="progress"><div class="progress-bar" id="t-up-bar"></div></div><div class="muted small">در حال افزودن ${fa(files.length)} ویس...</div>`;
+    $("#fw-progress").innerHTML = `<div class="progress"><div class="progress-bar" id="fw-up-bar"></div></div><div class="muted small">در حال افزودن ${fa(files.length)} ویس...</div>`;
     try {
-      const results = await uploadAudio(files, $("#t-date").value.trim(), true, (p) => { const b = $("#t-up-bar"); if (b) b.style.width = p + "%"; });
+      const results = await uploadAudio(files, $("#fw-date").value.trim(), true, (p) => { const b = $("#fw-up-bar"); if (b) b.style.width = p + "%"; }, name);
       reportUpload(results);
       if (results.some((r) => r.result === "added")) await startQueue();
     } catch (e) { toastErr(e); }
     await refreshStatus();
+    await reloadInfo();
     drawProgress();
-  };
-  $("#t-pick").onclick = () => $("#t-files").click();
-  $("#t-files").onchange = (e) => { add(e.target.files); e.target.value = ""; };
-  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("over"); });
-  dz.addEventListener("dragleave", () => dz.classList.remove("over"));
-  dz.addEventListener("drop", async (e) => { e.preventDefault(); dz.classList.remove("over"); add(await droppedFiles(e)); });
-
+  }
   function drawProgress() {
-    const s = state.status, box = $("#t-progress");
+    const s = state.status, box = $("#fw-progress");
     if (!s || seq !== routeSeq || !box) return;
-    const w = s.worker, q = s.files.queued + s.files.processing;
+    const w = s.worker, mine = info.converting;
     const parts = [];
-    if (w.running) {
-      const total = w.run_done + q;
-      parts.push(`<div class="row between small"><span>در حال پردازش: <b>${esc(w.current_name || "...")}</b></span>
-          <span>${fa(w.run_done)} از ${fa(total)} <button class="btn sm ghost" id="t-stop">${I.stop} توقف</button></span></div>
+    if (mine && w.running) {
+      parts.push(`<div class="row between small"><span>در حال تبدیل: <b>${esc(w.current_name || "...")}</b> <span class="muted">(${fa(mine)} ویس این فایل در صف)</span></span>
+          <button class="btn sm ghost" id="fw-stop">${I.stop} توقف</button></div>
         <div class="progress"><div class="progress-bar" style="width:${s.progress}%"></div></div>`);
-    } else if (q) {
-      parts.push(`<div class="row between small"><span>${fa(q)} ویس در صف</span><button class="btn sm primary" id="t-start">${I.play} شروع پردازش</button></div>`);
+    } else if (mine) {
+      parts.push(`<div class="row between small"><span>${fa(mine)} ویس منتظر تبدیل</span><button class="btn sm" id="fw-start">${I.play} شروع تبدیل</button></div>`);
     }
-    if (q && w.model_state === "loading") parts.push(`<div class="row small">${modelChip(w.model_state, s.model.available)}</div>`);
-    if (s.files.failed && !w.running) parts.push(`<div class="row small err-text">${I.alert} ${fa(s.files.failed)} ویس پردازش نشد.
-      <button class="btn sm" id="t-retry">${I.retry} تلاش دوباره</button><a class="btn sm ghost" href="#/voices">جزئیات</a></div>`);
+    if (mine && w.model_state === "loading") parts.push(`<div class="row small">${modelChip(w.model_state, s.model.available)}</div>`);
+    if (info.failed && !w.running) parts.push(`<div class="row small err-text">${I.alert} ${fa(info.failed)} ویس تبدیل نشد.
+      <button class="btn sm" id="fw-retry">${I.retry} تلاش دوباره</button></div>`);
     box.innerHTML = parts.join("");
-    $("#t-stop")?.addEventListener("click", stopQueue);
-    $("#t-start")?.addEventListener("click", startQueue);
-    $("#t-retry")?.addEventListener("click", async () => {
+    $("#fw-stop")?.addEventListener("click", stopQueue);
+    $("#fw-start")?.addEventListener("click", startQueue);
+    $("#fw-retry")?.addEventListener("click", async () => {
       try { await api("/api/files/retry-failed", { method: "POST" }); await startQueue(); } catch (e) { toastErr(e); }
     });
   }
 
-  const LABEL = { ...Object.fromEntries((state.meta?.fields || []).map((f) => [f.key, f.label])), tech: "مشخصات فنی" };
-  const SEG_OF = { followup_date: "followup_action", followup_time_text: "followup_action" };  // فیلدی که بخش ویس خودش را ندارد
-  const SHOW = 12;
+  /** جدول «ویس ← ردیف»: هر ویس یک خط با سرنوشتش؛ پس از ثبت، شماره ردیف‌ها در اکسل */
+  async function drawVoices() {
+    if (seq !== routeSeq) return;
+    let d;
+    try { d = await api(`/api/dests/${encodeURIComponent(name)}/voices`); } catch { return; }
+    const box = $("#fw-v");
+    if (!box || seq !== routeSeq) return;
+    const all = d.voices;
+    const count = (stages) => stages ? all.filter((v) => stages.includes(v.stage)).length : all.length;
+    $("#fw-v-tabs").innerHTML = STAGE_TABS.filter(([k, , st]) => k === "all" || count(st)).map(([k, l, st]) =>
+      `<button class="${fileState.filter === k ? "active" : ""}" data-vtab="${k}">${l}<span class="count">${fa(count(st))}</span></button>`).join("");
+    $$("[data-vtab]").forEach((b) => b.onclick = () => { fileState.filter = b.dataset.vtab; fileState.showAll = false; drawVoices(); });
+    const tab = STAGE_TABS.find(([k]) => k === fileState.filter) || STAGE_TABS[0];
+    const list = tab[2] ? all.filter((v) => tab[2].includes(v.stage)) : all;
+    if (!all.length) { box.innerHTML = `<div class="empty small">${I.music}<div>هنوز ویسی به این فایل اضافه نشده است.</div></div>`; return; }
+    if (!list.length) { fileState.filter = "all"; return drawVoices(); }
+    const LIMIT = 40, shown = fileState.showAll ? list : list.slice(0, LIMIT);
+    const result = (v) => {
+      const rs = v.records;
+      if (v.stage === "written") {
+        const rows = rs.filter((r) => r.exported_at);
+        const files = [...new Set(rows.map((r) => r.file))];
+        return `<button class="linkbtn vt-rows" data-vopen title="باز کردن فایل در Excel">${rows.length > 1 ? "ردیف‌های" : "ردیف"} ${rows.map((r) => fa(r.export_row)).join("، ")} ${I.open}</button>
+          ${files.length > 1 || (files[0] && files[0] !== info.file) ? `<div class="muted small">${files.map((f) => `«${esc(f)}»`).join("، ")}</div>` : ""}`;
+      }
+      if (v.stage === "failed") return `<span class="err-text small">${esc((v.error || "").slice(0, 120))}</span>`;
+      if (v.stage === "no_rows") return `<button class="linkbtn" data-vwhy="${v.id}">چرا؟</button>`;
+      if (v.stage === "queued" || v.stage === "processing") return `<span class="muted">—</span>`;
+      if (v.stage === "rejected") return `<span class="muted small">در فایل ثبت نمی‌شود</span>`;
+      const live = rs.filter((r) => r.review_state !== "rejected" && !r.exported_at);
+      const names = live.map((r) => r.name).filter(Boolean);
+      return `${fa(live.length || rs.length)} ردیف${rs.length > 1 ? ` <span class="muted small">(${fa(rs.length)} ساختمان)</span>` : ""}
+        ${names.length ? `<div class="muted small vt-names">${esc(names.join("، "))}</div>` : ""}`;
+    };
+    box.innerHTML = `<div class="table-wrap"><table class="table vt"><thead><tr><th>ویس</th><th>وضعیت</th><th>نتیجه</th><th></th></tr></thead><tbody>
+      ${shown.map((v) => {
+        const [cls, label] = STAGE[v.stage] || ["", v.stage];
+        const exported = v.records.some((r) => r.exported_at);
+        const first = v.records.find((r) => r.review_state === "pending" && !r.exported_at) || v.records[0];
+        return `<tr data-vid="${v.id}"><td class="vt-name"><div title="${esc(v.original_name)}">${esc(v.original_name)}</div>
+            <div class="muted small">تاریخ بازدید ${fa(v.visit_date)}${v.duration ? ` · ${fmtSec(v.duration)}` : ""}</div></td>
+          <td>${v.stage === "processing" ? `<span class="chip processing"><span class="spinner" style="width:12px;height:12px;border-width:2px"></span> ${label}</span>` : chip(cls, label)}</td>
+          <td>${result(v)}</td>
+          <td class="actions">
+            ${!v.audio_deleted ? `<button class="btn sm icon ghost" data-play="${v.id}" title="پخش ویس">${I.play}</button>` : ""}
+            ${first ? `<button class="btn sm icon ghost" data-vrec="${first.id}" title="دیدن و اصلاح ردیف‌ها">${I.eye}</button>` : ""}
+            ${v.stage === "failed" ? `<button class="btn sm icon ghost" data-vretry="${v.id}" title="تلاش دوباره">${I.retry}</button>` : ""}
+            ${!exported && v.stage !== "processing" ? `<button class="btn sm icon ghost" data-vmove="${v.id}" title="انتقال به فایل دیگر">${I.swap}</button>
+              <button class="btn sm icon ghost" data-vdel="${v.id}" title="حذف ویس">${I.trash}</button>` : ""}</td></tr>`;
+      }).join("")}</tbody></table></div>
+      ${list.length > shown.length ? `<div class="card-b small"><button class="linkbtn" id="fw-v-more">نمایش همه ${fa(list.length)} ویس</button></div>` : ""}`;
+    $("#fw-v-more")?.addEventListener("click", () => { fileState.showAll = true; drawVoices(); });
+    $$("[data-play]", box).forEach((b) => b.onclick = () => playAudio(+b.dataset.play, b));
+    $$("[data-vrec]", box).forEach((b) => b.onclick = () => { reviewState.visible = all.flatMap((v) => v.records.map((r) => r.id)); openRecord(+b.dataset.vrec); });
+    $$("[data-vopen]", box).forEach((b) => b.onclick = () => api(`/api/dests/${encodeURIComponent(name)}/open`, { method: "POST" }).catch(toastErr));
+    $$("[data-vwhy]", box).forEach((b) => b.onclick = () => whyNoRows(+b.dataset.vwhy));
+    $$("[data-vretry]", box).forEach((b) => b.onclick = async () => {
+      try { await api(`/api/files/${b.dataset.vretry}/retry`, { method: "POST" }); await startQueue(); refreshStatus(); } catch (e) { toastErr(e); }
+    });
+    $$("[data-vdel]", box).forEach((b) => b.onclick = async () => {
+      const v = all.find((x) => x.id === +b.dataset.vdel);
+      if (!(await confirmBox("حذف ویس", `«${esc(v.original_name)}» و ردیف‌های ثبت‌نشده آن حذف می‌شوند. ادامه می‌دهید؟`, "حذف", "danger"))) return;
+      try { await api(`/api/files/${v.id}`, { method: "DELETE" }); toast("ویس حذف شد.", "ok"); refreshStatus(); drawVoices(); } catch (e) { toastErr(e); }
+    });
+    $$("[data-vmove]", box).forEach((b) => b.onclick = () => moveVoice(all.find((x) => x.id === +b.dataset.vmove)));
+  }
+
+  async function moveVoice(v) {
+    const others = (await loadDests()).dests.filter((x) => x.name !== name);
+    if (!others.length) return toast("فایل دیگری در فهرست نیست؛ اول از «فایل‌های من» فایل دیگری اضافه کنید.");
+    const to = await openModal({ title: "انتقال ویس به فایل دیگر", body: `<div class="stack"><div>«${esc(v.original_name)}» و ردیف‌های ثبت‌نشده‌اش به این فایل منتقل شوند:</div>
+        <select class="select" id="mv-to">${others.map((x) => `<option value="${esc(x.name)}">${esc(destLabel(x))}</option>`).join("")}</select></div>`,
+      actions: [{ label: "انتقال", cls: "primary", onClick: (m) => $("#mv-to", m).value }, { label: "انصراف", cls: "ghost", value: null }] });
+    if (!to) return;
+    try { await api(`/api/files/${v.id}`, { method: "PATCH", body: { dest: to } }); toast(`منتقل شد به «${destLabel(others.find((x) => x.name === to))}».`, "ok"); refreshStatus(); drawVoices(); }
+    catch (e) { toastErr(e); }
+  }
+
   async function drawReview() {
     if (seq !== routeSeq) return;
-    const { records } = await api("/api/records?filter=review");
-    const box = $("#t-review");
-    if (!box) return;
-    const ids = records.map((r) => r.id);
-    $("#t-rv-actions").innerHTML = records.length > 1 ? `<button class="btn sm primary" id="t-focus" title="یک رکورد در هر صفحه، با پخش خودکار شماره و میان‌برهای صفحه‌کلید">${I.eye} بازبینی سریع (${fa(records.length)})</button>` : "";
-    $("#t-focus")?.addEventListener("click", () => openFocus(ids));
-    if (!records.length) {
-      box.innerHTML = `<div class="card-b row muted">${I.ok} موردی برای بررسی نیست.</div>`;
-      return;
-    }
-    box.innerHTML = `<div class="t-list">${records.slice(0, SHOW).map((r) => {
-      const v = r.values, vf = r.validation.fields || {};
-      // هر مورد مشکوک: دلیل، دکمه پخش همان بخش از ویس، و واژه‌هایی که با اطمینان کم شنیده شده‌اند
-      const item = (k, why) => {
-        const seg = SEG_OF[k] || k, t = r.audio_available && fieldTime(r, seg), words = lowWords(r, k);
-        return `<li>${t ? `<button class="btn sm ghost" data-tseg="${seg}" title="پخش همین بخش از ویس">${I.play} بشنوید ${segTime(t)}</button>` : ""}
-          <span class="t-why"><b>${esc(LABEL[k] || k)}:</b> ${esc(why)}</span>${words.length ? `<span class="t-words">${words.join(" ")}</span>` : ""}</li>`;
-      };
-      const bad = Object.entries(vf).filter(([, f]) => f.status !== "valid");
-      const problems = bad.map(([k, f]) => item(k, (f.reasons || [])[0] || FIELD_STATUS[f.status]));
-      // فیلدی که معتبر شمرده شده ولی بخشی از آن با اطمینان کم شنیده شده هم نشان داده می‌شود
-      for (const k of ["engineer_name", "phone", "address", "tech"]) {
-        if (lowWords(r, k).length && !bad.some(([b]) => b === k)) problems.push(item(k, "بخشی با اطمینان کم شنیده شد."));
-      }
-      if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li><span class="t-why">${esc(x)}</span></li>`));
-      const play = r.audio_available ? `<button class="btn sm ghost" data-twhole title="پخش کل ویس">${I.play} کل ویس</button>` : "";
-      return `<div class="t-rec" data-trec="${r.id}">
-        <div class="t-rec-main"><div><b>${esc(v.engineer_name || "نام پیدا نشد")}</b>
-            <span class="ltr t-phone">${esc((v.phone || "").split("\n").filter(Boolean).map(fmtPhone).join(" ، ")) || "—"}</span></div>
-          <div class="small">${esc(v.address || "آدرس پیدا نشد")}${techSummary(v) ? ` <span class="muted">· ${esc(techSummary(v))}</span>` : ""}</div>
-          <ul class="t-problems small">${problems.join("")}</ul></div>
-        <div class="t-rec-act">${play}
-          <button class="btn sm ok" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
-          <button class="btn sm" data-topen="${r.id}">${I.edit} اصلاح</button>
-          <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد">${I.x}</button></div></div>`;
-    }).join("")}</div>
-    ${records.length > SHOW ? `<div class="card-b small muted">و ${fa(records.length - SHOW)} مورد دیگر؛ با «بازبینی سریع» همه را یکی‌یکی ببینید.</div>` : ""}`;
-    $$("[data-trec]", box).forEach((card) => {
-      const rec = records.find((r) => r.id === +card.dataset.trec);
-      $$("[data-tseg]", card).forEach((b) => b.onclick = () => playRecordSegment(rec, b.dataset.tseg));
-      $$("[data-lt]", card).forEach((b) => b.onclick = () => playRecordSegment(rec, b.dataset.lt.split(",").map(Number)));
-      $("[data-twhole]", card)?.addEventListener("click", () => playRecordSegment(rec, [0, 1e6]));
-    });
-    $$("[data-topen]", box).forEach((b) => b.onclick = () => openRecord(+b.dataset.topen));
-    $$("[data-tact]", box).forEach((b) => b.onclick = async () => {
-      const id = +b.dataset.r, act = b.dataset.tact;
-      try {
-        await api(`/api/records/${id}/action`, { method: "POST", body: { action: act, add_to_dictionary: act === "approve" } });
-        toast(act === "approve" ? "تأیید شد." : "رد شد.", "ok", { label: "بازگشت", onClick: async () => { await undoLast(id); drawReview(); } });
-        refreshStatus();
-      } catch (e) { toastErr(e); }
-    });
+    const [{ records }, sheet] = await Promise.all([api(`/api/records?filter=review&dest=${encodeURIComponent(name)}`),
+      api(`/api/dests/${encodeURIComponent(name)}/cells?filter=review`).catch(() => null)]);
+    const box = $("#fw-rv");
+    if (!box || seq !== routeSeq) return;
+    $("#fw-review").hidden = !records.length;  // کارت خالی صفحه را شلوغ نکند
+    reviewList(box, $("#fw-rv-actions"), records, drawReview, sheet);
   }
-  // کشوی جزئیات و بازبینی سریع پس از هر تغییر همین فهرست را تازه می‌کنند
-  reviewState.reload = reviewState.updateRow = () => drawReview().catch(() => {});
 
-  function drawExcel() {
-    const s = state.status, box = $("#t-excel");
-    if (!s || seq !== routeSeq || !box) return;
-    const n = s.records.approved, last = todayState.lastCommit;
+  function drawCommit() {
+    const box = $("#fw-cm");
+    if (!box || seq !== routeSeq) return;
+    const n = info.ready, last = fileState.lastCommit;
     let html = "";
     if (last) {
       html += last.applied
         ? `<div class="alert ok">${I.ok}<div class="alert-body">${(last.files || []).length > 1
             ? `${fa(last.rows.length)} ردیف در ${fa(last.files.length)} فایل ثبت شد: ${last.files.map((f) => `«${esc(f)}»`).join("، ")}.`
             : `${fa(last.rows.length)} ردیف در «${esc(last.target_path.split(/[\\/]/).pop())}» ثبت شد (ردیف ${fa(last.first_row)} تا ${fa(last.last_row)}).`} پیش از ثبت از فایل پشتیبان گرفته شد.</div>
-            <button class="btn sm" id="t-open">${I.open} نمایش فایل</button><button class="btn sm ghost" id="t-undo">${I.history} بازگشت</button></div>`
-        : `<div class="alert warn">${I.alert}<div class="alert-body">${esc(last.message)}</div><a class="btn sm" href="#/excel">مشاهده</a></div>`;
+            <button class="btn sm" id="fw-open">${I.open} باز کردن فایل</button><button class="btn sm ghost" id="fw-undo">${I.history} برگرداندن</button></div>`
+        : `<div class="alert warn">${I.alert}<div class="alert-body">${esc(last.message)}</div>
+            ${last.export_ids?.length ? `<button class="btn sm" id="fw-open-copy">${I.open} دیدن کپی</button>` : ""}<a class="btn sm" href="#/history?f=${encodeURIComponent(name)}">تاریخچه ثبت‌ها</a></div>`;
     }
-    if (!s.setup.excel_ready) {
-      html += destSentence(s);
+    if (!info.configured) {
+      html += `<div class="dest-sentence warn">${I.alert}<span>ستون‌های این فایل هنوز تأیید نشده‌اند؛ تا تأیید نشوند چیزی ثبت نمی‌شود.</span>
+        <a class="btn sm" href="#/templates?dest=${encodeURIComponent(name)}">تأیید ستون‌ها</a></div>`;
     } else if (n) {
-      html += `${destSentence(s)}<div class="row" style="margin-top:12px"><button class="btn primary lg" id="t-commit">${I.table} ثبت ${fa(n)} ردیف در اکسل</button>
-        <a class="btn sm ghost" href="#/excel">پیش‌نمایش ردیف‌ها</a></div>`;
-    } else if (!last) {
-      html += `${destSentence(s)}<div class="muted small" style="margin-top:8px">${s.records.review ? "پس از بررسی موارد بالا، ردیف‌ها اینجا آماده ثبت می‌شوند." : "فعلاً ردیفی برای ثبت نیست."}</div>`;
+      const items = fileState.check?.items || [];
+      const ICON = { ok: I.ok, warn: I.alert, block: I.alert };
+      html += `${items.length ? `<ul class="fcheck">${items.map((x) => `<li class="${x.level}">${ICON[x.level]}<span>${esc(x.text)}</span></li>`).join("")}</ul>` : ""}
+        <div class="row">${checkBlock() ? fixBtn(checkBlock()) : ""}<button class="btn" id="fw-commit-go" ${checkBlock() ? "disabled" : ""}>${I.table} ثبت ${fa(n)} ردیف در «${esc(destLabel(info))}»</button></div>`;
     }
-    if (s.pending_replace) html += `<div class="small muted" style="margin-top:8px">${fa(s.pending_replace)} خروجی قدیمی هنوز روی فایل اصلی اعمال نشده است. <a href="#/excel">مشاهده</a></div>`;
     box.innerHTML = html;
-    $("#t-commit")?.addEventListener("click", async (e) => {
-      e.target.disabled = true;
-      e.target.innerHTML = '<span class="spinner"></span> در حال ثبت...';
-      try { todayState.lastCommit = await api("/api/excel/commit", { method: "POST", body: {} }); }
-      catch (er) { toastErr(er); }
-      await refreshStatus();
-      drawExcel();
-    });
-    $("#t-open")?.addEventListener("click", () => api("/api/open-folder", { method: "POST", body: { path: last.target_path } }).catch(toastErr));
-    $("#t-undo")?.addEventListener("click", async () => {
-      if (!(await confirmBox("بازگشت ثبت", "ردیف‌های این ثبت از فایل اکسل برداشته می‌شوند (فایل به نسخه پیش از ثبت برمی‌گردد) و رکوردها دوباره آماده ثبت می‌شوند.", "بازگشت", "danger"))) return;
+    $("#fw-commit").hidden = !html;
+    bindFix(box);
+    $("#fw-commit-go")?.addEventListener("click", (e) => doCommit(e.currentTarget));
+    $("#fw-open")?.addEventListener("click", () => api(`/api/dests/${encodeURIComponent(name)}/open`, { method: "POST" }).catch(toastErr));
+    $("#fw-open-copy")?.addEventListener("click", () => api(`/api/exports/${last.export_ids[0]}/open`, { method: "POST" }).catch(toastErr));
+    $("#fw-undo")?.addEventListener("click", async () => {
+      if (!(await confirmBox("برگرداندن ثبت", "ردیف‌های این ثبت از فایل اکسل برداشته می‌شوند (فایل به نسخه پیش از ثبت برمی‌گردد) و دوباره آماده ثبت می‌شوند.", "برگرداندن", "danger"))) return;
       try {
-        // ثبتی که در چند فایل (روز/ماه جدا) انجام شده، همه با هم برمی‌گردند؛ آخرین اول
         let msg = "";
         for (const eid of [...(last.export_ids || [last.export_id])].reverse()) msg = (await api(`/api/exports/${eid}/undo`, { method: "POST" })).message;
-        toast(msg, "ok"); todayState.lastCommit = null;
-      }
-      catch (er) { toastErr(er); }
+        toast(msg, "ok"); fileState.lastCommit = null;
+      } catch (er) { toastErr(er); }
       await refreshStatus();
-      drawExcel();
+      await reloadInfo();
+      drawHead(); drawNext(); drawCommit();
     });
   }
 
-  drawProgress();
-  drawExcel();
-  await drawReview();
-  setHook(seq, (s, prev) => {
-    drawProgress();
-    drawExcel();
+  async function doCommit(btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> در حال ثبت...';
+    try { fileState.lastCommit = await api("/api/excel/commit", { method: "POST", body: { dest: name } }); }
+    catch (er) { toastErr(er); }
+    await refreshStatus();
+    await reloadInfo();
+    drawHead(); drawNext(); drawCommit(); drawVoices().catch(() => {});
+    loadCheck();
+    $("#fw-commit")?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  reviewState.reload = reviewState.updateRow = () => { drawReview().catch(() => {}); drawVoices().catch(() => {}); };
+  pageHooks.onFocus = loadCheck;
+  setHook(seq, async (s, prev) => {
+    await reloadInfo();
+    if (seq !== routeSeq) return;
+    drawHead(); drawNext(); drawProgress(); drawCommit();
+    if (prev && (prev.records.approved !== s.records.approved || prev.records.exported !== s.records.exported)) loadCheck();
+    if (info.voices) $("#fw-samples")?.closest(".row").remove();
     if (!prev || prev.records.review !== s.records.review || prev.files.done !== s.files.done) drawReview().catch(() => {});
+    drawVoices().catch(() => {});
   });
   const timer = setInterval(() => { if (seq !== routeSeq) return clearInterval(timer); if (state.status?.worker.running) drawProgress(); }, 1000);
 }
 
-// ================= داشبورد =================
-async function renderDashboard(el) {
+// ================= تاریخچه ثبت‌ها =================
+const histState = { dest: "" };
+const EXPORT_ST = { applied: ["ok", "ثبت شد"], created: ["warn", "در یک کپی ساخته شد؛ هنوز روی فایل اصلی اعمال نشده"], undone: ["missing", "برگردانده شد"] };
+
+async function renderHistory(el) {
   const seq = routeSeq;
-  const draw = async () => {
-    const s = state.status || (await api("/api/status"));
-    const files = (await api("/api/files")).files.slice(0, 6);
-    const pct = s.progress;
-    const C = 2 * Math.PI * 40;
-    const running = s.worker.running;
-    const q = s.files.queued + s.files.processing;
-    const stat = (label, value, icon, cls, href) => `<a class="stat" ${href ? `href="${href}"` : ""} style="color:inherit">
-      <div class="stat-ico ${cls}">${icon}</div><div class="stat-label">${label}</div><div class="stat-value num">${fa(value)}</div></a>`;
-    const welcome = onboardingCard(s);
-    el.innerHTML = welcome + `
-      <div class="grid" style="grid-template-columns: minmax(0,1.3fr) minmax(0,1fr)">
-        <div class="card"><div class="card-b hero-progress">
-          <svg class="ring" viewBox="0 0 100 100"><circle class="bg" cx="50" cy="50" r="40"/>
-            <circle class="fg" cx="50" cy="50" r="40" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - (running ? pct : q ? 0 : 100) / 100)}"/>
-            <text x="50" y="52">${fa(running ? pct : q ? 0 : 100)}٪</text></svg>
-          <div class="stack" style="gap:6px; flex:1; min-width:0">
-            <div style="font-weight:800; font-size:17px">${running ? "در حال پردازش ویس‌ها" : q ? `${fa(q)} ویس در صف پردازش` : "همه ویس‌ها پردازش شده‌اند"}</div>
-            <div class="muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${running ? "فایل فعلی: " + esc(s.worker.current_name || "...") : q ? "برای شروع، دکمه شروع پردازش را بزنید." : "برای افزودن ویس جدید به بخش ویس‌ها بروید."}</div>
-            <div class="row" style="margin-top:6px">
-              ${running ? `<button class="btn danger" id="d-stop">${I.stop} توقف پردازش</button>`
-                : q ? `<button class="btn primary" id="d-start">${I.play} شروع پردازش</button>` : `<a class="btn primary" href="#/voices">${I.upload} افزودن ویس</a>`}
-              ${s.records.review ? `<a class="btn" href="#/review">${I.eye} بازبینی (${fa(s.records.review)})</a>` : ""}
-              ${!running && state.meta?.samples?.voices ? `<button class="btn" id="d-samples">${I.play} امتحان با ${fa(state.meta.samples.voices)} ویس نمونه</button>` : ""}
-            </div>
-          </div></div></div>
-        <div class="card"><div class="card-b stack" style="gap:8px">
-          <div class="row between"><b>وضعیت سامانه</b>${s.model.available ? chip("ok", "آماده") : chip("err", "مدل نصب نیست")}</div>
-          <dl class="kv"><dt>مدل گفتار</dt><dd class="ltr">${esc(s.model.name)}</dd>
-            <dt>پردازش</dt><dd>محلی روی CPU، بدون اینترنت</dd>
-            <dt>تاریخ امروز</dt><dd>${fa(s.today)}</dd>
-            <dt>نسخه</dt><dd>${fa(s.version)}</dd></dl>
-        </div></div>
-      </div>
-      <div class="stats" style="margin-top:18px">
-        ${stat("کل ویس‌ها", s.files.total, I.mic, "ico-primary", "#/voices")}
-        ${stat("در صف", s.files.queued + s.files.processing, I.clock, "ico-info", "#/voices")}
-        ${stat("پردازش موفق", s.files.done, I.ok, "ico-ok", "#/voices")}
-        ${stat("ناموفق", s.files.failed, I.alert, "ico-err", "#/voices")}
-        ${stat("نیازمند بازبینی", s.records.review, I.eye, "ico-warn", "#/review")}
-        ${stat("آماده ثبت", s.records.approved, I.check, "ico-ok", "#/excel")}
-        ${stat("ثبت‌شده در اکسل", s.records.exported, I.table, "ico-info", "#/review?exported")}
-      </div>
-      ${welcome ? "" : `<div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.info} مراحل کار</h2></div><div class="card-b"><div class="steps">
-        <div class="step ${s.files.total ? "done" : ""}"><div class="step-n">${fa(1)}</div><h4>افزودن ویس‌ها</h4><p>فایل‌ها یا پوشه ویس‌های بازاریاب را اضافه کنید و تاریخ بازدید را مشخص کنید. <a href="/static/recording-guide.html" target="_blank">راهنمای ضبط</a> را به بازاریاب‌ها بدهید.</p><a class="btn sm" href="#/voices">ویس‌ها</a></div>
-        <div class="step ${s.files.done ? "done" : ""}"><div class="step-n">${fa(2)}</div><h4>پردازش خودکار</h4><p>ویس‌ها یکی‌یکی به متن تبدیل و اطلاعات از آن استخراج می‌شود.</p><a class="btn sm" href="#/voices">صف پردازش</a></div>
-        <div class="step ${s.records.approved || s.records.exported ? "done" : ""}"><div class="step-n">${fa(3)}</div><h4>بازبینی</h4><p>موارد مشکوک را با شنیدن ویس اصلاح و تأیید کنید. هیچ حدسی ثبت نمی‌شود.</p><a class="btn sm" href="#/review">بازبینی</a></div>
-        <div class="step ${s.records.exported ? "done" : ""}"><div class="step-n">${fa(4)}</div><h4>ثبت در اکسل</h4><p>رکوردهای تأییدشده روی یک کپی از فایل شرکت ثبت می‌شوند؛ با پشتیبان‌گیری.</p><a class="btn sm" href="#/excel">ثبت در اکسل</a></div>
-      </div></div></div>`}
-      <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.music} آخرین ویس‌ها</h2><a class="btn sm ghost" href="#/voices">همه</a></div>
-        ${files.length ? `<div class="table-wrap"><table class="table"><thead><tr><th>نام فایل</th><th>تاریخ بازدید</th><th>وضعیت</th><th>رکورد</th></tr></thead><tbody>
-          ${files.map((f) => `<tr><td>${esc(f.original_name)}${f.error && f.status === "failed" ? `<div class="err-text">${esc(f.error)}</div>` : ""}</td><td>${fa(f.visit_date)}</td><td>${chip(f.status, FILE_STATUS[f.status])}</td><td>${fa(f.records)}</td></tr>`).join("")}
-        </tbody></table></div>` : `<div class="empty">${I.mic}<div>هنوز ویسی اضافه نشده است.</div><a class="btn primary" href="#/voices">${I.upload} افزودن ویس</a></div>`}
-      </div>`;
-    $("#d-start")?.addEventListener("click", startQueue);
-    $("#d-stop")?.addEventListener("click", stopQueue);
-    $("#d-samples")?.addEventListener("click", importSamples);
-    bindOnboarding();
-  };
-  await draw();
-  setHook(seq, () => draw().catch(() => {}));
+  const q = new URLSearchParams(location.hash.split("?")[1] || "");
+  if (q.has("f")) histState.dest = q.get("f");
+  const [{ exports }, ds] = await Promise.all([api(`/api/exports?dest=${encodeURIComponent(histState.dest)}`), loadDests()]);
+  if (seq !== routeSeq) return;
+  const label = (e) => { const d = ds.dests.find((x) => x.name === e.profile); return d ? destLabel(d) : e.file; };
+  const today = state.status?.today || "";
+  const days = [];
+  for (const e of exports) {
+    const g = days.find((x) => x.date === e.date_jalali);
+    if (g) g.items.push(e); else days.push({ date: e.date_jalali, items: [e] });
+  }
+  el.innerHTML = `<div class="row" style="margin-bottom:16px"><label class="small muted">فایل:</label>
+      <select class="select" id="h-dest" style="width:auto;min-width:240px"><option value="">همه فایل‌ها</option>
+        ${ds.dests.map((d) => `<option value="${esc(d.name)}" ${d.name === histState.dest ? "selected" : ""}>${esc(destLabel(d))}</option>`).join("")}</select></div>
+    ${!exports.length ? `<div class="card"><div class="empty">${I.history}<div>هنوز ثبتی ${histState.dest ? "در این فایل " : ""}انجام نشده است.</div></div></div>`
+      : days.map((g) => `<div class="h-day"><div class="h-date">${fa(g.date)}${g.date === today ? " — امروز" : ""}</div>
+        <div class="card">${g.items.map((e) => {
+          const [cls, st] = EXPORT_ST[e.status] || ["", e.status];
+          return `<div class="h-item ${e.status}">
+            <div class="h-main"><div><span class="h-time" dir="ltr">${fa(e.time)}</span> <b>${fa(e.rows_written)} ردیف</b> در «${fname(label(e))}»
+                <span class="muted small">(ردیف ${fa(e.first_row)}${e.last_row !== e.first_row ? ` تا ${fa(e.last_row)}` : ""})</span></div>
+              <div class="row small" style="gap:6px">${chip(cls, st)}${!e.dest_listed ? chip("missing", "این فایل دیگر در فهرست نیست") : ""}</div>
+              ${e.items.length ? `<details class="small"><summary>ردیف‌ها</summary><ul class="h-rows">${e.items.map((x) =>
+                `<li><b>ردیف ${fa(x.row)}</b>: ${esc(x.name || "بی‌نام")} <span class="muted">— ${esc(x.voice)}</span></li>`).join("")}</ul></details>` : ""}</div>
+            <div class="h-act">
+              ${e.status !== "undone" ? `<button class="btn sm" data-hopen="${e.id}">${I.open} باز کردن فایل</button>` : ""}
+              ${e.status === "created" ? `<button class="btn sm primary" data-happly="${e.id}">${I.check} اعمال روی فایل اصلی</button>` : ""}
+              ${e.status !== "undone" ? `<button class="btn sm ghost" data-hundo="${e.id}">${I.history} برگرداندن</button>` : ""}</div></div>`;
+        }).join("")}</div></div>`).join("")}`;
+  $("#h-dest").onchange = (e) => { histState.dest = e.target.value; renderHistory(el); };
+  $$("[data-hopen]", el).forEach((b) => b.onclick = () => api(`/api/exports/${b.dataset.hopen}/open`, { method: "POST" }).catch(toastErr));
+  $$("[data-happly]", el).forEach((b) => b.onclick = async () => {
+    if (!(await confirmBox("اعمال روی فایل اصلی", "ردیف‌های این ثبت که در یک کپی ساخته شده‌اند، روی فایل اصلی نوشته می‌شوند. پیش از آن از فایل اصلی پشتیبان گرفته می‌شود. Excel باید بسته باشد.", "اعمال"))) return;
+    try { await api(`/api/exports/${b.dataset.happly}/replace-original`, { method: "POST" }); toast("روی فایل اصلی اعمال شد.", "ok"); refreshStatus(); renderHistory(el); }
+    catch (e) { toastErr(e); }
+  });
+  $$("[data-hundo]", el).forEach((b) => b.onclick = async () => {
+    if (!(await confirmBox("برگرداندن ثبت", "اگر فایل اکسل پس از این ثبت دستی تغییر نکرده باشد، به حالت پیش از ثبت برمی‌گردد. ردیف‌ها دوباره «آماده ثبت» می‌شوند تا اصلاح یا دوباره ثبتشان کنید.", "برگرداندن", "danger"))) return;
+    try { toast((await api(`/api/exports/${b.dataset.hundo}/undo`, { method: "POST" })).message, "ok"); refreshStatus(); renderHistory(el); }
+    catch (e) { toastErr(e); }
+  });
 }
 
-/** راهنمای اجرای اول: چهار گام راه‌اندازی با وضعیت انجام‌شده/نشده؛ تا انجام همه یا بستن نمایش داده می‌شود. */
-function onboardingCard(s) {
-  if (localStorage.getItem("v2x.onboarding.closed") === "1") return "";
-  const st = s.setup || {};
-  const guideSeen = localStorage.getItem("v2x.guide.opened") === "1";
-  const steps = [
-    { done: st.excel_ready, title: "مقصد ثبت در اکسل", text: st.excel_ready ? `${st.template_mode === "new" ? "فایل جداگانه" : "اضافه به فایل موجود"}: ${fname(st.excel_name)}` : "مشخص کنید ردیف‌ها به فایل اکسل موجود شرکت اضافه شوند یا در یک فایل تازه نوشته شوند.", btn: `<a class="btn sm" href="#/templates">${st.excel_ready ? "تغییر مقصد" : "انتخاب مقصد"}</a>` },
-    { done: st.dictionary > 0, title: "واژه‌نامه", text: st.dictionary > 0 ? `${fa(st.dictionary)} نام و خیابان؛ برای تشخیص نام و آدرس و املای درست. فایل‌های اکسل قدیمی بیشتر = تشخیص بهتر.` : "با وصل کردن فایل موجود شرکت خودکار پر می‌شود؛ فایل‌های اکسل قدیمی را هم می‌توانید یاد بدهید.", btn: `<a class="btn sm" href="#/dictionary?kb">آموزش از اکسل</a>` },
-    { done: guideSeen, title: "راهنمای ضبط ویس", text: "یک صفحه قابل چاپ برای بازاریاب‌ها تا ویس‌ها دقیق‌تر خوانده شوند.", btn: `<a class="btn sm" href="/static/recording-guide.html" target="_blank" id="ob-guide">مشاهده و چاپ</a>` },
-    { done: s.files.total > 0, title: "اولین ویس", text: "ویس‌ها را اضافه کنید؛ پردازش خودکار شروع می‌شود.", btn: `<a class="btn sm" href="#/voices">افزودن ویس</a>${state.meta?.samples?.voices && !s.files.total ? ` <button class="btn sm ghost" id="ob-samples">ویس نمونه</button>` : ""}` },
-  ];
-  if (steps.every((x) => x.done)) return "";
-  const n = steps.filter((x) => x.done).length;
-  return `<div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.info} شروع به کار — ${fa(n)} از ${fa(steps.length)} گام</h2>
-      <button class="btn sm ghost" id="ob-close">${I.x} بستن راهنما</button></div>
-    <div class="card-b"><div class="onboard">${steps.map((x, i) => `<div class="ob-step ${x.done ? "done" : ""}">
-      <div class="ob-h"><span class="ob-n">${x.done ? I.check : fa(i + 1)}</span>${x.title}</div><p>${x.text}</p><div class="row">${x.btn}</div></div>`).join("")}</div></div></div>`;
+/** چرا از یک ویس ردیفی ساخته نشد: متن ویس، پخش و راهنمای ضبط بهتر. */
+async function whyNoRows(id) {
+  let w;
+  try { w = await api(`/api/files/${id}/why`); } catch (e) { return toastErr(e); }
+  await openModal({ title: "از این ویس ردیفی ساخته نشد", wide: true, body: `<div class="stack">
+      <div>برنامه در متن این ویس <b>نام، شماره تماس یا آدرسی</b> پیدا نکرد که بشود از آن یک ردیف ساخت. معمولاً یعنی ویس دربارهٔ بازدید نبوده، خیلی کوتاه یا بی‌صدا بوده، یا صدای زمینه زیاد بوده است.</div>
+      ${w.error ? `<div class="alert info">${I.info}<div class="alert-body">${esc(w.error)}</div></div>` : ""}
+      <div><div class="section-title">${I.wave} متنی که از ویس شنیده شد</div><div class="transcript">${w.text ? esc(w.text) : '<span class="muted">متنی شنیده نشد (ویس بی‌صدا یا خیلی کوتاه است).</span>'}</div></div>
+      ${w.audio ? `<audio controls preload="metadata" src="/api/files/${id}/audio" style="width:100%"></audio>` : ""}
+      <div class="small muted">اگر ویس اطلاعات بازدید دارد، دوباره و واضح‌تر ضبط شود. <a href="/static/recording-guide.html" target="_blank">راهنمای ضبط ویس</a></div></div>`,
+    actions: [{ label: "بستن", cls: "primary" }] });
 }
-function bindOnboarding() {
-  $("#ob-close")?.addEventListener("click", () => { localStorage.setItem("v2x.onboarding.closed", "1"); route(); });
-  $("#ob-guide")?.addEventListener("click", () => { localStorage.setItem("v2x.guide.opened", "1"); setTimeout(route, 300); });
-  $("#ob-samples")?.addEventListener("click", importSamples);
+
+/** نوار ثابت بالای صفحه: همیشه معلوم است کدام فایل باز است، چند ردیف دارد و آخرین بار کی ثبت شد. */
+function fileBar(box, info, onChange, where = "file") {
+  const r = info.file_rows, lc = info.last_commit;
+  const facts = [
+    info.missing ? `<span class="err-text">${I.alert} فایل در مسیرش پیدا نشد</span>` : r ? (r.exists ? `<span><b>${fa(r.rows)}</b> ردیف</span>` : `<span>هنوز ساخته نشده</span>`) : "",
+    r?.exists ? `<span>آخرین ردیف: <b>${fa(r.last_row)}</b></span>` : "",
+    lc ? `<a class="fb-link" href="#/history?f=${encodeURIComponent(info.name)}" title="تاریخچه ثبت‌های این فایل">آخرین ثبت: <b>${agoText(lc.created_at)}</b> (${fa(lc.rows_written)} ردیف)</a>` : `<span class="muted">هنوز ثبتی نشده</span>`,
+  ].filter(Boolean);
+  box.innerHTML = `<div class="file-bar">
+    <span class="fb-ico">${info.mode === "new" ? I.file : I.table}</span>
+    <div class="fb-main"><div class="fb-name"><span class="muted small">فایل:</span> <b>${fname(destLabel(info))}</b></div>
+      <div class="fb-facts small">${facts.join('<span class="fb-dot">·</span>')}</div></div>
+    <div class="fb-status">${destParts(info).map(([c, t]) => chip(c, t)).join("")}</div>
+    <div class="fb-act">
+      <button class="btn sm" id="fb-open" title="${info.file_rows?.exists ? "باز کردن همین فایل در Excel" : "باز کردن پوشه فایل"}">${I.open} ${info.file_rows?.exists ? "باز کردن فایل" : "پوشه فایل"}</button>
+      ${where === "settings" ? `<a class="btn sm ghost" href="${fileHref(info.name)}" title="افزودن ویس، بررسی و ثبت">${I.table} میز کار فایل</a>`
+        : `<a class="btn sm ghost" href="#/templates?dest=${encodeURIComponent(info.name)}" title="ستون‌ها، شکل نوشتن مقادیر و ظاهر">${I.edit} تنظیمات فایل</a>`}
+      <a class="btn sm ghost" href="#/files" title="همه فایل‌های اکسل">${I.prev} همه فایل‌ها</a></div>
+    <div class="fb-auto small">${info.auto ? `${I.mic} ویس‌های گوشی و پوشه ورودی هم به همین فایل می‌آیند.`
+      : `<button class="linkbtn" id="fb-auto">${I.mic} ویس‌های گوشی و پوشه ورودی هم به این فایل بیایند</button>`}</div></div>`;
+  $("#fb-open", box).onclick = () => api(`/api/dests/${encodeURIComponent(info.name)}/open`, { method: "POST" }).catch(toastErr);
+  $("#fb-auto", box)?.addEventListener("click", async () => {
+    try { await api(`/api/templates/${encodeURIComponent(info.name)}/activate`, { method: "POST" }); toast(`از این پس ویس‌های گوشی و پوشه ورودی به «${destLabel(info)}» می‌آیند.`, "ok"); onChange?.(); }
+    catch (e) { toastErr(e); }
+  });
+}
+
+// خانه‌ای که از چند اطلاعات ساخته می‌شود: وضعیتش بدترین وضعیت اجزای آن است
+const CELL_TECH = ["floors", "structure_type", "executed", "stage", "units"];  // همان TECH_KEYS (که پایین‌تر تعریف شده)
+const CELL_PARTS = {
+  technical_summary: CELL_TECH, followup: ["followup_action", "followup_date"],
+  notes_composed: [...CELL_TECH, "project_name", "building_type", "permit_status", "customer_need", "notes", "followup_action", "followup_date"],
+};
+const CELL_RANK = { invalid: 3, review: 2, missing: 1, valid: 0 };
+function cellStatus(field, vf) {
+  const parts = CELL_PARTS[field] || [field];
+  return parts.map((k) => vf[k]?.status || "valid").reduce((a, b) => (CELL_RANK[b] > CELL_RANK[a] ? b : a), "valid");
+}
+/** یک ردیف به شکل خود اکسل: حرف و عنوان ستون‌های فایل و مقدار هر خانه، همان‌طور که نوشته می‌شود. */
+function excelRowHtml(sheet, r) {
+  const cells = sheet.rows[r.id] || {};
+  const cols = sheet.columns.filter((c) => c.field);
+  const vf = r.validation.fields || {};
+  return `<div class="xr-wrap"><table class="xr-table"><thead><tr><th class="xr-rn"></th>${cols.map((c) =>
+      `<th title="${esc(c.title)}"><span class="xr-letter">${esc(c.letter)}</span>${esc(c.title)}</th>`).join("")}</tr></thead>
+    <tbody><tr><td class="xr-rn" title="ردیف تازه، زیر آخرین ردیف فایل">+</td>${cols.map((c) => {
+      const st = cellStatus(c.field, vf), t = r.audio_available && !CELL_PARTS[c.field] && fieldTime(r, c.field);
+      const val = cells[c.letter] || "";
+      return `<td class="st-${st} ${c.field === "phone" ? "ltr-cell" : ""}" data-xcell="${r.id}" title="${esc((vf[c.field]?.reasons || []).join(" | ") || "برای اصلاح بزنید")}">
+        ${val ? esc(val) : `<span class="muted">${st === "missing" ? "گفته نشده" : "—"}</span>`}${t ? `<button class="xr-play" data-tseg="${c.field}" title="پخش همین بخش از ویس">${I.play}</button>` : ""}</td>`;
+    }).join("")}</tr></tbody></table></div>`;
+}
+
+/** فهرست ردیف‌های نیازمند بررسی: علت هر هشدار، پخش همان تکه از ویس، «درست است / اصلاح / رد».
+ * sheet: ستون‌های فایل و مقدار خانه‌ها (از /api/dests/…/cells)؛ اگر باشد، هر ردیف به شکل خود ردیف اکسل نمایش داده می‌شود. */
+function reviewList(box, actionsBox, records, reload, sheet = null) {
+  const LABEL = { ...Object.fromEntries((state.meta?.fields || []).map((f) => [f.key, f.label])), tech: "مشخصات فنی" };
+  const SEG_OF = { followup_date: "followup_action", followup_time_text: "followup_action" };  // فیلدی که بخش ویس خودش را ندارد
+  const SHOW = 12;
+  const ids = records.map((r) => r.id);
+  actionsBox.innerHTML = records.length > 1 ? `<button class="btn sm" id="rl-focus" title="یک ردیف در هر صفحه، با پخش خودکار شماره و میان‌برهای صفحه‌کلید">${I.eye} بررسی سریع (${fa(records.length)})</button>` : "";
+  $("#rl-focus", actionsBox)?.addEventListener("click", () => openFocus(ids));
+  if (!records.length) {
+    box.innerHTML = `<div class="card-b row muted">${I.ok} ردیفی برای بررسی نیست.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="t-list">${records.slice(0, SHOW).map((r) => {
+    const v = r.values, vf = r.validation.fields || {};
+    const item = (k, why) => {
+      const seg = SEG_OF[k] || k, t = r.audio_available && fieldTime(r, seg), words = lowWords(r, k);
+      return `<li>${t ? `<button class="btn sm ghost" data-tseg="${seg}" title="پخش همین بخش از ویس">${I.play} بشنوید ${segTime(t)}</button>` : ""}
+        <span class="t-why"><b>${esc(LABEL[k] || k)}:</b> ${esc(why)}</span>${words.length ? `<span class="t-words">${words.join(" ")}</span>` : ""}</li>`;
+    };
+    const bad = Object.entries(vf).filter(([, f]) => f.status !== "valid");
+    const problems = bad.map(([k, f]) => item(k, (f.reasons || [])[0] || FIELD_STATUS[f.status]));
+    for (const k of ["engineer_name", "phone", "address", "tech"]) {
+      if (lowWords(r, k).length && !bad.some(([b]) => b === k)) problems.push(item(k, "بخشی با اطمینان کم شنیده شد."));
+    }
+    if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li><span class="t-why">${esc(x)}</span></li>`));
+    const play = r.audio_available ? `<button class="btn sm ghost" data-twhole title="پخش کل ویس">${I.play} کل ویس</button>` : "";
+    const acts = `<div class="t-rec-act">${play}
+        <button class="btn sm ok" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
+        <button class="btn sm" data-topen="${r.id}">${I.edit} اصلاح</button>
+        <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد: در فایل ثبت نشود">${I.x}</button></div>`;
+    if (sheet?.rows[r.id]) return `<div class="t-rec xr" data-trec="${r.id}">
+      <div class="xr-head"><span class="small muted" title="${esc(r.original_name)}">${I.music} ${esc(r.original_name)}${r.building_count > 1 ? ` · ساختمان ${fa(r.building_index + 1)} از ${fa(r.building_count)}` : ""}</span>${acts}</div>
+      ${excelRowHtml(sheet, r)}
+      <ul class="t-problems small">${problems.join("")}</ul></div>`;
+    return `<div class="t-rec" data-trec="${r.id}">
+      <div class="t-rec-main"><div><b>${esc(v.engineer_name || "نام پیدا نشد")}</b>
+          <span class="ltr t-phone">${esc((v.phone || "").split("\n").filter(Boolean).map(fmtPhone).join(" ، ")) || "—"}</span></div>
+        <div class="small">${esc(v.address || "آدرس پیدا نشد")}${techSummary(v) ? ` <span class="muted">· ${esc(techSummary(v))}</span>` : ""}</div>
+        <ul class="t-problems small">${problems.join("")}</ul></div>
+      <div class="t-rec-act">${play}
+        <button class="btn sm ok" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
+        <button class="btn sm" data-topen="${r.id}">${I.edit} اصلاح</button>
+        <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد">${I.x}</button></div></div>`;
+  }).join("")}</div>
+  ${records.length > SHOW ? `<div class="card-b small muted">و ${fa(records.length - SHOW)} ردیف دیگر؛ با «بررسی سریع» همه را یکی‌یکی ببینید.</div>` : ""}`;
+  reviewState.visible = ids;
+  $$("[data-trec]", box).forEach((card) => {
+    const rec = records.find((r) => r.id === +card.dataset.trec);
+    $$("[data-tseg]", card).forEach((b) => b.onclick = (e) => { e.stopPropagation(); playRecordSegment(rec, b.dataset.tseg); });
+    $$("[data-xcell]", card).forEach((td) => td.onclick = () => openRecord(rec.id));
+    $$("[data-lt]", card).forEach((b) => b.onclick = () => playRecordSegment(rec, b.dataset.lt.split(",").map(Number)));
+    $("[data-twhole]", card)?.addEventListener("click", () => playRecordSegment(rec, [0, 1e6]));
+  });
+  $$("[data-topen]", box).forEach((b) => b.onclick = () => openRecord(+b.dataset.topen));
+  $$("[data-tact]", box).forEach((b) => b.onclick = async () => {
+    const id = +b.dataset.r, act = b.dataset.tact;
+    try {
+      await api(`/api/records/${id}/action`, { method: "POST", body: { action: act, add_to_dictionary: act === "approve" } });
+      toast(act === "approve" ? "تأیید شد." : "رد شد.", "ok", { label: "بازگشت", onClick: async () => { await undoLast(id); reload(); } });
+      refreshStatus();
+    } catch (e) { toastErr(e); }
+  });
 }
 
 async function startQueue() {
@@ -606,7 +1052,7 @@ async function droppedFiles(e) {
 }
 
 /** ارسال ویس‌ها در بسته‌های ۸تایی؛ onProgress(درصد). خروجی: نتیجه هر فایل. */
-async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () => {}) {
+async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () => {}, dest = "") {
   const results = [];
   const totalBytes = files.reduce((a, f) => a + f.size, 0) || 1;
   let sent = 0;
@@ -616,6 +1062,7 @@ async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () =>
     chunk.forEach((f) => fd.append("files", f, f.name));
     fd.append("visit_date", visitDate);
     fd.append("use_filename_date", useFilenameDate ? "true" : "false");
+    fd.append("dest", dest);
     const r = await new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", "/api/upload");
@@ -635,198 +1082,12 @@ async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () =>
 }
 
 // ================= ویس‌ها =================
-const staged = [];
 /** وضعیت مدل گفتار: آماده (بدون انتظار)، در حال آماده‌سازی، یا در شروع پردازش آماده می‌شود. */
 function modelChip(stateName, available) {
   if (!available) return chip("err", "مدل گفتار نصب نیست");
   if (stateName === "ready") return chip("ok", "مدل گفتار آماده است");
   if (stateName === "loading") return `<span class="chip info model-chip"><span class="spinner" style="width:12px;height:12px;border-width:2px"></span> در حال آماده‌سازی مدل گفتار…</span>`;
   return chip("missing", "مدل گفتار هنگام شروع پردازش آماده می‌شود");
-}
-
-async function renderVoices(el) {
-  const seq = routeSeq;
-  // مدل از همین حالا در پس‌زمینه آماده می‌شود تا اولین ویس منتظر بارگذاری نماند
-  api("/api/model/warmup", { method: "POST" }).then(() => setTimeout(refreshStatus, 300)).catch(() => {});
-  const s = state.status || (await api("/api/status"));
-  const exts = (state.meta?.audio_extensions || []).join(",");
-  el.innerHTML = `
-    <div class="grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
-      <div class="card"><div class="card-h"><h2>${I.upload} افزودن ویس</h2></div><div class="card-b stack">
-        <div class="dropzone" id="dz">
-          <div class="dz-ico">${I.upload}</div>
-          <h3>فایل‌ها یا پوشه ویس‌ها را اینجا رها کنید</h3>
-          <div class="muted small">WAV، MP3، M4A، OGG، OPUS، AMR و قالب‌های رایج دیگر</div>
-          <a class="small" href="/static/recording-guide.html" target="_blank">${I.info} راهنمای ضبط ویس برای بازاریاب‌ها (قابل چاپ)</a>
-          <div class="row" style="justify-content:center; margin-top:4px">
-            <button class="btn primary" id="pick-files">${I.music} انتخاب فایل‌ها</button>
-            <button class="btn" id="pick-dir">${I.folder} انتخاب پوشه</button>
-            <button class="btn ghost" id="pick-path">${I.search} از مسیر رایانه</button>
-          </div>
-          <input type="file" id="in-files" multiple accept="${esc(exts)},audio/*" hidden>
-          <input type="file" id="in-dir" webkitdirectory multiple hidden>
-        </div>
-        <div class="grid grid-2" style="gap:12px">
-          <div class="field"><label>تاریخ بازدید این ویس‌ها (شمسی)</label>
-            <input class="input ltr" id="visit-date" value="${esc(s.today)}" placeholder="1405/07/28" style="text-align:right">
-            <span class="hint">در ستون «تاریخ بازدید» اکسل ثبت می‌شود.</span></div>
-          <div class="field"><label>&nbsp;</label>
-            <label class="check"><input type="checkbox" id="use-fname-date" checked> اگر نام فایل تاریخ داشت، از آن استفاده شود</label>
-            <span class="hint">مثل نام ویس‌های واتساپ: PTT-20261020-WA0001</span></div>
-        </div>
-        <div id="staged-box"></div>
-      </div></div>
-      <div class="card"><div class="card-h"><h2>${I.wave} صف پردازش</h2>
-        <div class="row" id="q-actions"></div></div>
-        <div class="card-b stack" id="q-summary"></div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.music} فایل‌ها</h2>
-      <div class="row"><input class="input" id="f-search" placeholder="جست‌وجوی نام فایل..." style="width:220px">
-      <select class="select" id="f-filter"><option value="">همه وضعیت‌ها</option>${Object.entries(FILE_STATUS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></div></div>
-      <div class="table-wrap" id="files-table"></div></div>`;
-
-  const dz = $("#dz");
-  const addFiles = (list) => {
-    for (const f of audioOnly(list)) if (!staged.some((x) => x.name === f.name && x.size === f.size)) staged.push(f);
-    drawStaged();
-  };
-  $("#pick-files").onclick = () => $("#in-files").click();
-  $("#pick-dir").onclick = () => $("#in-dir").click();
-  $("#in-files").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
-  $("#in-dir").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
-  dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("over"); });
-  dz.addEventListener("dragleave", () => dz.classList.remove("over"));
-  dz.addEventListener("drop", async (e) => {
-    e.preventDefault(); dz.classList.remove("over");
-    addFiles(await droppedFiles(e));
-  });
-  $("#pick-path").onclick = async () => {
-    const p = await pickPath("audio");
-    if (!p) return;
-    try {
-      const r = await api("/api/import-folder", { method: "POST", body: { path: p, visit_date: $("#visit-date").value.trim(), use_filename_date: $("#use-fname-date").checked } });
-      reportUpload(r.results);
-      refreshStatus(); drawFiles();
-    } catch (e) { toastErr(e); }
-  };
-  $("#f-search").oninput = debounce(drawFiles, 200);
-  $("#f-filter").onchange = drawFiles;
-
-  function drawStaged() {
-    const box = $("#staged-box");
-    if (!staged.length) { box.innerHTML = ""; return; }
-    const total = staged.reduce((a, f) => a + f.size, 0);
-    box.innerHTML = `<div class="stack" style="gap:8px">
-      <div class="row between"><b>${fa(staged.length)} فایل انتخاب‌شده <span class="muted small">(${fmtSize(total)})</span></b>
-        <button class="btn sm ghost" id="st-clear">پاک کردن فهرست</button></div>
-      <div class="staged">${staged.map((f, i) => `<div class="staged-item"><div class="file-ico">${I.music}</div>
-        <span class="name">${esc(f.name)}</span><span class="muted small">${fmtSize(f.size)}</span>
-        <button class="btn sm icon ghost" data-rm="${i}" title="حذف از فهرست">${I.x}</button></div>`).join("")}</div>
-      <div id="up-progress" hidden><div class="progress"><div class="progress-bar" id="up-bar"></div></div><div class="muted small" id="up-text"></div></div>
-      <div class="row"><button class="btn primary lg" id="st-upload">${I.plus} افزودن به صف (${fa(staged.length)} فایل)</button>
-        <label class="check small"><input type="checkbox" id="auto-start" checked> شروع خودکار پردازش</label></div></div>`;
-    $$("[data-rm]", box).forEach((b) => b.onclick = () => { staged.splice(+b.dataset.rm, 1); drawStaged(); });
-    $("#st-clear").onclick = () => { staged.length = 0; drawStaged(); };
-    $("#st-upload").onclick = uploadStaged;
-  }
-
-  async function uploadStaged() {
-    const vd = $("#visit-date").value.trim();
-    const useFn = $("#use-fname-date").checked;
-    const autoStart = $("#auto-start").checked;
-    $("#st-upload").disabled = true;
-    $("#up-progress").hidden = false;
-    try {
-      const results = await uploadAudio(staged.slice(), vd, useFn, (p) => {
-        $("#up-bar").style.width = p + "%";
-        $("#up-text").textContent = `در حال افزودن... ${fa(p)}٪`;
-      });
-      staged.length = 0;
-      drawStaged();
-      reportUpload(results);
-      await refreshStatus();
-      drawFiles();
-      if (autoStart && results.some((r) => r.result === "added")) startQueue();
-    } catch (e) {
-      toastErr(e);
-      $("#st-upload").disabled = false;
-    }
-  }
-
-  function drawSummary() {
-    const s = state.status;
-    if (!s || seq !== routeSeq || !$("#q-actions")) return;
-    const w = s.worker;
-    const q = s.files.queued + s.files.processing;
-    $("#q-actions").innerHTML = w.running
-      ? `<button class="btn danger" id="q-stop">${I.stop} توقف</button>`
-      : `<button class="btn primary" id="q-start" ${q ? "" : "disabled"}>${I.play} شروع پردازش</button>
-         ${s.files.failed ? `<button class="btn" id="q-retry">${I.retry} تلاش دوباره ناموفق‌ها</button>` : ""}`;
-    $("#q-stop")?.addEventListener("click", stopQueue);
-    $("#q-start")?.addEventListener("click", startQueue);
-    $("#q-retry")?.addEventListener("click", async () => {
-      try { const r = await api("/api/files/retry-failed", { method: "POST" }); toast(`${fa(r.requeued)} فایل دوباره در صف قرار گرفت.`); refreshStatus(); drawFiles(); }
-      catch (e) { toastErr(e); }
-    });
-    const tot = s.files.total;
-    $("#q-summary").innerHTML = `
-      <div class="stats" style="grid-template-columns:repeat(4,1fr)">
-        <div class="stat"><div class="stat-label">کل</div><div class="stat-value num">${fa(tot)}</div></div>
-        <div class="stat"><div class="stat-label">موفق</div><div class="stat-value num" style="color:var(--ok)">${fa(s.files.done)}</div></div>
-        <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value num" style="color:var(--err)">${fa(s.files.failed)}</div></div>
-        <div class="stat"><div class="stat-label">باقی‌مانده</div><div class="stat-value num" style="color:var(--info)">${fa(q)}</div></div>
-      </div>
-      <div><div class="row between small" style="margin-bottom:5px"><span>${w.running ? "در حال پردازش: <b>" + esc(w.current_name || "...") + "</b>" + (w.current_elapsed ? ` <span class="muted">(${fmtSec(w.current_elapsed)})</span>` : "") : q ? "آماده شروع" : "صف خالی است"}</span>
-        <b>${fa(w.running ? s.progress : q ? 0 : 100)}٪</b></div>
-        <div class="progress lg"><div class="progress-bar" style="width:${w.running ? s.progress : q ? 0 : 100}%"></div></div></div>
-      <div class="row small">${modelChip(w.model_state, s.model.available)}</div>
-      ${s.records.review ? `<div class="alert info">${I.info}<div class="alert-body">${fa(s.records.review)} رکورد نیازمند بازبینی است.</div><a class="btn sm" href="#/review">بازبینی</a></div>` : ""}`;
-  }
-
-  async function drawFiles() {
-    const box = $("#files-table");
-    if (!box) return;
-    const { files } = await api("/api/files");
-    const term = ($("#f-search")?.value || "").trim();
-    const filt = $("#f-filter")?.value || "";
-    const list = files.filter((f) => (!term || f.original_name.includes(term)) && (!filt || f.status === filt));
-    if (!files.length) { box.innerHTML = `<div class="empty">${I.music}<div>هنوز فایلی اضافه نشده است.</div></div>`; return; }
-    box.innerHTML = `<table class="table"><thead><tr><th>#</th><th>نام فایل</th><th>حجم</th><th>مدت</th><th>تاریخ بازدید</th><th>وضعیت</th><th>رکوردها</th><th>زمان پردازش</th><th></th></tr></thead><tbody>
-      ${list.map((f) => `<tr>
-        <td class="muted num">${fa(f.id)}</td>
-        <td style="max-width:320px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.original_name)}">${esc(f.original_name)}</div>
-          ${f.error ? `<div class="${f.status === "failed" ? "err-text" : "muted small"}">${esc(f.error)}</div>` : ""}</td>
-        <td class="small muted">${fmtSize(f.size)}</td>
-        <td class="small">${fmtSec(f.duration)}</td>
-        <td class="small">${fa(f.visit_date)}${f.date_source === "filename" ? ' <span class="muted" title="از نام فایل">•</span>' : ""}</td>
-        <td>${f.status === "processing" ? '<span class="chip processing"><span class="spinner" style="width:12px;height:12px;border-width:2px"></span> در حال پردازش</span>' : chip(f.status, FILE_STATUS[f.status])}</td>
-        <td>${f.records ? `<a href="#/review" data-goto-audio="${f.id}">${fa(f.records)} رکورد</a>${f.pending ? ` <span class="chip warn plain">${fa(f.pending)} بازبینی</span>` : ""}` : '<span class="muted">—</span>'}</td>
-        <td class="small muted">${f.processing_seconds ? fmtSec(f.processing_seconds) : ""}</td>
-        <td class="actions">
-          ${!f.audio_deleted ? `<button class="btn sm icon ghost" data-play="${f.id}" title="پخش">${I.play}</button>` : ""}
-          ${["failed", "done"].includes(f.status) ? `<button class="btn sm icon ghost" data-retry="${f.id}" title="پردازش دوباره">${I.retry}</button>` : ""}
-          ${f.status !== "processing" && !f.exported ? `<button class="btn sm icon ghost" data-del="${f.id}" title="حذف">${I.trash}</button>` : ""}
-        </td></tr>`).join("") || `<tr><td colspan="9"><div class="empty">موردی با این فیلتر نیست.</div></td></tr>`}
-      </tbody></table>`;
-    $$("[data-play]", box).forEach((b) => b.onclick = () => playAudio(+b.dataset.play, b));
-    $$("[data-retry]", box).forEach((b) => b.onclick = async () => {
-      try { await api(`/api/files/${b.dataset.retry}/retry`, { method: "POST" }); toast("فایل دوباره در صف قرار گرفت."); refreshStatus(); drawFiles(); }
-      catch (e) { toastErr(e); }
-    });
-    $$("[data-del]", box).forEach((b) => b.onclick = async () => {
-      if (!(await confirmBox("حذف فایل", "این فایل و رکوردهای استخراج‌شده آن حذف می‌شوند. ادامه می‌دهید؟", "حذف", "danger"))) return;
-      try { await api(`/api/files/${b.dataset.del}`, { method: "DELETE" }); refreshStatus(); drawFiles(); }
-      catch (e) { toastErr(e); }
-    });
-    $$("[data-goto-audio]", box).forEach((a) => a.onclick = () => { reviewState.audioId = +a.dataset.gotoAudio; reviewState.filter = "all"; });
-  }
-
-  drawStaged();
-  drawSummary();
-  await drawFiles();
-  setHook(seq, () => { drawSummary(); drawFiles().catch(() => {}); });
-  const timer = setInterval(() => { if (seq !== routeSeq) return clearInterval(timer); if (state.status?.worker.running) drawSummary(); }, 1000);
 }
 
 function reportUpload(results) {
@@ -857,10 +1118,9 @@ function playAudio(id, btn) {
   audioEl.play().then(() => btn.innerHTML = I.stop).catch(() => {});
 }
 
-// ================= بازبینی =================
+// ================= بررسی =================
 let tableAudio = null;
 const reviewState = { filter: "review", records: [], selected: new Set(), audioId: null };
-const TABLE_FIELDS = [["engineer_name", "نام مهندس / شخص تماس"], ["phone", "شماره تماس"], ["address", "آدرس"]];
 
 /** پخش همان تکه از ویس که فیلد key از آن آمده (یا بازه [شروع، پایان])، بدون باز کردن جزئیات. */
 function playRecordSegment(rec, keyOrSpan) {
@@ -882,165 +1142,7 @@ function techSummary(v) {
   return p.join(" ، ");
 }
 
-async function renderReview(el) {
-  const seq = routeSeq;
-  if (location.hash.includes("?exported")) reviewState.filter = "exported";
-  if (location.hash.includes("open=") || location.hash.includes("filter=all")) reviewState.filter = "all";
-  const s = state.status || (await api("/api/status"));
-  let dictTip = "";
-  try {
-    const dc = await api("/api/dictionary?type=engineer&q=__none__");
-    const total = Object.values(dc.counts || {}).reduce((a, b) => a + b, 0);
-    if (!total) dictTip = `<div class="alert info" style="margin-bottom:16px">${I.book}<div class="alert-body">
-      <b>واژه‌نامه خالی است</b>برای اینکه برنامه املای درست نام مهندس‌ها و خیابان‌ها را پیشنهاد دهد (مثلاً «کازمی» ← «کاظمی»)،
-      در بخش «ثبت در اکسل» فایل اکسل شرکت را انتخاب و نگاشت را ذخیره کنید؛ واژه‌نامه خودکار از همان فایل پر می‌شود.</div>
-      <a class="btn sm" href="#/excel">ثبت در اکسل</a></div>`;
-  } catch { }
-  el.innerHTML = dictTip + `
-    <div class="card"><div class="card-h">
-      <div class="tabs" id="rv-tabs"></div>
-      <div class="row"><input class="input" id="rv-search" placeholder="جست‌وجو در نام، شماره، آدرس..." style="width:240px"></div>
-    </div>
-    <div class="card-b row between" id="rv-bulk" style="padding:10px 20px; border-bottom:1px solid var(--border)"></div>
-    <div class="table-wrap" id="rv-table"></div></div>`;
-  $("#rv-search").oninput = debounce(drawTable, 200);
-  await load();
-  const openId = (location.hash.match(/[?&]open=(\d+)/) || [])[1];
-  if (openId) openRecord(+openId);
-  setHook(seq, () => { drawTabs(); if (!$("#drawer").classList.contains("open")) load(); });
-
-  function drawTabs() {
-    const r = state.status?.records || s.records;
-    const tabs = [["review", "نیازمند بازبینی", r.review], ["approved", "آماده ثبت", r.approved], ["exported", "ثبت‌شده", r.exported], ["rejected", "ردشده", r.rejected], ["all", "همه", r.review + r.approved + r.exported + r.rejected]];
-    $("#rv-tabs").innerHTML = tabs.map(([k, l, n]) => `<button class="${reviewState.filter === k ? "active" : ""}" data-tab="${k}">${l}<span class="count">${fa(n)}</span></button>`).join("");
-    $$("[data-tab]").forEach((b) => b.onclick = () => { reviewState.filter = b.dataset.tab; reviewState.audioId = null; reviewState.selected.clear(); load(); });
-  }
-
-  async function load() {
-    drawTabs();
-    const q = reviewState.audioId ? `filter=all&audio_id=${reviewState.audioId}` : `filter=${reviewState.filter}`;
-    const { records } = await api(`/api/records?${q}`);
-    reviewState.records = records;
-    drawTable();
-  }
-
-  function drawTable() {
-    const term = ($("#rv-search")?.value || "").trim();
-    const list = reviewState.records.filter((r) => !term || Object.values(r.values).join(" ").includes(term) || (r.original_name || "").includes(term));
-    reviewState.visible = list.map((r) => r.id);
-    const bulk = $("#rv-bulk");
-    const editable = reviewState.filter !== "exported";
-    const pendingIds = list.filter((r) => !r.exported_at && r.review_state === "pending").map((r) => r.id);
-    bulk.innerHTML = `<div class="row small">
-        ${reviewState.audioId ? `<span class="chip info plain">فقط فایل #${fa(reviewState.audioId)}</span><button class="btn sm ghost" id="rv-clear-audio">نمایش همه</button>` : ""}
-        <span class="muted">${fa(list.length)} رکورد</span>
-        ${reviewState.selected.size ? `<b>${fa(reviewState.selected.size)} انتخاب‌شده</b>` : ""}</div>
-      <div class="row">${editable && reviewState.selected.size ? `
-        <button class="btn sm ok" id="bulk-approve">${I.check} تأیید انتخاب‌شده‌ها</button>
-        <button class="btn sm danger" id="bulk-reject">${I.x} رد انتخاب‌شده‌ها</button>` : ""}
-        ${editable && pendingIds.length ? `<button class="btn sm primary" id="rv-focus" title="یک رکورد در هر صفحه، با پخش خودکار شماره و میان‌برهای صفحه‌کلید">${I.eye} بازبینی سریع (${fa(pendingIds.length)})</button>` : ""}
-        <span class="muted small">روی هر ردیف بزنید تا جزئیات، متن ویس و پخش صدا باز شود.</span></div>`;
-    $("#rv-focus")?.addEventListener("click", () => openFocus(pendingIds));
-    $("#rv-clear-audio")?.addEventListener("click", () => { reviewState.audioId = null; load(); });
-    $("#bulk-approve")?.addEventListener("click", () => bulkAction("approve"));
-    $("#bulk-reject")?.addEventListener("click", () => bulkAction("reject"));
-    const box = $("#rv-table");
-    if (!list.length) {
-      box.innerHTML = `<div class="empty">${I.ok}<div>${reviewState.filter === "review" ? "هیچ رکوردی منتظر بازبینی نیست." : "رکوردی وجود ندارد."}</div></div>`;
-      return;
-    }
-    box.innerHTML = `<table class="table"><thead><tr>
-      <th style="width:34px"><input type="checkbox" id="rv-all" ${editable ? "" : "disabled"}></th>
-      <th>وضعیت</th><th>فایل</th>${TABLE_FIELDS.map(([, l]) => `<th>${l}</th>`).join("")}<th>مشخصات و توضیحات</th><th></th></tr></thead><tbody>
-      ${list.map((r) => {
-        const v = r.values, vf = r.validation.fields || {};
-        const locked = !!r.exported_at;
-        const warn = Object.values(vf).filter((f) => f.status !== "valid").length;
-        return `<tr class="clickable" data-rid="${r.id}">
-          <td><input type="checkbox" data-sel="${r.id}" ${reviewState.selected.has(r.id) ? "checked" : ""} ${locked ? "disabled" : ""}></td>
-          <td>${recordChip(r)}${warn && !r.exported_at && r.review_state === "pending" ? `<div class="muted small" style="margin-top:3px">${fa(warn)} هشدار</div>` : ""}</td>
-          <td class="small" style="max-width:170px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.original_name)}">${esc(r.original_name)}</div>
-            ${r.building_count > 1 ? `<span class="chip info plain">ساختمان ${fa(r.building_index + 1)} از ${fa(r.building_count)}</span>` : ""}</td>
-          ${TABLE_FIELDS.map(([k]) => {
-            const st = vf[k]?.status || (v[k] ? "valid" : "missing");
-            const tag = k === "phone" ? "textarea" : "input";
-            const val = v[k] || "";
-            const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm icon ghost cell-play" data-tseg="${k}" data-r="${r.id}" title="پخش همین بخش از ویس (${segText(r.times[k])})">${I.play}</button>` : "";
-            return `<td style="min-width:${k === "address" ? 230 : 160}px"><div class="cell-wrap">${tag === "textarea"
-              ? `<textarea class="cell-input st-${st} ltr" rows="${Math.max(1, val.split("\n").length)}" data-edit="${k}" data-r="${r.id}" ${locked ? "disabled" : ""} title="${esc((vf[k]?.reasons || []).join(" | "))}" placeholder="—">${esc(val)}</textarea>`
-              : `<input class="cell-input st-${st}" value="${esc(val)}" data-edit="${k}" data-r="${r.id}" ${locked ? "disabled" : ""} title="${esc((vf[k]?.reasons || []).join(" | "))}" placeholder="—">`}${seg}</div>${k === "phone" ? phoneView(val) : ""}</td>`;
-          }).join("")}
-          <td class="small" style="max-width:280px; color:var(--text-2)">${esc([techSummary(v), v.notes].filter(Boolean).join(" ، ")) || '<span class="muted">—</span>'}</td>
-          <td class="actions">${locked ? "" : r.review_state === "approved" ? `<button class="btn sm ghost" data-act="reopen" data-r="${r.id}">بازگشایی</button>`
-            : `<button class="btn sm icon ok" data-act="approve" data-r="${r.id}" title="تأیید">${I.check}</button>
-               <button class="btn sm icon danger" data-act="reject" data-r="${r.id}" title="رد">${I.x}</button>`}
-            <button class="btn sm icon ghost" data-open="${r.id}" title="جزئیات">${I.eye}</button></td></tr>`;
-      }).join("")}</tbody></table>`;
-    $$("[data-tseg]", box).forEach((b) => b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const rec = reviewState.records.find((x) => x.id === +b.dataset.r);
-      if (rec) playRecordSegment(rec, b.dataset.tseg);
-    }));
-    $("#rv-all")?.addEventListener("change", (e) => {
-      list.filter((r) => !r.exported_at).forEach((r) => e.target.checked ? reviewState.selected.add(r.id) : reviewState.selected.delete(r.id));
-      drawTable();
-    });
-    $$("[data-sel]", box).forEach((c) => c.addEventListener("change", (e) => {
-      e.stopPropagation();
-      c.checked ? reviewState.selected.add(+c.dataset.sel) : reviewState.selected.delete(+c.dataset.sel);
-      drawTable();
-    }));
-    $$("[data-edit]", box).forEach((inp) => {
-      inp.addEventListener("click", (e) => e.stopPropagation());
-      inp.addEventListener("change", async () => {
-        try {
-          const rec = await api(`/api/records/${inp.dataset.r}`, { method: "PATCH", body: { values: { [inp.dataset.edit]: inp.value } } });
-          updateRow(rec);
-          toast("ذخیره شد.", "ok");
-        } catch (e) { toastErr(e); }
-      });
-    });
-    $$("[data-act]", box).forEach((b) => b.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        await api(`/api/records/${b.dataset.r}/action`, { method: "POST", body: { action: b.dataset.act, add_to_dictionary: b.dataset.act === "approve" } });
-        toast(b.dataset.act === "approve" ? "تأیید شد و برای ثبت در اکسل آماده است." : b.dataset.act === "reject" ? "رد شد." : "به بازبینی برگشت.", "ok");
-        refreshStatus(); load();
-      } catch (er) { toastErr(er); }
-    }));
-    $$("tr[data-rid]", box).forEach((tr) => tr.addEventListener("click", (e) => {
-      if (e.target.closest("input,textarea,button,a")) return;
-      openRecord(+tr.dataset.rid);
-    }));
-    $$("[data-open]", box).forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); openRecord(+b.dataset.open); }));
-  }
-
-  function updateRow(rec) {
-    const i = reviewState.records.findIndex((r) => r.id === rec.id);
-    if (i >= 0) reviewState.records[i] = rec;
-    drawTable();
-  }
-  reviewState.reload = load;
-  reviewState.updateRow = updateRow;
-
-  async function bulkAction(action) {
-    const ids = [...reviewState.selected];
-    if (action === "approve") {
-      const notValid = reviewState.records.filter((r) => ids.includes(r.id) && r.status !== "ready").length;
-      if (notValid && !(await confirmBox("تأیید گروهی", `${fa(notValid)} مورد از رکوردهای انتخاب‌شده هنوز هشدار دارند. با تأیید، مسئولیت درستی آن‌ها با شماست. ادامه می‌دهید؟`, "تأیید همه"))) return;
-    }
-    let ok = 0;
-    for (const id of ids) {
-      try { await api(`/api/records/${id}/action`, { method: "POST", body: { action, add_to_dictionary: action === "approve" } }); ok++; }
-      catch (e) { toastErr(e); }
-    }
-    reviewState.selected.clear();
-    toast(`${fa(ok)} رکورد ${action === "approve" ? "تأیید" : "رد"} شد.`, "ok");
-    refreshStatus(); load();
-  }
-}
-
-// ---------- کشوی جزئیات رکورد ----------
+// ---------- کشوی جزئیات ردیف ----------
 const DRAWER_GROUPS = [
   ["اطلاعات اصلی", ["engineer_name", "phone", "project_name", "address", "visit_date"]],
   ["مشخصات فنی و مرحله ساخت", ["structure_type", "floors", "executed", "units", "stage", "building_type", "permit_status"]],
@@ -1051,10 +1153,19 @@ const DRAWER_GROUPS = [
 const MULTILINE = new Set(["address", "notes", "phone", "followup_action", "permit_status", "customer_need", "stage"]);
 const DICT_FIELDS = new Set(["engineer_name", "project_name", "street"]);
 
+/** پخش‌کننده‌ای که دیگر لازم نیست، فایل ویس را رها کند؛ وگرنه پخش‌کننده تازهٔ همان ویس چند ثانیه منتظر می‌ماند. */
+function releaseAudio(a) {
+  if (!a) return;
+  a.pause();
+  a.removeAttribute("src");
+  a.load();
+}
 function closeDrawer() {
   $("#drawer").classList.remove("open");
   $("#drawer-backdrop").hidden = true;
   if (audioEl) audioEl.pause();
+  releaseAudio($("#dr-audio"));
+  $("#dr-audio")?.remove();
 }
 $("#drawer-backdrop").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => {
@@ -1073,7 +1184,7 @@ function highlightTranscript(text, clauses, block, multi) {
   return html + esc(text.slice(pos));
 }
 
-// ---------- ابزارهای مشترک بازبینی: پخش تکه، نمایش شماره، بازگشت ----------
+// ---------- ابزارهای مشترک بررسی: پخش تکه، نمایش شماره، بازگشت ----------
 const SEG_KEYS = [["engineer_name", "نام"], ["phone", "شماره"], ["address", "آدرس"], ["tech", "فنی"]];
 const TECH_KEYS = ["floors", "structure_type", "executed", "stage", "units"];
 const UNDOABLE = new Set(["edit", "accept", "approve", "reject", "reopen", "duplicate"]);
@@ -1187,7 +1298,7 @@ async function openRecord(id) {
     const ev = r.evidence[k] && r.evidence[k] !== val ? `<div class="evidence">از متن: «${esc(r.evidence[k])}»</div>` : "";
     const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm ghost" data-seg="${k}" title="پخش همین بخش از ویس">${I.play} ${segTime(r.times[k])}</button>` : "";
     return `<div class="frow"><label>${esc(labels[k] || k)}</label><div class="fval">
-      <div class="row">${input}${seg}${fc ? chip(fc.status, FIELD_STATUS[fc.status]) : ""}
+      <div class="row">${input}${seg}${fc && fc.status !== "valid" ? chip(fc.status, FIELD_STATUS[fc.status]) : ""}
         ${DICT_FIELDS.has(k) && val && !locked ? `<button class="btn sm icon ghost" data-dict="${k}" title="افزودن به واژه‌نامه">${I.book}</button>` : ""}</div>
       ${k === "phone" ? phoneView(val) : ""}${lowConfView(r, k)}
       ${fc && fc.reasons?.length ? `<ul class="reasons ${fc.status}">${fc.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
@@ -1199,50 +1310,61 @@ async function openRecord(id) {
     ? words.map((w) => `<span ${w.prob < 0.5 ? `class="lowword" title="احتمال تشخیص: ${fa(Math.round(w.prob * 100))}٪"` : ""}>${esc(w.word)}</span>`).join(" ")
     : esc(t.raw_text || "");
   const ACTION_LABEL = { edit: "اصلاح", accept: "پذیرش پیشنهاد", approve: "تأیید", reject: "رد", reopen: "بازگشایی", duplicate: "تصمیم تکرار", dictionary: "واژه‌نامه" };
+  // همان ویس (مثلاً پس از ذخیره یک اصلاح): پخش‌کننده قبلی با همان جای پخش نگه داشته می‌شود
+  const oldAudio = $("#dr-audio", d);
+  const keepAudio = oldAudio && oldAudio.dataset.aid === String(r.audio_id) && r.audio_available ? oldAudio : null;
+  if (oldAudio && !keepAudio) releaseAudio(oldAudio);
+  if (keepAudio) keepAudio.remove();
   d.innerHTML = `
     <div class="drawer-h">
       <div class="title"><b title="${esc(r.original_name)}">${esc(r.original_name)}</b>
-        <div class="row small" style="gap:6px">${recordChip(r)}${r.building_count > 1 ? chip("info plain", `ساختمان ${fa(r.building_index + 1)} از ${fa(r.building_count)}`) : ""}<span class="muted">رکورد #${fa(r.id)}</span></div></div>
+        <div class="row small" style="gap:6px">${recordChip(r)}${r.building_count > 1 ? chip("info plain", `ساختمان ${fa(r.building_index + 1)} از ${fa(r.building_count)}`) : ""}</div></div>
       <button class="btn sm icon ghost" id="dr-prev" ${idx > 0 ? "" : "disabled"} title="قبلی">${I.prev}</button>
       <button class="btn sm icon ghost" id="dr-next" ${idx >= 0 && idx < ids.length - 1 ? "" : "disabled"} title="بعدی">${I.next}</button>
       <button class="btn sm icon ghost" id="dr-close" title="بستن">${I.x}</button>
     </div>
     <div class="drawer-b">
-      ${r.audio_available ? `<audio id="dr-audio" controls preload="metadata" src="/api/files/${r.audio_id}/audio"></audio>
+      ${r.audio_available ? `<audio id="dr-audio" controls preload="metadata" data-aid="${r.audio_id}" src="/api/files/${r.audio_id}/audio"></audio>
         <div class="seg-buttons">${SEG_KEYS.filter(([k]) => fieldTime(r, k)).map(([k, l]) => `<button class="btn sm" data-segk="${k}">${I.play} ${l} ${segTime(fieldTime(r, k))}</button>`).join("")}</div>`
         : '<div class="muted small">فایل صوتی پاک شده است.</div>'}
       ${(r.validation.reasons || []).length ? `<div class="alert ${r.status === "ready" ? "ok" : r.status === "invalid" ? "err" : "warn"}">${r.status === "ready" ? I.ok : I.alert}<div class="alert-body"><b>${REC_STATUS[r.status] || ""}</b>
         <ul class="reasons">${r.validation.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` : ""}
       <div><div class="section-title">${I.wave} متن ویس</div>
         <div class="transcript">${t.processed_text ? highlightTranscript(t.processed_text, t.clauses, r.building_index, r.building_count > 1) : '<span class="muted">متنی موجود نیست.</span>'}</div>
-        <div class="legend">${["name", "phone", "address", "tech", "project", "followup"].map((c) => `<span><i style="background:var(--c-${c})"></i>${SEG_LABEL[c]}</span>`).join("")}</div>
-        <details style="margin-top:8px"><summary class="small">متن خام تشخیص گفتار ${words.length ? "(واژه‌های کم‌اطمینان زیرخط‌دار)" : ""}</summary>
-          <div class="transcript small" style="margin-top:6px">${rawHtml}</div>
+        <details class="tech-details"><summary class="small">جزئیات فنی متن</summary>
+          <div class="legend">${["name", "phone", "address", "tech", "project", "followup"].map((c) => `<span><i style="background:var(--c-${c})"></i>${SEG_LABEL[c]}</span>`).join("")}</div>
+          <div class="small muted" style="margin-top:6px">متن خام تشخیص گفتار ${words.length ? "(واژه‌های کم‌اطمینان زیرخط‌دار)" : ""}</div>
+          <div class="transcript small" style="margin-top:4px">${rawHtml}</div>
           <div class="muted small" style="margin-top:4px">مدل: <span class="ltr">${esc(t.model || "")}</span></div></details></div>
-      ${r.validation.duplicates?.length ? `<div><div class="section-title">${I.swap} رکوردهای مشابه</div><div class="stack" style="gap:8px">
+      ${r.validation.duplicates?.length ? `<div><div class="section-title">${I.swap} ردیف‌های مشابه</div><div class="stack" style="gap:8px">
         ${r.validation.duplicates.map((dp) => `<div class="dup ${dp.level}"><div class="row between"><b>${esc(dp.ref)}</b>${chip(dp.level === "strong" ? "warn" : "info", dp.level === "strong" ? "احتمال تکرار زیاد" : "شباهت جزئی")}</div>
           <div class="small">${esc(dp.engineer_name)} — <span class="ltr">${esc(dp.phone)}</span> — ${esc(dp.address)}</div>
           <div class="muted small">${esc(dp.reasons.join("، "))}</div></div>`).join("")}
         ${!locked ? `<div class="row"><span class="small muted">تصمیم:</span>
           <button class="btn sm" data-dup="keep">${r.duplicate_decision === "keep" ? I.check : ""} تکراری نیست، نگه دار</button>
           <button class="btn sm danger" data-dup="skip">تکراری است، ثبت نشود</button></div>` : ""}</div></div>` : ""}
-      ${DRAWER_GROUPS.map(([title, keys]) => {
-        const shown = keys.filter((k) => title === "اطلاعات اصلی" || v[k] || vf[k]);
-        if (!shown.length && title !== "مشخصات فنی و مرحله ساخت" && title !== "توضیحات") return "";
-        const keysToShow = title === "اطلاعات اصلی" ? keys : (shown.length ? shown : keys.slice(0, 2));
-        return `<div class="fgroup"><div class="fgroup-h">${title}</div>${keysToShow.map(fieldRow).join("")}</div>`;
-      }).join("")}
+      ${(() => {
+        const groups = DRAWER_GROUPS.map(([title, keys]) => {
+          const shown = keys.filter((k) => title === "اطلاعات اصلی" || v[k] || (vf[k] && vf[k].status !== "valid"));
+          return [title, shown, `<div class="fgroup"><div class="fgroup-h">${title}</div>${shown.map(fieldRow).join("")}</div>`];
+        });
+        // گروه‌هایی که چیزی ندارند یا فقط جزئیات فنی‌اند (اجزای آدرس)، پشت «جزئیات بیشتر» می‌روند
+        const main = groups.filter(([t, s]) => s.length && t !== "اجزای آدرس").map((g) => g[2]).join("");
+        const more = groups.filter(([t, s]) => s.length && t === "اجزای آدرس").map((g) => g[2]).join("");
+        return main + (more ? `<details class="tech-details"><summary class="small">جزئیات بیشتر (اجزای آدرس)</summary>${more}</details>` : "");
+      })()}
       <details><summary class="small">افزودن فیلد دیگر</summary><div class="row" style="margin-top:8px">
         <select class="select" id="dr-addf">${(state.meta?.fields || []).filter((f) => !v[f.key]).map((f) => `<option value="${f.key}">${esc(f.label)}</option>`).join("")}</select>
         <input class="input" id="dr-addv" placeholder="مقدار" style="flex:1"><button class="btn sm" id="dr-addb" ${locked ? "disabled" : ""}>${I.plus} افزودن</button></div></details>
       ${r.edits?.length ? `<details><summary class="small">${I.history} سابقه تغییرات (${fa(r.edits.length)})</summary><ul class="reasons small" style="margin-top:6px">
         ${r.edits.map((e) => `<li class="${e.undone ? "undone" : ""}">${esc(e.at.replace("T", " "))} — ${esc(ACTION_LABEL[e.action] || e.action)}${e.field !== "*" ? ` «${esc(labels[e.field] || e.field)}»` : ""}: «${esc(e.old_value || "")}» ← «${esc(e.new_value || "")}»${e.undone ? " (برگشت داده شد)" : ""}</li>`).join("")}</ul></details>` : ""}
     </div>
-    <div class="drawer-f">${locked ? `<div class="alert info" style="flex:1">${I.info}<div class="alert-body">این رکورد در ردیف ${fa(r.export_row)} اکسل ثبت شده است. برای تغییر، ابتدا آن خروجی را در بخش «ثبت در اکسل» بازگردانید.</div></div>`
-      : `${r.review_state !== "approved" ? `<button class="btn ok lg" id="dr-approve">${I.check} تأیید برای ثبت</button>` : `<button class="btn" id="dr-reopen">بازگشت به بازبینی</button>`}
+    <div class="drawer-f">${locked ? `<div class="alert info" style="flex:1">${I.info}<div class="alert-body">این ردیف در ردیف ${fa(r.export_row)} فایل اکسل ثبت شده است. برای تغییر، اول آن ثبت را از <a href="#/history">تاریخچه ثبت‌ها</a> برگردانید.</div></div>`
+      : `${r.review_state !== "approved" ? `<button class="btn ok lg" id="dr-approve">${I.check} تأیید برای ثبت</button>` : `<button class="btn" id="dr-reopen">بازگشت به بررسی</button>`}
         ${r.review_state !== "rejected" ? `<button class="btn danger" id="dr-reject">${I.x} رد</button>` : ""}
         ${hasUndo(r) ? `<button class="btn ghost" id="dr-undo" title="بازگشت آخرین تغییر">${I.retry} بازگشت</button>` : ""}
         <label class="check small" style="margin-inline-start:auto"><input type="checkbox" id="dr-dict" checked> نام تأییدشده به واژه‌نامه اضافه شود</label>`}</div>`;
+  if (keepAudio) $("#dr-audio", d).replaceWith(keepAudio);
   d.classList.add("open");
   $("#drawer-backdrop").hidden = false;
   d.setAttribute("aria-hidden", "false");
@@ -1282,7 +1404,7 @@ async function openRecord(id) {
   const act = async (action) => {
     try {
       const rec = await api(`/api/records/${id}/action`, { method: "POST", body: { action, add_to_dictionary: $("#dr-dict")?.checked || false } });
-      toast(action === "approve" ? "تأیید شد." : action === "reject" ? "رد شد." : "به بازبینی برگشت.", "ok",
+      toast(action === "approve" ? "تأیید شد." : action === "reject" ? "رد شد." : "به بررسی برگشت.", "ok",
         { label: "بازگشت", onClick: () => undoLast(id) });
       refreshStatus();
       if (reviewState.updateRow) reviewState.updateRow(rec);
@@ -1291,14 +1413,14 @@ async function openRecord(id) {
     } catch (e) { toastErr(e); }
   };
   $("#dr-approve")?.addEventListener("click", async () => {
-    if (r.status !== "ready" && !(await confirmBox("تأیید رکورد دارای هشدار", `این رکورد هنوز هشدار دارد:<ul class="reasons review">${(r.validation.reasons || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>آیا اطلاعات را با ویس بررسی کرده‌اید و تأیید می‌کنید؟`, "بله، تأیید می‌کنم", "ok"))) return;
+    if (r.status !== "ready" && !(await confirmBox("تأیید ردیف دارای هشدار", `این ردیف هنوز هشدار دارد:<ul class="reasons review">${(r.validation.reasons || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>آیا اطلاعات را با ویس بررسی کرده‌اید و تأیید می‌کنید؟`, "بله، تأیید می‌کنم", "ok"))) return;
     act("approve");
   });
   $("#dr-reject")?.addEventListener("click", () => act("reject"));
   $("#dr-reopen")?.addEventListener("click", () => act("reopen"));
 }
 
-// ---------- بازبینی سریع (یک رکورد در هر صفحه، با صفحه‌کلید) ----------
+// ---------- بررسی سریع (یک ردیف در هر صفحه، با صفحه‌کلید) ----------
 const focusState = { ids: [], idx: 0, rec: null, saving: Promise.resolve() };
 const FOCUS_FIELDS = [["engineer_name", "نام مهندس / شخص تماس", false], ["phone", "شماره تماس", true],
   ["address", "آدرس", false], ["project_name", "نام پروژه", false]];
@@ -1312,14 +1434,14 @@ function focusEl() {
     f.className = "focus";
     f.hidden = true;
     f.setAttribute("role", "dialog");
-    f.setAttribute("aria-label", "بازبینی سریع");
+    f.setAttribute("aria-label", "بررسی سریع");
     document.body.appendChild(f);
   }
   return f;
 }
 
 async function openFocus(ids, startIdx = 0) {
-  if (!ids.length) return toast("رکوردی برای بازبینی نیست.");
+  if (!ids.length) return toast("ردیفی برای بررسی نیست.");
   focusState.ids = ids.slice();
   focusState.idx = Math.max(0, Math.min(startIdx, ids.length - 1));
   focusEl().hidden = false;
@@ -1363,7 +1485,7 @@ async function renderFocus(autoplay = false) {
   const pos = `${fa(focusState.idx + 1)} از ${fa(focusState.ids.length)}`;
   f.innerHTML = `<div class="fm-wrap">
     <div class="fm-head">
-      <div><b>بازبینی سریع</b> <span class="muted">— رکورد ${pos}</span>
+      <div><b>بررسی سریع</b> <span class="muted">— ردیف ${pos}</span>
         <div class="row small" style="gap:6px">${recordChip(r)}<span class="muted" title="${esc(r.original_name)}">${esc(r.original_name)}</span>
           ${r.building_count > 1 ? chip("info plain", `ساختمان ${fa(r.building_index + 1)} از ${fa(r.building_count)}`) : ""}</div></div>
       <div class="progress" style="flex:1; max-width:260px"><div class="progress-bar" style="width:${Math.round(100 * (focusState.idx + 1) / focusState.ids.length)}%"></div></div>
@@ -1384,7 +1506,7 @@ async function renderFocus(autoplay = false) {
       <div class="fm-main">${FOCUS_FIELDS.map(([k, l, ltr]) => fieldBox(k, l, ltr)).join("")}</div>
     </div>
     <div class="fm-foot">
-      ${locked ? `<span class="muted">این رکورد در اکسل ثبت شده است.</span>` : `
+      ${locked ? `<span class="muted">این ردیف در اکسل ثبت شده است.</span>` : `
       <button class="btn ok lg" id="fm-approve">${I.check} تأیید و بعدی <span class="kbd">Ctrl+Enter</span></button>
       <button class="btn danger" id="fm-reject">${I.x} رد <span class="kbd">Ctrl+Delete</span></button>
       <button class="btn ghost" id="fm-undo" ${hasUndo(r) ? "" : "disabled"}>${I.retry} بازگشت <span class="kbd">Ctrl+Z</span></button>`}
@@ -1440,7 +1562,7 @@ async function focusAct(action) {
     refreshStatus();
   } catch (e) { return toastErr(e); }
   if (focusState.idx < focusState.ids.length - 1) { focusState.idx++; renderFocus(true); }
-  else { toast("همه رکوردهای این فهرست بازبینی شد.", "ok"); closeFocus(); }
+  else { toast("همه ردیف‌های این فهرست بررسی شد.", "ok"); closeFocus(); }
 }
 
 document.addEventListener("keydown", (e) => {
@@ -1459,132 +1581,10 @@ document.addEventListener("keydown", (e) => {
   else if (e.ctrlKey && e.code === "KeyZ" && !inField) { e.preventDefault(); undoLast(focusState.rec.id).then((r) => r && renderFocus(false)); }
 });
 
-// ================= اکسل =================
-const excelState = { lastExport: null };
-
-async function renderExcel(el) {
-  // انتخاب فایل و ستون‌ها در «خروجی اکسل» است؛ اینجا ردیف‌های آماده با مقصد فعلی و سوابق ثبت
-  el.innerHTML = `<div class="card"><div class="card-b">${destSentence(state.status)}</div></div>
-    <div class="card" id="x-prev-card" hidden><div class="card-h"><h2>${I.eye} ردیف‌های آماده ثبت</h2><div class="row" id="x-prev-actions"></div></div><div class="card-b stack" id="x-prev"></div></div>
-    <div class="card"><div class="card-h"><h2>${I.history} سوابق ثبت</h2></div><div class="table-wrap" id="x-exports"></div></div>`;
-  if (state.status?.setup?.excel_ready) drawPreview();
-  drawExports();
-
-  async function drawPreview() {
-    const card = $("#x-prev-card");
-    card.hidden = false;
-    $("#x-prev").innerHTML = '<div class="row"><span class="spinner"></span> در حال آماده‌سازی پیش‌نمایش...</div>';
-    $("#x-prev-actions").innerHTML = "";
-    let pv;
-    try { pv = await api("/api/excel/preview", { method: "POST" }); }
-    catch (e) { $("#x-prev").innerHTML = `<div class="alert err">${I.alert}<div class="alert-body">${esc(e.message)}</div></div>`; return; }
-    const prof = pv.profile;
-    const cols = Object.keys(prof.headers);
-    const rows = pv.rows || [];
-    const lockMsg = pv.lock?.locked ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>فایل اصلی ظاهراً در Excel باز است</b>تغییرات ذخیره‌نشده آن در خروجی دیده نمی‌شود. بهتر است فایل را ذخیره کنید و ببندید.</div></div>` : "";
-    if (!rows.length) {
-      $("#x-prev").innerHTML = `${lockMsg}<div class="empty">${I.check}<div>رکورد تأییدشده‌ای برای ثبت وجود ندارد.</div>
-        ${pv.pending ? `<div>${fa(pv.pending)} رکورد هنوز منتظر بازبینی است.</div><a class="btn" href="#/review">رفتن به بازبینی</a>` : ""}</div>`;
-      return;
-    }
-    $("#x-prev-actions").innerHTML = `<button class="btn" id="x-refresh">${I.retry} به‌روزرسانی</button><button class="btn primary lg" id="x-export">${I.table} ساخت فایل خروجی (${fa(rows.length)} ردیف)</button>`;
-    let html = "";
-    let prevRow = pv.last_existing_row;
-    for (const r of rows) {
-      if (r.row > prevRow + 1) html += `<tr class="blank"><td colspan="${cols.length + 2}"></td></tr>`;
-      html += `<tr><td class="rownum">${fa(r.row)}</td><td class="small muted" style="max-width:140px">${esc(r.original_name)}</td>${cols.map((c) => `<td ${prof.protected.includes(c) ? 'class="muted"' : ""}>${prof.protected.includes(c) ? "🔒" : esc(r.cells[c] || "")}</td>`).join("")}</tr>`;
-      prevRow = r.row;
-    }
-    $("#x-prev").innerHTML = `${lockMsg}
-      ${pv.header_mismatches?.length ? `<div class="alert err">${I.alert}<div class="alert-body"><b>عنوان ستون‌ها تغییر کرده است</b>${pv.header_mismatches.map(esc).join("<br>")}</div></div>` : ""}
-      <div class="row small"><span>آخرین ردیف داده فعلی: <b>${fa(pv.last_existing_row)}</b></span><span class="muted">|</span><span>${fa(rows.length)} ردیف جدید از ردیف ${fa(rows[0].row)} تا ${fa(rows[rows.length - 1].row)}</span>
-        ${pv.pending ? `<span class="muted">|</span><a href="#/review">${fa(pv.pending)} رکورد هنوز منتظر بازبینی است و ثبت نمی‌شود</a>` : ""}</div>
-      <div class="table-wrap" style="border:1px solid var(--border); border-radius:12px; max-height:460px"><table class="table preview-table"><thead><tr><th>ردیف</th><th>ویس</th>${cols.map((c) => `<th title="${esc(prof.headers[c])}">${esc(c)} — ${esc(prof.headers[c]).replace(/\n/g, " ")}</th>`).join("")}</tr></thead><tbody>${html}</tbody></table></div>`;
-    $("#x-refresh").onclick = drawPreview;
-    $("#x-export").onclick = doExport;
-  }
-
-  async function doExport() {
-    const ok = await confirmBox("ساخت فایل خروجی", `<div class="stack"><div>این کارها انجام می‌شود:</div><ul class="reasons">
-      <li>یک نسخه پشتیبان از فایل اصلی در پوشه backups ساخته می‌شود.</li>
-      <li>ردیف‌های تأییدشده در <b>یک کپی جدید</b> از فایل نوشته می‌شوند؛ فایل اصلی تغییر نمی‌کند.</li>
-      <li>پس از ذخیره، کپی دوباره خوانده و بررسی می‌شود که داده‌های قبلی دست نخورده باشند.</li></ul></div>`, "ساخت خروجی");
-    if (!ok) return;
-    const btn = $("#x-export");
-    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> در حال ثبت...';
-    try {
-      const rep = await api("/api/excel/export", { method: "POST", body: {} });
-      excelState.lastExport = rep;
-      refreshStatus();
-      showExportResult(rep);
-      drawPreview();
-      drawExports();
-    } catch (e) { toastErr(e); btn.disabled = false; btn.innerHTML = "ساخت فایل خروجی"; }
-  }
-
-  function showExportResult(rep) {
-    openModal({
-      title: `${I.ok} فایل خروجی ساخته شد`,
-      wide: true,
-      body: `<div class="stack"><dl class="kv">
-        <dt>ردیف‌های ثبت‌شده</dt><dd>${fa(rep.rows.length)} ردیف (${fa(rep.first_row)} تا ${fa(rep.last_row)})</dd>
-        <dt>فایل خروجی</dt><dd><span class="path">${esc(rep.output_path)}</span></dd>
-        <dt>نسخه پشتیبان</dt><dd><span class="path">${esc(rep.backup_path)}</span></dd>
-        <dt>فایل اصلی</dt><dd>بدون تغییر <span class="path">${esc(rep.target_path)}</span></dd></dl>
-        ${rep.warnings?.length ? `<div class="alert warn">${I.alert}<div class="alert-body"><ul class="reasons">${rep.warnings.map((w) => `<li>${esc(w)}</li>`).join("")}</ul></div></div>` : ""}
-        ${rep.dropped_parts?.length ? `<div class="alert info">${I.info}<div class="alert-body">این بخش‌های داخلی فایل در خروجی حذف شدند (معمولاً بی‌اثرند): <span class="ltr small">${rep.dropped_parts.map(esc).join(", ")}</span></div></div>` : ""}
-        <div class="alert info">${I.info}<div class="alert-body">فایل خروجی را در Excel باز و بررسی کنید. اگر درست بود، دکمه «جایگزینی فایل اصلی» را بزنید.</div></div></div>`,
-      actions: [
-        { label: `${I.open} باز کردن پوشه خروجی`, cls: "", onClick: async () => { await api("/api/open-folder", { method: "POST", body: { path: rep.output_path } }).catch(toastErr); return false; } },
-        { label: `${I.down} دانلود`, onClick: () => { location.href = `/api/exports/${rep.export_id}/download`; return false; } },
-        { label: `${I.swap} جایگزینی فایل اصلی`, cls: "primary", onClick: async () => { await replaceOriginal(rep.export_id); } },
-        { label: "بستن", cls: "ghost" },
-      ],
-    });
-  }
-
-  async function drawExports() {
-    const { exports } = await api("/api/exports");
-    const box = $("#x-exports");
-    if (!exports.length) { box.innerHTML = `<div class="empty">${I.table}<div>هنوز خروجی‌ای ساخته نشده است.</div></div>`; return; }
-    const ST = { created: ["warn", "ساخته شده، هنوز اعمال نشده"], applied: ["ok", "جایگزین فایل اصلی شد"], undone: ["missing", "بازگردانده شد"] };
-    box.innerHTML = `<table class="table"><thead><tr><th>#</th><th>زمان</th><th>ردیف‌ها</th><th>وضعیت</th><th>فایل خروجی</th><th></th></tr></thead><tbody>
-      ${exports.map((x) => `<tr><td class="muted">${fa(x.id)}</td><td class="small">${fa(x.created_at.replace("T", " "))}</td>
-        <td>${fa(x.rows_written)} <span class="muted small">(${fa(x.first_row)}–${fa(x.last_row)})</span></td><td>${chip(...ST[x.status] || ["", x.status])}</td>
-        <td class="small" style="max-width:320px"><span class="path">${esc(x.output_path.split(/[\\/]/).pop())}</span></td>
-        <td class="actions">
-          <button class="btn sm ghost" data-xdl="${x.id}" title="دانلود">${I.down}</button>
-          <button class="btn sm ghost" data-xopen="${esc(x.output_path)}" title="باز کردن پوشه">${I.open}</button>
-          ${x.status === "created" ? `<button class="btn sm primary" data-xrep="${x.id}">جایگزینی فایل اصلی</button>` : ""}
-          ${x.status !== "undone" ? `<button class="btn sm danger" data-xundo="${x.id}">بازگردانی</button>` : ""}</td></tr>`).join("")}</tbody></table>`;
-    $$("[data-xdl]", box).forEach((b) => b.onclick = () => location.href = `/api/exports/${b.dataset.xdl}/download`);
-    $$("[data-xopen]", box).forEach((b) => b.onclick = () => api("/api/open-folder", { method: "POST", body: { path: b.dataset.xopen } }).catch(toastErr));
-    $$("[data-xrep]", box).forEach((b) => b.onclick = () => replaceOriginal(+b.dataset.xrep));
-    $$("[data-xundo]", box).forEach((b) => b.onclick = async () => {
-      if (!(await confirmBox("بازگردانی خروجی", "رکوردهای این خروجی دوباره به حالت «آماده ثبت» برمی‌گردند تا بتوانید اصلاح یا دوباره ثبتشان کنید. فایل‌ها حذف نمی‌شوند. ادامه می‌دهید؟", "بازگردانی", "danger"))) return;
-      try { const r = await api(`/api/exports/${b.dataset.xundo}/undo`, { method: "POST" }); toast(r.message, "ok"); refreshStatus(); drawExports(); drawPreview(); }
-      catch (e) { toastErr(e); }
-    });
-  }
-
-  async function replaceOriginal(eid) {
-    const ok = await confirmBox("جایگزینی فایل اصلی شرکت", `<div class="stack"><div class="alert warn">${I.alert}<div class="alert-body">فایل اصلی با فایل خروجی جایگزین می‌شود. پیش از آن یک نسخه پشتیبان دیگر از فایل اصلی گرفته می‌شود.</div></div>
-      <ul class="reasons"><li>Excel باید بسته باشد.</li><li>اگر فایل اصلی پس از ساخت خروجی تغییر کرده باشد، جایگزینی انجام نمی‌شود تا آن تغییرات از بین نروند.</li></ul>
-      <div>آیا فایل خروجی را بررسی کرده‌اید و از جایگزینی مطمئنید؟</div></div>`, "بله، جایگزین کن", "primary");
-    if (!ok) return false;
-    try {
-      const r = await api(`/api/exports/${eid}/replace-original`, { method: "POST" });
-      toast("فایل اصلی به‌روزرسانی شد. پشتیبان: " + r.backup_path.split(/[\\/]/).pop(), "ok");
-      refreshStatus(); drawExports();
-    } catch (e) { toastErr(e); return false; }
-  }
-}
-
-// ================= خروجی اکسل: مقصد ثبت =================
-/** ثبت‌ها کجا بروند: «فایل موجود» (فایل شرکت؛ ستون‌ها و ظاهر همان فایل) یا «فایل جداگانه» (ستون‌ها و ظاهر دلخواه).
- * هر مقصد یک کارت است؛ «مقصد ثبت» (فعال) جدا از ویرایش انتخاب می‌شود تا این دو با هم قاطی نشوند. */
+// ================= تنظیمات فایل =================
+/** ستون‌ها، شکل نوشتن مقادیر، رنگ ردیف‌ها و ظاهر یک فایل: «فایلی که دارید» (ظاهرش دست نمی‌خورد) یا «فایل تازه» (ظاهر دلخواه). */
 const COMPANY = "default";
-const tplState = { name: null, tab: null, dirty: false, rows: [], colors: [], target: "", pickFile: false };
+const tplState = { name: null, tab: null, dirty: false, rows: [], colors: [], target: "" };
 const VALUE_OPTS = {
   date_format: [["auto", "مثل ردیف‌های قبلی همین فایل"], ["", "1405/07/28"], ["compact", "1405/7/28"], ["persian", "۱۴۰۵/۰۷/۲۸"], ["long", "۲۸ مهر ۱۴۰۵"]],
   phone_format: [["text_leading_zero", "با صفر اول (09151234567)"], ["as_number_like_existing", "بدون صفر اول (9151234567)"]],
@@ -1594,7 +1594,6 @@ const VALUE_OPTS = {
 const NOTE_PARTS = [["technical_summary", "خلاصه فنی"], ["project_name", "نام پروژه"], ["building_type", "نوع ساختمان"], ["permit_status", "وضعیت مجوز"],
   ["customer_need", "نیاز مشتری"], ["notes", "توضیحات تکمیلی"], ["followup", "پیگیری"]];
 const HELP = {
-  dest: "مقصد ثبت فایلی است که با زدن «ثبت در اکسل» ردیف‌های تأییدشده در آن نوشته می‌شوند. در هر لحظه فقط یک مقصد فعال است.",
   append: "ردیف‌های تازه به انتهای یک فایل اکسل موجود (مثل فایل اصلی شرکت) اضافه می‌شوند. ستون‌ها، ترتیب و ظاهر همان فایل می‌ماند و ردیف‌های قبلی دست نمی‌خورند.",
   new: "برنامه یک فایل اکسل تازه می‌سازد و ستون‌ها، ترتیب و رنگ‌هایش را خودتان تعیین می‌کنید؛ مثلاً یک گزارش جدا برای مدیر.",
   columns_append: "برای هر ستون فایل مشخص کنید چه اطلاعاتی در آن نوشته شود. «نوشته نشود» یعنی خانه خالی می‌ماند؛ «محافظت‌شده» یعنی برنامه هرگز به آن ستون دست نمی‌زند (مثلاً ستونی که همکاران دستی پر می‌کنند).",
@@ -1619,147 +1618,37 @@ function destInfo(meta, name) {
 }
 // نام فایل لاتین (مثل sample-company.xlsx) وسط جمله فارسی جدا نمایش داده شود تا جابه‌جا و شکسته نشود
 const fname = (s) => `<bdi class="fname">${esc(s)}</bdi>`;
-const destKind = (t) => t.mode === "new" ? "فایل جداگانه" : "اضافه به فایل موجود";
-const destName = (t) => t.mode === "new" ? t.title : (t.target || "فایل اکسل شرکت");
-/** یک جمله ساده: با این مقصد، ردیف‌ها کجا و چطور نوشته می‌شوند. */
-function destDescribe(t) {
-  if (t.mode !== "new") return t.target ? `ردیف‌های تازه به انتهای «${fname(t.target)}»${t.sheet ? ` (شیت ${fname(t.sheet)})` : ""} اضافه می‌شوند؛ ستون‌ها و ظاهر همان فایل می‌ماند.`
-    : "هنوز فایلی انتخاب نشده؛ روی کارت بزنید و فایل اکسل شرکت را انتخاب کنید.";
-  const dir = (t.folder || "").split(/[\\/]/).filter(Boolean).pop();
-  const where = dir ? ` در پوشه «${fname(dir)}»` : "";
-  return {
-    none: `فایل تازه «${fname(t.file + ".xlsx")}»${where} ساخته می‌شود و همه ردیف‌ها در آن جمع می‌شوند.`,
-    month_file: `برای هر ماه یک فایل تازه${where} ساخته می‌شود (مثل «${fname(t.target)}»).`,
-    day_file: `برای هر روز یک فایل تازه${where} ساخته می‌شود (مثل «${fname(t.target)}»).`,
-    month_sheet: `فایل «${fname(t.file + ".xlsx")}»${where}؛ ردیف‌های هر ماه در یک شیت جدا.`,
-  }[t.split || "none"];
-}
-/** جمله نتیجه «ثبت در اکسل» با مقصد فعلی (کار امروز، خروجی اکسل، ثبت در اکسل). */
-function destSentence(s, links = true) {
-  const st = s?.setup || {}, n = s?.records?.approved || 0;
-  if (!st.excel_ready) return `<div class="dest-sentence warn">${I.alert}<span>هنوز <b>مقصد ثبت</b> آماده نیست؛ تا مشخص نشود ردیف‌ها کجا بروند، چیزی در اکسل ثبت نمی‌شود.</span>
-    ${links ? `<a class="btn sm primary" href="#/templates">انتخاب مقصد ثبت</a>` : ""}</div>`;
-  const rows = n ? `<b>${fa(n)} ردیف آماده</b>` : "ردیف‌های تأییدشده";
-  const text = st.template_mode === "new"
-    ? `با زدن «ثبت در اکسل»، ${rows} در فایل جداگانه <b>«${fname(st.excel_name)}»</b> نوشته می‌شود.`
-    : `با زدن «ثبت در اکسل»، ${rows} به انتهای فایل <b>«${fname(st.excel_name)}»</b> اضافه می‌شود.`;
-  return `<div class="dest-sentence">${I.table}<span>${text}</span>${links ? `<a class="btn sm ghost" href="#/templates">تغییر مقصد</a>` : ""}</div>`;
-}
-function destCard(t) {
-  const isNew = t.mode === "new", ready = isNew || t.confirmed;
-  return `<div class="dest-card ${t.name === tplState.name ? "sel" : ""} ${t.active ? "on" : ""}" data-dest="${esc(t.name)}" tabindex="0" role="button" aria-pressed="${t.name === tplState.name}">
-    <div class="dc-top"><span class="dc-ico">${isNew ? I.file : I.table}</span>
-      <div class="dc-names"><span class="dc-kind">${destKind(t)}</span><b class="dc-title">${esc(destName(t))}</b></div></div>
-    <p class="dc-desc">${destDescribe(t)}</p>
-    <div class="dc-foot">${t.active
-      ? `<span class="dc-active ${ready ? "" : "warn"}">${ready ? `${I.check} مقصد ثبت فعلی` : `${I.alert} مقصد فعلی؛ هنوز آماده نیست`}</span>`
-      : `<button class="btn sm" data-activate="${esc(t.name)}" ${ready ? "" : `disabled title="اول فایل و ستون‌هایش را ذخیره کنید"`}>ثبت‌ها اینجا برود</button>`}</div></div>`;
-}
+const destKind = (t) => t.mode === "new" ? "فایل تازه که برنامه می‌سازد" : "فایل اکسلی که دارید";
 function destChoicesHtml() {
   return `<div class="choice-grid">
       <button class="choice" data-choice="append"><span class="choice-art">${ART_APPEND}</span><b>به فایل اکسلی که دارم اضافه شود</b>
         <span>ردیف‌های تازه به انتهای فایل موجود (مثل فایل اصلی شرکت) اضافه می‌شوند. ستون‌ها و ظاهر همان فایل می‌ماند.</span></button>
       <button class="choice" data-choice="new"><span class="choice-art">${ART_NEW}</span><b>یک فایل اکسل تازه ساخته شود</b>
         <span>ستون‌ها، ترتیب و رنگ‌ها را خودتان می‌چینید؛ مثلاً یک گزارش جدا برای مدیر.</span></button></div>
-    <div class="small muted" style="margin-top:14px">مقصدی را از رایانه دیگر خروجی گرفته‌اید؟ <button class="linkbtn" data-choice="import">ورود فایل قالب (.json)</button></div>`;
+    <div class="small muted" style="margin-top:14px">تنظیمات یک فایل را از رایانه دیگر آورده‌اید؟ <button class="linkbtn" data-choice="import">وارد کردن فایل تنظیمات (.json)</button></div>`;
 }
 
 async function renderTemplates(el) {
   const seq = routeSeq;
   const q = new URLSearchParams(location.hash.split("?")[1] || "");
   if (q.get("dest")) { tplState.name = q.get("dest"); tplState.tab = q.get("tab"); tplState.dirty = false; history.replaceState(null, "", "#/templates"); }
-  const [meta, { profile: company }] = await Promise.all([api("/api/templates"), api("/api/excel/profile")]);
+  if (!tplState.name) { location.hash = "#/files"; return; }
+  let meta, dest;
+  try { [meta, dest] = await Promise.all([api("/api/templates"), api(`/api/dests/${encodeURIComponent(tplState.name)}`)]); }
+  catch (e) { toastErr(e); tplState.name = null; location.hash = "#/files"; return; }
   if (seq !== routeSeq) return;
   state.tplMeta = meta;
-  const news = meta.templates.filter((t) => t.mode === "new");
-  const drawSummary = () => { const b = $("#dv-summary"); if (b) b.innerHTML = destSentence(state.status, false); };
-  setHook(seq, drawSummary);
-  const importInput = `<input type="file" id="tp-import-file" accept=".json" hidden>`;
-  const bindImport = () => $("#tp-import-file").onchange = async (e) => {
-    const f = e.target.files[0];
-    e.target.value = "";
-    if (!f) return;
-    const fd = new FormData();
-    fd.append("file", f, f.name);
-    try { tplState.name = (await api("/api/templates/import", { method: "POST", form: fd })).name; tplState.dirty = false; tplState.tab = "output"; toast("قالب وارد شد؛ پوشه فایل را بررسی و ذخیره کنید.", "ok"); renderTemplates(el); }
-    catch (er) { toastErr(er); }
-  };
-  // ساختن مقصد تازه: اول فقط یک سؤال (فایل موجود یا فایل تازه)
-  const startDest = async (choice) => {
-    if (choice === "import") return $("#tp-import-file").click();
-    if (choice === "append") {
-      if (company?.excel_path && !(await confirmBox("فایل موجود دیگری انتخاب شود؟", `در هر لحظه یک «فایل موجود» وصل است: الان «${esc(company.excel_path.split(/[\\/]/).pop())}». با انتخاب فایل دیگر، آن جایگزین می‌شود؛ ردیف‌هایی که قبلاً در آن ثبت شده دست نمی‌خورند.`, "انتخاب فایل دیگر"))) return;
-      Object.assign(tplState, { name: COMPANY, tab: "output", dirty: false, pickFile: true });
-      return renderTemplates(el);
-    }
-    const title = await openModal({ title: "فایل اکسل تازه", body: `<div class="field"><label>نام این مقصد (نام فایل اکسل هم همین می‌شود)</label><input class="input" id="m-in" placeholder="مثلاً گزارش مدیر"></div>
-        <div class="small muted" style="margin-top:8px">در گام بعد ستون‌ها، ظاهر و پوشه فایل را می‌چینید.</div>`,
-      actions: [{ label: "ساخت", cls: "primary", onClick: (m) => $("#m-in", m).value.trim() || false }, { label: "انصراف", cls: "ghost", value: null }],
-      onOpen: (m) => { const i = $("#m-in", m); setTimeout(() => i.focus(), 50); i.onkeydown = (e) => { if (e.key === "Enter") $('[data-mi="0"]', m).click(); }; } });
-    if (!title) return;
-    try {
-      tplState.name = (await api("/api/templates", { method: "POST", body: { title } })).name;
-      Object.assign(tplState, { dirty: false, tab: "columns" });
-      toast("فایل جداگانه ساخته شد. ستون‌ها و پوشه را بچینید؛ برای ثبت در آن، «ثبت‌ها اینجا برود» را بزنید.", "ok");
-      renderTemplates(el);
-    } catch (e) { toastErr(e); }
-  };
-
-  if (!company && !news.length && tplState.name !== COMPANY) {
-    // هنوز هیچ مقصدی نیست: به جای پیام، همان دو انتخاب
-    el.innerHTML = `<div id="dv-summary"></div><div class="card"><div class="card-h"><h2>${I.table} شروع: ردیف‌ها کجا ثبت شوند؟</h2></div>
-      <div class="card-b">${destChoicesHtml()}</div></div>${importInput}`;
-    drawSummary();
-    bindImport();
-    $$("[data-choice]", el).forEach((b) => b.onclick = () => startDest(b.dataset.choice));
-    return;
-  }
-
-  const names = [COMPANY, ...news.map((t) => t.name)];
-  if (!names.includes(tplState.name)) Object.assign(tplState, { name: names.includes(meta.active) ? meta.active : names[0], tab: null, dirty: false });
-  el.innerHTML = `<div id="dv-summary"></div>
-    <div class="dest-head"><h3>مقصدهای ثبت ${help("dest")}</h3><span class="small muted">روی هر کارت بزنید تا تنظیماتش پایین باز شود.</span></div>
-    <div class="dest-grid">${names.map((n) => destCard(destInfo(meta, n))).join("")}
-      <button class="dest-card dest-add" id="dv-new">${I.plus}<b>مقصد تازه</b><span>فایل جداگانه یا فایل موجود دیگر</span></button></div>
-    <div class="card" id="dv-editor"><div class="card-b"><span class="spinner"></span></div></div>${importInput}`;
-  drawSummary();
-  bindImport();
-  $$("[data-dest]", el).forEach((c) => {
-    const pick = async (e) => {
-      if (e.target.closest("[data-activate]") || c.dataset.dest === tplState.name) return;
-      if (tplState.dirty && !(await confirmBox("تغییرات ذخیره نشده", "تغییرات این مقصد ذخیره نشده‌اند و از دست می‌روند. ادامه می‌دهید؟", "ادامه", "danger"))) return;
-      Object.assign(tplState, { name: c.dataset.dest, dirty: false, tab: null });
-      renderTemplates(el);
-    };
-    c.onclick = pick;
-    c.onkeydown = (e) => { if (e.target === c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pick(e); } };
-  });
-  $$("[data-activate]", el).forEach((b) => b.onclick = () => activate(b.dataset.activate));
-  $("#dv-new").onclick = async () => {
-    if (tplState.dirty) return toast("اول تغییرات این مقصد را ذخیره یا لغو کنید.", "err");
-    const choice = await openModal({ title: "مقصد تازه: ردیف‌ها کجا ثبت شوند؟", body: destChoicesHtml(), wide: true,
-      actions: [{ label: "انصراف", cls: "ghost", value: null }],
-      onOpen: (m) => $$("[data-choice]", m).forEach((b) => b.onclick = () => closeModal(b.dataset.choice)) });
-    if (choice) startDest(choice);
-  };
-
-  // تغییر مقصد ثبت با نمایش روشن «تا الان» و «از این پس»
-  async function activate(name) {
-    if (tplState.dirty) return toast("اول تغییرات را ذخیره یا لغو کنید.", "err");
-    const to = destInfo(meta, name), from = meta.templates.find((t) => t.active);
-    const box = (t, cls, label) => `<div class="ds-box ${cls}"><span>${label}</span><b>${t ? fname(destName(t)) : "—"}</b><small>${t ? destKind(t) : "مقصدی انتخاب نشده بود"}</small></div>`;
-    const ok = await confirmBox("تغییر مقصد ثبت", `<div class="dest-switch">${box(from, "", "تا الان")}<span class="ds-arrow">←</span>${box(to, "on", "از این پس")}</div>
-      <p class="small muted" style="margin:14px 0 0">ردیف‌هایی که قبلاً ثبت شده‌اند همان‌جا می‌مانند؛ فقط ثبت‌های بعدی به مقصد تازه می‌روند. هر وقت بخواهید می‌توانید برگردید.</p>`, "تغییر مقصد");
-    if (!ok) return;
-    try { await api(`/api/templates/${name}/activate`, { method: "POST" }); toast(`از این پس ثبت‌ها به «${destName(to)}» می‌روند.`, "ok"); await refreshStatus(); renderTemplates(el); }
-    catch (e) { toastErr(e); }
-  }
+  $("#page-title").textContent = `تنظیمات «${destLabel(dest)}»`;
+  $("#tb-page").textContent = destLabel(dest);
+  el.innerHTML = `<div id="dv-bar" class="fw-head"></div><div class="card" id="dv-editor" style="margin-top:18px"><div class="card-b"><span class="spinner"></span></div></div>`;
+  fileBar($("#dv-bar"), dest, () => renderTemplates(el), "settings");
 
   // ---------- تنظیمات مقصد انتخاب‌شده (زبانه‌های یکسان برای هر دو نوع) ----------
   const info = destInfo(meta, tplState.name);
   const isNew = info.mode === "new";
+  const savedProf = isNew ? null : (await api(`/api/excel/profile?name=${encodeURIComponent(info.name)}`)).profile;
   const draft = isNew ? (await api(`/api/templates/${info.name}`)).template
-    : company ? JSON.parse(JSON.stringify(company)) : { name: COMPANY, excel_path: "", columns: {}, protected: [], policy: {} };
+    : savedProf ? JSON.parse(JSON.stringify(savedProf)) : { name: info.name, excel_path: "", columns: {}, protected: [], policy: {} };
   if (seq !== routeSeq) return;
   draft.policy = draft.policy || {};
   let report = null;  // گزارش خواندن فایل موجود (شیت‌ها و عنوان ستون‌ها)
@@ -1769,16 +1658,16 @@ async function renderTemplates(el) {
   if (!TABS.some(([k]) => k === tplState.tab)) tplState.tab = hasFile() ? "columns" : "output";
   const ed = $("#dv-editor");
   ed.innerHTML = `<div class="card-h"><div class="stack" style="gap:3px"><span class="dc-kind">${destKind(info)} ${help(isNew ? "new" : "append")}</span>
-        <h2>${isNew ? I.file : I.table} تنظیمات «${esc(isNew ? info.title : fileName() || "فایل اکسل شرکت")}»</h2></div>
+        <h2>${I.edit} ستون‌ها و شکل نوشتن</h2></div>
       <div class="row">
-        <button class="btn" id="tp-show" title="جدول نمونه با ستون‌ها، ترتیب و ظاهر همین مقصد">${I.eye} پیش‌نمایش</button>
+        <button class="btn" id="tp-show" title="جدول نمونه با ستون‌ها، ترتیب و ظاهر همین فایل">${I.eye} پیش‌نمایش</button>
         ${isNew ? `<button class="btn ghost" id="tp-like" title="ستون‌ها و ظاهر را از یک فایل اکسل دیگر بردارد">${I.table} مثل فایل دیگر…</button>
-          <a class="btn ghost" href="/api/templates/${esc(info.name)}/export" title="برای استفاده در رایانه دیگر (پوشه خروجی همراهش نیست)">${I.down} خروجی قالب</a>
-          <button class="btn ghost icon" id="tp-del" title="${info.active ? "مقصد فعلی ثبت را نمی‌شود حذف کرد؛ اول مقصد دیگری را انتخاب کنید" : "حذف این مقصد"}" ${info.active ? "disabled" : ""}>${I.trash}</button>
-          <input type="file" id="tp-like-file" accept=".xlsx,.xlsm" hidden>` : ""}</div></div>
+          <a class="btn ghost" href="/api/templates/${esc(info.name)}/export" title="برای استفاده در رایانه دیگر (پوشه فایل همراهش نیست)">${I.down} ذخیره تنظیمات برای رایانه دیگر</a>
+          <input type="file" id="tp-like-file" accept=".xlsx,.xlsm" hidden>` : ""}
+        <button class="btn ghost icon" id="tp-del" title="${dest.auto ? "ویس‌های گوشی و پوشه ورودی به این فایل می‌آیند؛ اول فایل دیگری را برای آن‌ها انتخاب کنید" : "برداشتن این فایل از فهرست (خود فایل اکسل پاک نمی‌شود)"}" ${dest.auto ? "disabled" : ""}>${I.trash}</button></div></div>
     <div class="card-b" style="padding-bottom:0"><div class="tabs" id="tp-tabs">${TABS.map(([k, l]) => `<button data-tt="${k}" class="${k === tplState.tab ? "active" : ""}">${l}</button>`).join("")}</div></div>
     <div class="card-b" id="tp-tab"></div>
-    ${isNew ? `<div class="card-b" style="border-top:1px solid var(--border)"><div class="row between"><b>پیش‌نمایش زنده</b><span class="small muted">چند ردیف از رکوردهای اخیر، با همین تنظیمات</span></div>
+    ${isNew ? `<div class="card-b" style="border-top:1px solid var(--border)"><div class="row between"><b>پیش‌نمایش زنده</b><span class="small muted">چند ردیف از ردیف‌های اخیر، با همین تنظیمات</span></div>
       <div class="tp-preview" id="tp-preview"></div></div>` : ""}
     <div class="save-bar" id="dv-savebar"><span id="dv-save-msg"></span><div class="row">
       ${isNew ? `<button class="btn ghost" id="tp-sample">${I.down} دریافت فایل نمونه</button>` : ""}
@@ -1807,11 +1696,11 @@ async function renderTemplates(el) {
   // فایل موجود: خواندن شیت‌ها و عنوان ستون‌ها؛ فایل تازه = پیشنهاد ستون‌ها از روی عنوان‌ها
   async function inspect(path) {
     if (!path) return toast("مسیر فایل اکسل را وارد یا انتخاب کنید.");
-    const fresh = !company || company.excel_path !== path;
+    const fresh = !savedProf || savedProf.excel_path !== path;
     report = null;
     if (tplState.tab === "output") drawTab();
     try {
-      const res = await api("/api/excel/inspect", { method: "POST", body: { path } });
+      const res = await api("/api/excel/inspect", { method: "POST", body: { path, name: info.name } });
       report = res.report;
       if (fresh && res.profile) {
         for (const k of Object.keys(draft)) delete draft[k];
@@ -1990,7 +1879,7 @@ async function renderTemplates(el) {
     } else if (!isNew) {
       box.innerHTML = `<div class="stack"><div class="field"><label>فایل اکسل موجود ${help("append")}</label><div class="row" style="flex-wrap:nowrap">
           <input class="input ltr" id="x-path" style="flex:1; text-align:right" placeholder="C:\\...\\فایل شرکت.xlsx" value="${esc(draft.excel_path || "")}">
-          <button class="btn primary" id="x-browse">${I.folder} انتخاب فایل…</button><button class="btn ghost" id="x-inspect">${I.search} بررسی</button></div>
+          <button class="btn" id="x-browse">${I.folder} انتخاب فایل…</button><button class="btn ghost" id="x-inspect">${I.search} بررسی</button></div>
           <span class="hint">فایل فقط خوانده می‌شود تا ستون‌هایش شناخته شود. پیش از هر ثبت از آن پشتیبان گرفته می‌شود و هر ثبت قابل بازگشت است.</span></div>
         ${state.meta?.samples?.excel ? `<div class="row small"><span class="muted">فایل اکسل شرکت را ندارید؟</span><button class="btn sm ghost" id="x-sample">${I.table} استفاده از فایل اکسل نمونه</button></div>` : ""}
         <div id="x-report">${report ? (report.error ? `<div class="alert err">${I.alert}<div class="alert-body">${esc(report.error)}</div></div>` : excelReportHtml(report))
@@ -1998,13 +1887,12 @@ async function renderTemplates(el) {
       $("#x-browse").onclick = browse;
       $("#x-inspect").onclick = () => inspect($("#x-path").value.trim().replace(/^"|"$/g, ""));
       $("#x-sample")?.addEventListener("click", () => { $("#x-path").value = state.meta.samples.excel; inspect(state.meta.samples.excel); });
-      if (tplState.pickFile) { tplState.pickFile = false; browse(); }
     } else {
       const O = draft.output;
       box.innerHTML = `<div class="stack"><div class="field"><label>پوشه فایل</label><div class="row" style="flex-wrap:nowrap">
           <input class="input ltr" id="tp-folder" value="${esc(O.folder)}" style="flex:1; text-align:right"><button class="btn" id="tp-pick">${I.folder} انتخاب پوشه</button></div></div>
         <div class="field"><label>نام فایل</label><div class="row"><input class="input" id="tp-file" value="${esc(O.file)}" style="width:260px"><span class="muted">.xlsx</span></div>
-          <span class="hint">اگر فایل نباشد، در اولین ثبت با ستون‌های همین مقصد ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div>
+          <span class="hint">اگر فایل نباشد، در اولین ثبت با ستون‌های همین فایل ساخته می‌شود؛ ثبت‌های بعدی به همان فایل اضافه می‌شوند.</span></div>
         <div class="field"><label>یک فایل یا چند فایل؟ ${help("split")}</label><select class="select" id="tp-split" style="width:300px">${Object.entries(state.tplMeta.splits).map(([k, l]) => `<option value="${k}" ${(O.split || "none") === k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
           <span class="hint">نام فایل امروز: <b id="tp-target-name">${esc(tplState.target || info.target || "")}</b></span></div></div>`;
       $("#tp-split").onchange = (e) => { O.split = e.target.value; changed(true); };
@@ -2033,7 +1921,7 @@ async function renderTemplates(el) {
         await api("/api/excel/profile", { method: "PUT", body: draft });
         // واژه‌نامه از نام مهندس‌ها و خیابان‌های همین فایل پر می‌شود تا املای درست پیشنهاد شود
         try {
-          const sd = await api("/api/dictionary/seed-from-excel", { method: "POST" });
+          const sd = await api(`/api/dictionary/seed-from-excel?name=${encodeURIComponent(info.name)}`, { method: "POST" });
           if (sd.added.engineer || sd.added.street) toast(`واژه‌نامه پر شد: ${fa(sd.added.engineer)} نام مهندس و ${fa(sd.added.street)} خیابان از فایل اکسل.`, "ok");
         } catch { }
       }
@@ -2046,8 +1934,8 @@ async function renderTemplates(el) {
   $("#dv-discard").onclick = () => { tplState.dirty = false; renderTemplates(el); };
   $("#tp-show").onclick = () => showTemplatePreview(draft, isNew ? info.title : fileName());
   $("#tp-del")?.addEventListener("click", async () => {
-    if (!(await confirmBox("حذف مقصد", `«${esc(info.title)}» از فهرست مقصدها حذف می‌شود. فایل‌هایی که قبلاً با آن ساخته شده‌اند دست نمی‌خورند.`, "حذف", "danger"))) return;
-    try { await api(`/api/templates/${info.name}`, { method: "DELETE" }); Object.assign(tplState, { name: null, dirty: false }); renderTemplates(el); } catch (e) { toastErr(e); }
+    if (!(await confirmBox("برداشتن از فهرست", `«${esc(destLabel(dest))}» از فهرست فایل‌ها برداشته می‌شود. خود فایل اکسل و ردیف‌هایی که در آن ثبت شده‌اند دست نمی‌خورند.`, "برداشتن از فهرست", "danger"))) return;
+    try { await api(`/api/templates/${info.name}`, { method: "DELETE" }); Object.assign(tplState, { name: null, dirty: false }); location.hash = "#/files"; } catch (e) { toastErr(e); }
   });
   $("#tp-like")?.addEventListener("click", () => $("#tp-like-file").click());
   $("#tp-like-file")?.addEventListener("change", async (e) => {
@@ -2100,7 +1988,7 @@ function sheetHtml(S, cols, rows, colors, letters = null) {
   const filter = letters && S.filter ? `<span class="xl-filter">▾</span>` : "";
   return `<table dir="${S.rtl ? "rtl" : "ltr"}" style="font-family:'${esc(S.body.font)}',Tahoma,sans-serif"><thead>
     ${letters ? `<tr class="xl-letters"><th class="xl-h xl-rn"></th>${letters.map((l) => `<th class="xl-h">${esc(l)}</th>`).join("")}</tr>` : ""}
-    <tr class="xl-titles">${rn(1)}${cols.map((c) => `<th class="${c.unmapped ? "unmapped" : ""}" ${c.unmapped ? `title="این ستون نگاشت نشده و خالی می‌ماند"` : ""} style="width:${Math.round(c.width * 7.5)}px;min-width:${Math.round(c.width * 7.5)}px;
+    <tr class="xl-titles">${rn(1)}${cols.map((c) => `<th class="${c.unmapped ? "unmapped" : ""}" ${c.unmapped ? `title="این ستون اطلاعاتی نمی‌گیرد و خالی می‌ماند"` : ""} style="width:${Math.round(c.width * 7.5)}px;min-width:${Math.round(c.width * 7.5)}px;
       font-family:'${esc(S.header.font)}',Tahoma;font-size:${pt(S.header.size)};font-weight:${S.header.bold ? 700 : 400};color:${S.header.color};background:${S.header.fill};${S.header.height ? `height:${pt(S.header.height)};` : ""}${bd}">${esc(c.title)}${filter}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r, i) => `<tr style="background:${colors?.[i] || (S.zebra && i % 2 === 1 ? S.zebra : "#fff")};${S.body.height ? `height:${pt(S.body.height)};` : ""}">${rn(i + 2)}${cols.map((c, j) => `<td class="${c.field === "phone" ? "ltr-cell" : ""}" style="font-size:${pt(S.body.size)};color:${S.body.color};text-align:${c.align};
       white-space:${S.body.wrap ? "pre-wrap" : "nowrap"};${bd}">${esc(r[j] || "")}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
@@ -2122,7 +2010,7 @@ async function showTemplatePreview(template, title) {
   const H = template.policy?.highlights || {};
   const keys = HIGHLIGHT_LABELS.filter(([k]) => H[k]);
   const notes = [
-    p.demo ? "هنوز رکوردی نیست؛ مقدارها نمونه ساختگی‌اند." : `مقدارها از ${fa(p.rows.length)} رکورد اخیر، با قالب مقادیر همین قالب.`,
+    p.demo ? "هنوز ردیفی نیست؛ مقدارها نمونه ساختگی‌اند." : `مقدارها از ${fa(p.rows.length)} ردیف اخیر، با شکل نوشتن همین فایل.`,
     isNew ? "" : "ظاهر، عرض و رنگ سرستون‌ها همان فایل موجود می‌ماند؛ اینجا نام، ترتیب و مقدار ستون‌ها را می‌بینید." + (cols.some((c) => c.unmapped) ? " ستون‌های با کادر قرمز اطلاعاتی نمی‌گیرند و خالی می‌مانند." : ""),
     tplState.dirty ? "تغییرات ذخیره‌نشده هم در این پیش‌نمایش آمده‌اند." : "",
   ].filter(Boolean);
@@ -2145,10 +2033,10 @@ async function renderDictionary(el) {
   const kb = { pending: [], roles: {} };  // فایل‌های بارگذاری‌شده‌ای که هنوز یاد گرفته نشده‌اند
   el.innerHTML = `<div class="card"><div class="card-h"><div class="tabs" id="dc-tabs"></div>
       <div class="row"><input class="input" id="dc-q" placeholder="جست‌وجو..." style="width:200px">
-      <button class="btn" id="dc-seed">${I.table} پرکردن از اکسل شرکت</button><button class="btn primary" id="dc-add">${I.plus} نام جدید</button></div></div>
-    <div class="card-b row small" style="padding:10px 20px; border-bottom:1px solid var(--border)"><span class="muted">انتقال به رایانه دیگر (فقط نام‌ها و اصلاحات؛ بدون رکورد، ویس یا شماره):</span>
-      <button class="btn sm" id="dc-export">${I.down} خروجی واژه‌نامه</button><button class="btn sm" id="dc-import">${I.folder} ورود واژه‌نامه</button></div>
-    <div class="card-b" id="dc-note" style="padding:12px 20px; border-bottom:1px solid var(--border)"><div class="muted small">نام‌های این فهرست به‌عنوان «املای تأییدشده» شناخته می‌شوند. نام‌های مشابه هرگز خودکار ادغام نمی‌شوند؛ فقط به‌عنوان پیشنهاد در بازبینی نمایش داده می‌شوند. تغییر املا با ثبت سابقه انجام می‌شود و املای قبلی به‌عنوان «شکل دیگر» حفظ می‌شود.</div></div>
+      <button class="btn" id="dc-seed">${I.table} پرکردن از فایل‌های اکسل من</button><button class="btn primary" id="dc-add">${I.plus} نام جدید</button></div></div>
+    <div class="card-b row small" style="padding:10px 20px; border-bottom:1px solid var(--border)"><span class="muted">انتقال به رایانه دیگر (فقط نام‌ها و اصلاحات؛ بدون ردیف، ویس یا شماره):</span>
+      <button class="btn sm" id="dc-export">${I.down} ذخیره واژه‌نامه در فایل</button><button class="btn sm" id="dc-import">${I.folder} ورود واژه‌نامه</button></div>
+    <div class="card-b" id="dc-note" style="padding:12px 20px; border-bottom:1px solid var(--border)"><div class="muted small">نام‌های این فهرست به‌عنوان «املای تأییدشده» شناخته می‌شوند. نام‌های مشابه هرگز خودکار ادغام نمی‌شوند؛ فقط به‌عنوان پیشنهاد در بررسی نمایش داده می‌شوند. تغییر املا با ثبت سابقه انجام می‌شود و املای قبلی به‌عنوان «شکل دیگر» حفظ می‌شود.</div></div>
     <div class="table-wrap" id="dc-table"></div></div>`;
   const load = async () => {
     const q = $("#dc-q").value.trim();
@@ -2192,7 +2080,7 @@ async function renderDictionary(el) {
       openModal({ title: "سابقه تغییرات", body: `<ul class="reasons">${history.map((h) => `<li>${fa(h.at.replace("T", " "))} — ${A[h.action] || h.action}: ${esc(h.old_value || "")} ${h.old_value ? "←" : ""} ${esc(h.new_value || "")} <span class="muted">(${esc(h.source || "")})</span></li>`).join("")}</ul>`, actions: [{ label: "بستن" }] });
     });
     $$("[data-delent]", box).forEach((b) => b.onclick = async () => {
-      if (!(await confirmBox("حذف از واژه‌نامه", "این نام و شکل‌های دیگرش از واژه‌نامه حذف می‌شوند (رکوردها تغییر نمی‌کنند).", "حذف", "danger"))) return;
+      if (!(await confirmBox("حذف از واژه‌نامه", "این نام و شکل‌های دیگرش از واژه‌نامه حذف می‌شوند (ردیف‌ها تغییر نمی‌کنند).", "حذف", "danger"))) return;
       try { await api(`/api/dictionary/${b.dataset.delent}`, { method: "DELETE" }); load(); } catch (e) { toastErr(e); }
     });
   };
@@ -2210,7 +2098,7 @@ async function renderDictionary(el) {
   $("#dc-export").onclick = async () => {
     try {
       const enc = await api("/api/backups/encryption");
-      if (!enc.enabled && !(await confirmBox("خروجی واژه‌نامه بدون رمز", "رمزگذاری در «تنظیمات ← پشتیبان‌گیری» خاموش است؛ این فایل نام مهندس‌ها را بدون قفل دارد. ادامه می‌دهید؟", "دریافت", "danger"))) return;
+      if (!enc.enabled && !(await confirmBox("ذخیره واژه‌نامه بدون رمز", "رمزگذاری در «تنظیمات ← پشتیبان‌گیری» خاموش است؛ این فایل نام مهندس‌ها را بدون قفل دارد. ادامه می‌دهید؟", "دریافت", "danger"))) return;
       await downloadPost("/api/dictionary/export", {});
     } catch (e) { toastErr(e); }
   };
@@ -2234,9 +2122,16 @@ async function renderDictionary(el) {
     } }, { label: "انصراف", cls: "ghost", value: false }],
   });
   $("#dc-seed").onclick = async () => {
-    if (!(await confirmBox("پرکردن واژه‌نامه از اکسل شرکت", "نام مهندس‌ها (ردیف‌هایی که با «مهندس/آقای/خانم» شروع می‌شوند) و نام خیابان‌ها از ستون‌های نگاشت‌شده فایل شرکت خوانده و با منبع «اکسل» به واژه‌نامه اضافه می‌شوند. فایل اکسل تغییر نمی‌کند.", "پرکردن"))) return;
+    if (!(await confirmBox("پرکردن واژه‌نامه از فایل‌های اکسل من", "نام مهندس‌ها (ردیف‌هایی که با «مهندس/آقای/خانم» شروع می‌شوند) و نام خیابان‌ها از ستون‌های فایل‌های اکسلِ فهرست خوانده و با منبع «اکسل» به واژه‌نامه اضافه می‌شوند. فایل‌های اکسل تغییر نمی‌کنند.", "پرکردن"))) return;
     try {
-      const r = await api("/api/dictionary/seed-from-excel", { method: "POST" });
+      const files = (await loadDests()).dests.filter((x) => x.mode !== "new" && x.configured);
+      if (!files.length) throw new Error("هنوز فایل اکسلی با ستون‌های تأییدشده در فهرست نیست.");
+      const r = { added: { engineer: 0, street: 0, project: 0 }, rows: 0, already: true, total: 0 };
+      for (const f of files) {
+        const x = await api(`/api/dictionary/seed-from-excel?name=${encodeURIComponent(f.name)}`, { method: "POST" });
+        for (const k of Object.keys(r.added)) r.added[k] += x.added?.[k] || 0;
+        Object.assign(r, { rows: r.rows + (x.rows || 0), already: r.already && x.already, total: x.total ?? r.total });
+      }
       toast(`${fa(r.added.engineer)} نام مهندس و ${fa(r.added.street)} خیابان از ${fa(r.rows)} ردیف اضافه شد.`, "ok");
       load();
     } catch (e) { toastErr(e); }
@@ -2334,7 +2229,7 @@ function drawKnowledge(box, kb, sources, reload) {
     } catch (e) { b.disabled = false; toastErr(e); }
   });
   $$("[data-kbdel]", box).forEach((b) => b.onclick = async () => {
-    if (!(await confirmBox("حذف آموخته‌های فایل", `نام‌ها و خیابان‌هایی که فقط از «${esc(b.dataset.name)}» آمده‌اند و هیچ رکوردی تأییدشان نکرده، از واژه‌نامه حذف می‌شوند. فایل اکسل و رکوردهای ثبت‌شده تغییر نمی‌کنند.`, "حذف", "danger"))) return;
+    if (!(await confirmBox("حذف آموخته‌های فایل", `نام‌ها و خیابان‌هایی که فقط از «${esc(b.dataset.name)}» آمده‌اند و هیچ ردیفی تأییدشان نکرده، از واژه‌نامه حذف می‌شوند. فایل اکسل و ردیف‌های ثبت‌شده تغییر نمی‌کنند.`, "حذف", "danger"))) return;
     try { const r = await api(`/api/knowledge/sources/${b.dataset.kbdel}`, { method: "DELETE" }); toast(`${fa(r.removed)} نام از واژه‌نامه حذف شد.`, "ok"); refreshStatus(); reload(); } catch (e) { toastErr(e); }
   });
 }
@@ -2344,7 +2239,7 @@ function drawCorrections(box, corr, q, reload) {
   const list = corr.corrections.filter((c) => !q || c.wrong.includes(q) || c.right.includes(q));
   if (!list.length) {
     box.innerHTML = `<div class="empty">${I.history}<div>هنوز اصلاحی یاد گرفته نشده است.</div>
-      <div class="small">وقتی در بازبینی واژه‌ای را اصلاح می‌کنید (مثلاً «گلزی» ← «گلزاری»)، اینجا ثبت می‌شود؛ از ${fa(corr.threshold)} بار تکرار به بعد خودکار اعمال می‌شود.</div></div>`;
+      <div class="small">وقتی در بررسی واژه‌ای را اصلاح می‌کنید (مثلاً «گلزی» ← «گلزاری»)، اینجا ثبت می‌شود؛ از ${fa(corr.threshold)} بار تکرار به بعد خودکار اعمال می‌شود.</div></div>`;
     return;
   }
   box.innerHTML = `<div class="card-b small muted" style="padding:10px 20px">اصلاحی که دست‌کم ${fa(corr.threshold)} بار تکرار شده باشد، در ویس‌های بعدی خودکار اعمال می‌شود (با یادداشت توضیحی)؛ کمتر از آن فقط پیشنهاد داده می‌شود. حد تکرار در «تنظیمات» قابل تغییر است.</div>
@@ -2357,12 +2252,28 @@ function drawCorrections(box, corr, q, reload) {
     try { await api(`/api/corrections/${b.dataset.ctoggle}`, { method: "PATCH", body: { enabled: b.dataset.en === "1" } }); reload(); } catch (e) { toastErr(e); }
   });
   $$("[data-cdel]", box).forEach((b) => b.onclick = async () => {
-    if (!(await confirmBox("حذف اصلاح", "این اصلاح دیگر پیشنهاد یا اعمال نمی‌شود. رکوردهای قبلی تغییر نمی‌کنند.", "حذف", "danger"))) return;
+    if (!(await confirmBox("حذف اصلاح", "این اصلاح دیگر پیشنهاد یا اعمال نمی‌شود. ردیف‌های قبلی تغییر نمی‌کنند.", "حذف", "danger"))) return;
     try { await api(`/api/corrections/${b.dataset.cdel}`, { method: "DELETE" }); reload(); } catch (e) { toastErr(e); }
   });
 }
 
 // ================= تنظیمات =================
+/** نسخه oldcpu: انتخاب موتور (آنلاین یا روی همین رایانه) و وضعیت آن. */
+function engineCard(s, eng) {
+  if (!eng) return "";
+  const online = s.speech_engine !== "offline";
+  const last = eng.last_engine ? (eng.last_engine.startsWith("online") ? "آنلاین" : "روی همین رایانه") : "";
+  let state = "";
+  if (online && !eng.cloud_configured) state = `<div class="alert warn">${I.info}<div class="alert-body">موتور آنلاین در این بسته تنظیم نشده است؛ ویس‌ها روی همین رایانه تبدیل می‌شوند.</div></div>`;
+  else if (online && eng.cloud_message) state = `<div class="alert warn">${I.info}<div class="alert-body">${esc(eng.cloud_message)} تا حدود ${fa(Math.max(1, eng.cloud_paused_minutes))} دقیقه دیگر ویس‌ها روی همین رایانه تبدیل می‌شوند (کندتر) و بعد دوباره آنلاین امتحان می‌شود.</div></div>`;
+  if (!eng.local_available) state += `<div class="alert err">${I.info}<div class="alert-body">موتور روی همین رایانه در بسته پیدا نشد؛ بدون اینترنت ویس‌ها تبدیل نمی‌شوند. بسته را دوباره از zip باز کنید.</div></div>`;
+  return `<div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.mic} موتور تبدیل گفتار</h2></div><div class="card-b stack">
+    <label class="check"><input type="radio" name="s-engine" value="online" ${online ? "checked" : ""} ${eng.cloud_configured ? "" : "disabled"}> <span><b>آنلاین</b> (پیشنهادی): هر ویس چند ثانیه. اگر اینترنت یا سرویس در دسترس نبود، خودکار روی همین رایانه تبدیل می‌شود.</span></label>
+    <label class="check"><input type="radio" name="s-engine" value="offline" ${online ? "" : "checked"}> <span><b>فقط روی همین رایانه</b>: بدون اینترنت، ولی کند (هر ویس چند دقیقه).</span></label>
+    <span class="hint">در حالت آنلاین، ویس برای تبدیل به متن به سرویس Cloudflare فرستاده می‌شود. فایل اکسل و ردیف‌ها همیشه روی همین رایانه می‌مانند.</span>
+    ${state}${last ? `<div class="muted small">آخرین ویس: ${last}</div>` : ""}</div></div>`;
+}
+
 async function renderSettings(el) {
   const draw = async () => {
     const d = await api("/api/settings");
@@ -2376,35 +2287,34 @@ async function renderSettings(el) {
       "large-v3": ["حدود ۳ گیگابایت", "بسیار کند روی CPU؛ برای ۸ گیگ RAM توصیه نمی‌شود"],
     };
     const p = d.performance || {};
-    const fullNav = document.documentElement.classList.contains("full-nav");
-    el.innerHTML = `
-      <div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.table} ابزارها</h2>
-        <label class="check small"><input type="checkbox" id="s-fullnav" ${fullNav ? "checked" : ""}> نمایش همه صفحه‌ها در منو</label></div>
+    const oldcpu = d.edition === "oldcpu";
+    el.innerHTML = `${oldcpu ? engineCard(s, d.engine) : ""}
+      <div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.table} ثبت در اکسل</h2></div><div class="card-b stack">
+        <div>ردیف‌ها مستقیم در خود فایل اکسل نوشته می‌شوند. پیش از هر ثبت یک پشتیبان از فایل گرفته می‌شود و هر ثبت از «تاریخچه ثبت‌ها» قابل برگرداندن است.</div>
+        <label class="check"><input type="checkbox" id="s-copyfirst" ${s.review_copy_first ? "checked" : ""}> اول در یک کپی ثبت شود؛ پس از اینکه خودم کپی را دیدم، از «تاریخچه ثبت‌ها» روی فایل اصلی اعمال شود</label>
+        <span class="hint">برای کسی که می‌خواهد هر بار پیش از تغییر فایل اصلی، نتیجه را ببیند. بیشتر کاربران به آن نیاز ندارند.</span></div></div>
+      <div class="card" style="margin-bottom:18px"><div class="card-h"><h2>${I.book} واژه‌نامه و راهنماها</h2></div>
         <div class="card-b row">
-          <a class="btn" href="#/templates">${I.table} خروجی اکسل (مقصد و ستون‌ها)</a>
-          <a class="btn" href="#/excel">${I.history} ثبت در اکسل و سوابق</a>
           <a class="btn" href="#/dictionary">${I.book} واژه‌نامه</a>
-          <a class="btn" href="#/dictionary?kb">${I.upload} آموزش از اکسل</a>
-          <a class="btn" href="#/voices">${I.music} همه ویس‌ها</a>
-          <a class="btn" href="#/review?filter=all">${I.eye} همه رکوردها</a>
+          <a class="btn" href="#/dictionary?kb">${I.upload} آموزش از فایل‌های اکسل قدیمی</a>
           <a class="btn ghost" href="/static/guide.html" target="_blank">${I.info} راهنمای استفاده</a>
           <a class="btn ghost" href="/static/recording-guide.html" target="_blank">${I.info} راهنمای ضبط ویس</a>
         </div>
         <div class="card-b stack" style="border-top:1px solid var(--border)"><b>پوشه ورودی خودکار</b>
           <div class="row" style="flex-wrap:nowrap"><input class="input ltr" id="s-inbox" value="${esc(s.inbox_dir)}" placeholder="مثلاً ...\\Downloads\\Telegram Desktop" style="flex:1; text-align:right">
-            <button class="btn" id="s-inbox-pick">${I.folder} انتخاب پوشه</button><button class="btn primary" id="s-inbox-save">${I.check} ذخیره</button></div>
+            <button class="btn" id="s-inbox-pick">${I.folder} انتخاب پوشه</button><button class="btn" id="s-inbox-save">${I.check} ذخیره</button></div>
           <span class="hint">ویس‌هایی که از این به بعد در این پوشه ذخیره شوند (مثلاً پوشه دانلود تلگرام یا واتساپ دسکتاپ)، خودکار برداشته و پردازش می‌شوند. ویس‌های قدیمی پوشه دست نمی‌خورند. خالی = خاموش.</span></div></div>
       <details class="tech-box"><summary>تنظیمات فنی <span class="muted small">— مدل گفتار، قواعد اعتبارسنجی، کارایی</span></summary>
       <div class="grid grid-2">
         <div class="card"><div class="card-h"><h2>${I.mic} مدل تبدیل گفتار</h2></div><div class="card-b stack">
-          <div class="table-wrap" style="border:1px solid var(--border); border-radius:12px"><table class="table"><tbody>
+          ${oldcpu ? `<div class="muted small">در این نسخه مدل گفتار ثابت است (<span class="ltr">large-v3-turbo</span>)؛ موتور را از کارت «موتور تبدیل گفتار» بالای همین صفحه انتخاب کنید.</div>` : `<div class="table-wrap" style="border:1px solid var(--border); border-radius:12px"><table class="table"><tbody>
             ${d.models.map((m) => { const inst = d.installed_models.includes(m); return `<tr>
               <td><label class="check"><input type="radio" name="model" value="${m}" ${s.model_name === m ? "checked" : ""} ${inst ? "" : "disabled"}> <b class="ltr">${m}</b></label></td>
               <td class="small">${MODEL_INFO[m]?.[0] || ""}<div class="muted">${MODEL_INFO[m]?.[1] || ""}</div></td>
               <td>${inst ? chip("ok", "نصب‌شده") : `<button class="btn sm" data-dl="${m}" ${d.download.status === "running" ? "disabled" : ""}>${I.down} دریافت</button>`}</td></tr>`; }).join("")}
           </tbody></table></div>
           ${d.download.status !== "idle" ? `<div class="alert ${d.download.status === "error" ? "err" : d.download.status === "done" ? "ok" : "info"}">${d.download.status === "running" ? '<span class="spinner"></span>' : I.info}<div class="alert-body"><b class="ltr">${esc(d.download.name || "")}</b> ${esc(d.download.message)}</div></div>` : ""}
-          <div class="muted small">دریافت مدل تنها کاری است که به اینترنت نیاز دارد و فقط با دکمه بالا انجام می‌شود. پس از دریافت، همه پردازش‌ها آفلاین است. مدل نهایی را پس از مقایسه روی ویس‌های واقعی انتخاب کنید.</div>
+          <div class="muted small">دریافت مدل تنها کاری است که به اینترنت نیاز دارد و فقط با دکمه بالا انجام می‌شود. پس از دریافت، همه پردازش‌ها آفلاین است. مدل نهایی را پس از مقایسه روی ویس‌های واقعی انتخاب کنید.</div>`}
           <div class="grid grid-2" style="gap:12px">
             <div class="field"><label>Beam size</label><input class="input" type="number" min="1" max="10" id="s-beam" value="${s.beam_size}"><span class="hint">پیشنهادی ۲؛ بیشتر کندتر می‌شود بی‌آنکه در آزمون دقیق‌تر شده باشد، ۱ دقت شماره را کم می‌کند</span></div>
             <div class="field"><label>تعداد هسته CPU</label><input class="input" type="number" min="0" max="32" id="s-threads" value="${s.cpu_threads}"><span class="hint">۰ = خودکار</span></div>
@@ -2413,13 +2323,13 @@ async function renderSettings(el) {
           <label class="check"><input type="checkbox" id="s-hot" ${s.use_dictionary_hotwords ? "checked" : ""}> ارسال نام‌های واژه‌نامه به مدل گفتار (توصیه نمی‌شود)</label>
           <span class="hint muted small" style="margin-top:-6px">در آزمون روی ۸ ویس، این گزینه باعث تکرار ساختگی واژه‌ها و از دست رفتن شماره یا آدرس در ۳ ویس شد و ۲ تا ۴ برابر کندتر بود. املای درست نام‌ها از راه پیشنهادهای واژه‌نامه به دست می‌آید.</span>
           <div class="field"><label>متن راهنمای سبک نگارش برای مدل</label><textarea class="input" id="s-prompt" rows="3">${esc(s.initial_prompt)}</textarea>
-            <span class="hint">فقط واژه‌های رایج را به مدل نشان می‌دهد. در آن <b>رقم یا نام شخص ننویسید</b>؛ در آزمون، رقم مدل را به حلقه رقم‌های بی‌معنی انداخت و نام شخص به خروجی نشت کرد.</span></div>
+            <span class="hint">فقط واژه‌های رایج را به مدل نشان می‌دهد. در آن <b>رقم یا نام شخص ننویسید</b>؛ در آزمون، رقم مدل را به حلقه رقم‌های بی‌معنی انداخت و نام شخص وارد متن تبدیل‌شده شد.</span></div>
         </div></div>
         <div class="stack" style="gap:18px">
         <div class="card"><div class="card-h"><h2>${I.shield} قواعد اعتبارسنجی</h2></div><div class="card-b stack">
-          <div class="field"><label>فیلدهای الزامی برای «آماده ثبت» بودن رکورد</label>
+          <div class="field"><label>فیلدهای الزامی برای «آماده ثبت» بودن ردیف</label>
             <div class="row">${[["engineer_name", "نام مهندس"], ["phone", "شماره تماس"], ["address", "آدرس"], ["project_name", "نام پروژه"]].map(([k, l]) => `<label class="check"><input type="checkbox" data-req="${k}" ${s.required_fields.includes(k) ? "checked" : ""}> ${l}</label>`).join("")}</div>
-            <span class="hint">رکوردی که همه فیلدهای الزامی‌اش معتبر باشد، خودکار «آماده ثبت» می‌شود؛ بقیه به بازبینی می‌روند.</span></div>
+            <span class="hint">ردیفی که همه فیلدهای الزامی‌اش معتبر باشد، خودکار «آماده ثبت» می‌شود؛ بقیه به بررسی می‌روند.</span></div>
           <label class="check"><input type="checkbox" id="s-revphone" ${s.review_spoken_phones ? "checked" : ""}> هر شماره تلفن با شنیدن ویس تأیید شود (پیشنهادی تا سنجش دقت روی ویس‌های واقعی)</label>
           <label class="check"><input type="checkbox" id="s-kbspell" ${s.kb_auto_spelling ? "checked" : ""}> املای هم‌آوای نام و خیابان مطابق واژه‌نامه یکسان شود (مثلاً «کازمی» ← «کاظمی»؛ فقط وقتی یک گزینه باشد)</label>
           <div class="grid grid-2" style="gap:12px">
@@ -2428,8 +2338,8 @@ async function renderSettings(el) {
             <div class="field"><label>اعمال خودکار اصلاحات یادگرفته‌شده پس از</label><div class="row"><input class="input" type="number" min="1" max="20" id="s-learn" value="${s.learn_auto_threshold}" style="width:90px"><span class="small muted">بار تکرار</span></div></div>
             <div class="field"><label>آزادسازی مدل از حافظه پس از</label><div class="row"><input class="input" type="number" min="0" max="240" id="s-idle" value="${s.model_idle_minutes}" style="width:90px"><span class="small muted">دقیقه بی‌کاری</span></div></div>
           </div>
-          <div class="row"><button class="btn primary" id="s-save">${I.check} ذخیره تنظیمات</button><button class="btn" id="s-reval">${I.retry} اعتبارسنجی دوباره همه رکوردها</button>
-            <button class="btn" id="s-reext" title="بدون تبدیل دوباره گفتار؛ رکوردهای اصلاح‌شده یا تأییدشده دست نمی‌خورند">${I.retry} استخراج دوباره از متن ویس‌ها</button></div>
+          <div class="row"><button class="btn primary" id="s-save">${I.check} ذخیره تنظیمات</button><button class="btn" id="s-reval">${I.retry} اعتبارسنجی دوباره همه ردیف‌ها</button>
+            <button class="btn" id="s-reext" title="بدون تبدیل دوباره گفتار؛ ردیف‌های اصلاح‌شده یا تأییدشده دست نمی‌خورند">${I.retry} استخراج دوباره از متن ویس‌ها</button></div>
         </div></div>
         <div class="card"><div class="card-h"><h2>${I.info} سامانه و کارایی</h2></div><div class="card-b">
           <dl class="kv"><dt>RAM کل رایانه</dt><dd>${d.system.ram_gb ? fa(d.system.ram_gb) + " گیگابایت" : "—"}</dd>
@@ -2447,35 +2357,40 @@ async function renderSettings(el) {
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.mic} ارسال ویس از گوشی (شبکه محلی)</h2></div>
         <div class="card-b" id="s-lan"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.shield} پشتیبان‌گیری</h2>
-        <div class="row"><button class="btn" id="s-backup-import">${I.folder} افزودن از فایل</button><button class="btn primary" id="s-backup-now">${I.plus} پشتیبان‌گیری الان</button></div></div>
-        <div class="card-b small muted" style="padding:10px 20px">هر روز یک پشتیبان خودکار از اطلاعات برنامه (رکوردها، متن ویس‌ها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل) گرفته و ۱۴ پشتیبان آخر نگه داشته می‌شود. فایل‌های صوتی به‌خاطر حجم در پشتیبان نیستند. پیش از هر بازگردانی، از وضعیت فعلی هم پشتیبان گرفته می‌شود تا قابل برگشت باشد.</div>
+        <div class="row"><button class="btn" id="s-backup-import">${I.folder} افزودن از فایل</button><button class="btn" id="s-backup-now">${I.plus} پشتیبان‌گیری الان</button></div></div>
+        <div class="card-b small muted" style="padding:10px 20px">هر روز یک پشتیبان خودکار از اطلاعات برنامه (ردیف‌ها، متن ویس‌ها، واژه‌نامه، اصلاحات، تنظیمات و ستون‌های فایل‌های اکسل) گرفته و ۱۴ پشتیبان آخر نگه داشته می‌شود. فایل‌های صوتی به‌خاطر حجم در پشتیبان نیستند. پیش از هر بازگردانی، از وضعیت فعلی هم پشتیبان گرفته می‌شود تا قابل برگشت باشد.</div>
         <div class="card-b" id="s-benc" style="padding:10px 20px;border-top:1px solid var(--border)"></div>
         <div class="table-wrap" id="s-backups"></div></div>
       <div class="card" style="margin-top:18px"><div class="card-h"><h2>${I.trash} نگهداری، گزارش و حریم خصوصی</h2></div><div class="card-b stack">
         <div class="row">
           <a class="btn" href="/api/report/errors.xlsx">${I.down} گزارش خطاها و هشدارها</a>
-          <button class="btn" id="s-report">${I.down} گزارش کامل رکوردها (با متن ویس)</button>
+          <button class="btn" id="s-report">${I.down} گزارش کامل ردیف‌ها (با متن ویس)</button>
           <button class="btn" id="s-open-data">${I.open} باز کردن پوشه داده‌ها</button>
           <button class="btn danger" id="s-purge">${I.trash} حذف فایل‌های صوتیِ ثبت‌شده</button>
           <button class="btn danger" id="s-wipe">${I.trash} پاک‌کردن کامل اطلاعات</button>
           <label class="check small"><input type="checkbox" id="s-sound" ${localStorage.getItem("v2x.sound") !== "0" ? "checked" : ""}> صدای پایان پردازش</label>
         </div>
-        <div class="muted small">فایل‌های صوتی برای پخش در بازبینی نگه داشته می‌شوند. پس از ثبت در اکسل می‌توانید آن‌ها را پاک کنید؛ متن ویس‌ها و رکوردها باقی می‌مانند.</div>
+        <div class="muted small">فایل‌های صوتی برای پخش در بررسی نگه داشته می‌شوند. پس از ثبت در اکسل می‌توانید آن‌ها را پاک کنید؛ متن ویس‌ها و ردیف‌ها باقی می‌مانند.</div>
         <details><summary>رخدادهای اخیر</summary><div id="s-events" class="small" style="margin-top:8px"></div></details>
       </div></div>`;
     $$("[data-dl]").forEach((b) => b.onclick = async () => {
       if (!(await confirmBox("دریافت مدل", `مدل <b class="ltr">${esc(b.dataset.dl)}</b> از اینترنت (Hugging Face) دریافت می‌شود. این تنها ارتباط اینترنتی برنامه است و هیچ ویس یا اطلاعاتی ارسال نمی‌شود. ادامه می‌دهید؟`, "دریافت"))) return;
       try { await api("/api/models/download", { method: "POST", body: { name: b.dataset.dl } }); toast("دریافت شروع شد."); poll(); } catch (e) { toastErr(e); }
     });
+    $$("input[name=s-engine]").forEach((r) => r.onchange = async () => {
+      try { await api("/api/settings", { method: "PUT", body: { speech_engine: r.value } });
+        toast(r.value === "offline" ? "از این پس ویس‌ها فقط روی همین رایانه تبدیل می‌شوند." : "از این پس ویس‌ها آنلاین تبدیل می‌شوند.", "ok"); draw(); }
+      catch (e) { toastErr(e); draw(); }
+    });
+    $("#s-copyfirst").onchange = async (e) => {
+      try { await api("/api/settings", { method: "PUT", body: { review_copy_first: e.target.checked } }); toast(e.target.checked ? "از این پس ثبت‌ها اول در یک کپی انجام می‌شوند." : "از این پس ثبت‌ها مستقیم در فایل انجام می‌شوند.", "ok"); }
+      catch (er) { toastErr(er); e.target.checked = !e.target.checked; }
+    };
     $("#s-inbox-pick").onclick = async () => { const p = await pickPath("audio", $("#s-inbox").value.trim()); if (p) $("#s-inbox").value = p; };
     $("#s-inbox-save").onclick = async () => {
       const v = $("#s-inbox").value.trim();
       try { await api("/api/settings", { method: "PUT", body: { inbox_dir: v } }); toast(v ? "پوشه ورودی فعال شد." : "پوشه ورودی خاموش شد.", "ok"); refreshStatus(); }
       catch (e) { toastErr(e); }
-    };
-    $("#s-fullnav").onchange = (e) => {
-      try { localStorage.setItem("v2x.nav", e.target.checked ? "full" : "simple"); } catch { }
-      document.documentElement.classList.toggle("full-nav", e.target.checked);
     };
     $("#s-save").onclick = async () => {
       const body = {
@@ -2494,7 +2409,7 @@ async function renderSettings(el) {
       try { await api("/api/settings", { method: "PUT", body }); toast("تنظیمات ذخیره شد.", "ok"); refreshStatus(); draw(); } catch (e) { toastErr(e); }
     };
     $("#s-reval").onclick = async () => {
-      try { const r = await api("/api/records/revalidate-all", { method: "POST" }); toast(`${fa(r.count)} رکورد دوباره اعتبارسنجی شد.`, "ok"); refreshStatus(); } catch (e) { toastErr(e); }
+      try { const r = await api("/api/records/revalidate-all", { method: "POST" }); toast(`${fa(r.count)} ردیف دوباره اعتبارسنجی شد.`, "ok"); refreshStatus(); } catch (e) { toastErr(e); }
     };
     $("#s-reext").onclick = async () => {
       try {
@@ -2512,7 +2427,7 @@ async function renderSettings(el) {
       if (!backups.length) { box.innerHTML = `<div class="empty small">هنوز پشتیبانی گرفته نشده است.</div>`; return; }
       box.innerHTML = `<table class="table"><thead><tr><th>زمان</th><th>نوع</th><th>محتوا</th><th>حجم</th><th></th></tr></thead><tbody>
         ${backups.map((b) => `<tr><td class="small">${fa((b.created_at || "").replace("T", " "))}</td><td>${esc(b.reason_label || b.reason)}${b.damaged ? " " + chip("err", "خراب") : ""}</td>
-          <td class="small muted">${fa(b.counts?.audio_files ?? 0)} ویس، ${fa(b.counts?.records ?? 0)} رکورد، ${fa(b.counts?.entities ?? 0)} نام</td><td class="small">${fmtSize(b.size)}</td>
+          <td class="small muted">${fa(b.counts?.audio_files ?? 0)} ویس، ${fa(b.counts?.records ?? 0)} ردیف، ${fa(b.counts?.entities ?? 0)} نام</td><td class="small">${fmtSize(b.size)}</td>
           <td class="actions"><button class="btn sm ghost" data-bexport="${esc(b.name)}" title="دریافت فایل پشتیبان">${I.down}</button>
             ${b.damaged ? "" : `<button class="btn sm" data-restore="${esc(b.name)}">بازگردانی</button>`}</td></tr>`).join("")}</tbody></table>`;
       $$("[data-bexport]", box).forEach((btn) => btn.onclick = async () => {
@@ -2522,7 +2437,7 @@ async function renderSettings(el) {
         catch (e) { toastErr(e); }
       });
       $$("[data-restore]", box).forEach((btn) => btn.onclick = async () => {
-        const ok = await confirmBox("بازگردانی اطلاعات", `<div class="stack"><div class="alert warn">${I.alert}<div class="alert-body">همه رکوردها، واژه‌نامه، اصلاحات، تنظیمات و نگاشت اکسل به وضعیت این پشتیبان برمی‌گردند.</div></div>
+        const ok = await confirmBox("بازگردانی اطلاعات", `<div class="stack"><div class="alert warn">${I.alert}<div class="alert-body">همه ردیف‌ها، واژه‌نامه، اصلاحات، تنظیمات و ستون‌های فایل‌های اکسل به وضعیت این پشتیبان برمی‌گردند.</div></div>
           <div>پیش از آن، از وضعیت فعلی یک پشتیبان «پیش از بازگردانی» گرفته می‌شود تا در صورت نیاز برگردید. فایل اکسل شرکت تغییر نمی‌کند.</div></div>`, "بازگردانی", "danger");
         if (!ok) return;
         try {
@@ -2580,7 +2495,7 @@ async function renderSettings(el) {
       const box = $("#s-lan");
       if (!box) return;
       box.innerHTML = `<div class="stack">
-        <div class="muted small">بازاریاب‌ها در دفتر، با گوشیِ وصل به همان وای‌فای، ویس را از مرورگر گوشی مستقیم می‌فرستند. فقط صفحه ارسال ویس با رمز از گوشی باز می‌شود؛ رکوردها، اکسل و تنظیمات فقط روی همین رایانه در دسترس‌اند. اطلاعات از شبکه محلی بیرون نمی‌رود.</div>
+        <div class="muted small">بازاریاب‌ها در دفتر، با گوشیِ وصل به همان وای‌فای، ویس را از مرورگر گوشی مستقیم می‌فرستند. فقط صفحه ارسال ویس با رمز از گوشی باز می‌شود؛ ردیف‌ها، اکسل و تنظیمات فقط روی همین رایانه در دسترس‌اند. اطلاعات از شبکه محلی بیرون نمی‌رود.</div>
         <label class="check"><input type="checkbox" id="lan-on" ${L.enabled ? "checked" : ""}> فعال باشد</label>
         ${L.enabled ? `
           <label class="check"><input type="checkbox" id="lan-auto" ${L.auto_start ? "checked" : ""}> پردازش ویس‌های رسیده از گوشی خودکار شروع شود</label>
@@ -2641,18 +2556,18 @@ async function renderSettings(el) {
     };
     drawUpdate().catch(() => {});
     $("#s-purge").onclick = async () => {
-      if (!(await confirmBox("حذف فایل‌های صوتی", "فایل‌های صوتی ویس‌هایی که همه رکوردهایشان در اکسل ثبت (یا رد) شده‌اند، برای همیشه از پوشه برنامه حذف می‌شوند. فایل‌های اصلی شما در جای خودشان دست نمی‌خورند.", "حذف", "danger"))) return;
+      if (!(await confirmBox("حذف فایل‌های صوتی", "فایل‌های صوتی ویس‌هایی که همه ردیف‌هایشان در اکسل ثبت (یا رد) شده‌اند، برای همیشه از پوشه برنامه حذف می‌شوند. فایل‌های اصلی شما در جای خودشان دست نمی‌خورند.", "حذف", "danger"))) return;
       try { const r = await api("/api/maintenance/purge-audio", { method: "POST", body: { scope: "exported" } }); toast(`${fa(r.deleted)} فایل صوتی حذف شد.`, "ok"); } catch (e) { toastErr(e); }
     };
     $("#s-report").onclick = async () => {
-      if (!(await confirmBox("گزارش کامل رکوردها", "این فایل نام، شماره تلفن، نشانی و متن کامل همه ویس‌ها را دارد. آن را فقط در جای امن نگه دارید و برای کسی که اجازه دیدن این اطلاعات را ندارد نفرستید.", "دریافت گزارش"))) return;
+      if (!(await confirmBox("گزارش کامل ردیف‌ها", "این فایل نام، شماره تلفن، نشانی و متن کامل همه ویس‌ها را دارد. آن را فقط در جای امن نگه دارید و برای کسی که اجازه دیدن این اطلاعات را ندارد نفرستید.", "دریافت گزارش"))) return;
       location.href = "/api/report/records.xlsx";
     };
     $("#s-wipe").onclick = async () => {
       const phrase = "پاک شود";
       const ok = await openModal({
         title: "پاک‌کردن کامل اطلاعات",
-        body: `<div class="stack"><div>همه رکوردها، متن و فایل ویس‌ها، واژه‌نامه آموخته، پشتیبان‌ها، نسخه‌های اکسل داخل پوشه برنامه و گزارش‌ها <b>برای همیشه</b> پاک می‌شوند و برگشت‌پذیر نیست. تنظیمات و قالب‌های اکسل می‌مانند؛ فایل اکسل اصلی و فایل‌های ساخته‌شده در پوشه‌های خودتان دست نمی‌خورند.</div>
+        body: `<div class="stack"><div>همه ردیف‌ها، متن و فایل ویس‌ها، واژه‌نامه آموخته، پشتیبان‌ها، نسخه‌های اکسل داخل پوشه برنامه و گزارش‌ها <b>برای همیشه</b> پاک می‌شوند و برگشت‌پذیر نیست. تنظیمات و فهرست فایل‌های اکسل می‌مانند؛ فایل اکسل اصلی و فایل‌های ساخته‌شده در پوشه‌های خودتان دست نمی‌خورند.</div>
           <label>برای تأیید، عبارت «${phrase}» را بنویسید:<input id="wipe-phrase" type="text" autocomplete="off"></label></div>`,
         actions: [{ label: "پاک‌کردن همه", cls: "danger", onClick: async (m) => {
           const v = $("#wipe-phrase", m).value.trim();
@@ -2702,16 +2617,6 @@ $("#btn-exit").addEventListener("click", async () => {
     <div class="muted small">می‌توانید این صفحه را ببندید.</div></div>`;
 });
 
-async function importSamples() {
-  try {
-    const r = await api("/api/samples/import", { method: "POST" });
-    reportUpload(r.results);
-    await refreshStatus();
-    if (r.results.some((x) => x.result === "added")) startQueue();
-    location.hash = "#/today";
-  } catch (e) { toastErr(e); }
-}
-
 // ---------------- شروع ----------------
 // ---------- فعال‌سازی (مجوز آفلاین) ----------
 async function refreshLicense() {
@@ -2757,7 +2662,7 @@ function activationHero(lic) {
   if (lic.mode === "expired") return `<section class="act-hero warn">
     <div class="act-hero-t">${I.alert}<div><h2>${lic.lapsed ? "اشتراک شما تمام شده است" : "دوره آزمایشی تمام شد"}</h2>
       <p>${lic.lapsed ? "برای پردازش ویس تازه، اشتراک را تمدید کنید." : (T.reason === "ویس" ? "۱۰ ویس آزمایشی پردازش شده است." : "۱۰ روز آزمایشی گذشته است.") + " برای ادامه، اشتراک بگیرید."}
-      رکوردهای قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</p></div></div></section>`;
+      ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</p></div></div></section>`;
   const soon = lic.days_left != null && lic.days_left <= 15;
   const left = lic.expires_jalali ? `<div class="act-meters"><div class="act-meter"><b>${fa(Math.max(0, lic.days_left ?? 0))}</b> <span>روز مانده</span></div></div>` : "";
   return `<section class="act-hero ${soon ? "warn" : "ok"}">
@@ -2891,7 +2796,7 @@ async function renderActivation(el) {
   drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); readFile(e.dataTransfer.files[0]); };
   $("#act-go").onclick = async () => {
-    try { await api("/api/license", { method: "POST", body: { text: text.value } }); toast("برنامه فعال شد.", "ok"); location.hash = "#/today"; setTimeout(() => location.reload(), 600); }
+    try { await api("/api/license", { method: "POST", body: { text: text.value } }); toast("برنامه فعال شد.", "ok"); location.hash = "#/files"; setTimeout(() => location.reload(), 600); }
     catch (e) { toastErr(e); }
   };
 }

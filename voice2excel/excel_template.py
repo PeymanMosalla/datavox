@@ -172,7 +172,7 @@ def writer_profile(tpl: dict, create: bool = True, visit_date: str | None = None
     path, sheet = target(tpl, visit_date)
     if create and not path.exists():
         if not path.parent.is_dir():
-            raise FileNotFoundError(f"پوشه خروجی «{path.parent}» پیدا نشد؛ در «خروجی اکسل»، زبانه «فایل و پوشه» پوشه را انتخاب کنید.")
+            raise FileNotFoundError(f"پوشه «{path.parent}» پیدا نشد؛ در «تنظیمات فایل»، زبانه «فایل و پوشه» پوشه را انتخاب کنید.")
         create_workbook(tpl, path, sheet)
     letters = [get_column_letter(i) for i in range(1, len(tpl["columns_list"]) + 1)]
     columns = {}
@@ -419,7 +419,7 @@ def to_export(tpl: dict) -> dict:
 
 def from_export(data: dict, name: str, folder: str) -> dict:
     if not isinstance(data, dict) or data.get("v2x_template") != 1:
-        raise ValueError("این فایل، قالب «DataVox» نیست.")
+        raise ValueError("این فایل، تنظیمات فایل «DataVox» نیست.")
     tpl = {k: data[k] for k in EXPORT_KEYS if k in data}
     return clean({**tpl, "name": name, "title": str(tpl.get("title") or "قالب واردشده")[:60],
                   "output": {**(data.get("output") or {}), "folder": folder}})

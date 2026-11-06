@@ -25,3 +25,9 @@ packaging/cache/
 *.opus
 *.m4a
 *.wav
+
+# نسخه oldcpu: موتور ساخته‌شده و ساخت‌های میانی (scripts/build_engine_oldcpu.py)
+packaging/oldcpu/
+build/
+cloud.json
+cloudflare.txt

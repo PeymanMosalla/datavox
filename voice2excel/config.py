@@ -30,6 +30,21 @@ SUPPORTED_AUDIO_EXTENSIONS = {
 AVAILABLE_MODELS = ["tiny", "base", "small", "medium", "large-v3-turbo", "large-v3"]
 
 
+def _edition() -> str:
+    """نسخه ویژه بسته: «oldcpu» برای پردازنده‌های بدون SSE4.1 (فایل app/edition.json در بسته)."""
+    env = os.environ.get("V2X_EDITION")
+    if env is not None:
+        return env.strip()
+    try:
+        return json.loads((ROOT_DIR / "edition.json").read_text(encoding="utf-8")).get("edition", "")
+    except (OSError, ValueError):
+        return ""
+
+
+EDITION = _edition()
+OLDCPU = EDITION == "oldcpu"
+
+
 @dataclass
 class Settings:
     # --- گفتار ---
@@ -38,6 +53,8 @@ class Settings:
     model_name: str = "large-v3-turbo"
     compute_type: str = "int8"
     cpu_threads: int = 0  # 0 = خودکار
+    # فقط نسخه oldcpu: online = موتور آنلاین (Cloudflare) و در صورت قطعی روی همین رایانه؛ offline = فقط روی همین رایانه
+    speech_engine: str = "online"
     # روی ۹ ویس واقعی: ۲ همان دقت ۵ را داشت با حدود نصف زمان (۱۷ ثانیه به‌جای ۳۲)؛ ۱ دقت شماره را کم کرد
     beam_size: int = 2
     language: str = "fa"
@@ -88,6 +105,8 @@ class Settings:
     # --- اکسل ---
     active_profile: str = "default"
     last_excel_path: str = ""
+    # ثبت همیشه مستقیم در خود فایل است (با پشتیبان و امکان برگرداندن)؛ روشن: اول در یک کپی، سپس با تأیید کاربر روی فایل اصلی
+    review_copy_first: bool = False
 
     # --- آپلود از گوشی در شبکه محلی ---
     # خاموش: برنامه فقط روی همین رایانه در دسترس است. روشن: فقط صفحه آپلود (/m) با رمز از شبکه محلی باز می‌شود

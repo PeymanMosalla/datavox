@@ -17,6 +17,13 @@
 گفتار، با Python 3.12 سازگار با ویندوز ۷ (پروژه PythonVista)، کتابخانه‌های requirements-win7.txt، Visual C++ 14.44،
 VAD با numpy به‌جای onnxruntime و پوشه Windows7 (پیش‌نیازهای رسمی مایکروسافت، Firefox ESR و راهنما).
 هر DLL بسته پیش از zip با scripts/win7_check.py بررسی می‌شود و در صورت ناسازگاری، ساخت متوقف می‌شود.
+
+شاخه oldcpu: فقط بسته «oldcpu» ساخته می‌شود (dist/DataVox-oldcpu/ و dist/DataVox-<نسخه>-oldcpu.zip) برای
+رایانه‌هایی که پردازنده‌شان SSE4.1 ندارد (Pentium Dual-Core، Core 2 قدیمی)، روی ویندوز ۷ به بعد:
+- بدون faster-whisper/ctranslate2 (روی این پردازنده‌ها اجرا نمی‌شوند)، numpy 2.3 (پایه SSE3)؛
+- موتور آنلاین (Cloudflare Workers AI؛ حساب از --cloud-cred) و موتور روی همین رایانه
+  (app/engine/dvwhisper.dll از scripts/build_engine_oldcpu.py، مدل models/ggml-large-v3-turbo-q8_0.bin)؛
+- همان پیش‌نیازهای ویندوز ۷.
 """
 from __future__ import annotations
 
@@ -39,7 +46,10 @@ EMBED_URL = f"https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}
 VC_DLLS = ["msvcp140.dll", "msvcp140_1.dll", "msvcp140_2.dll", "vcruntime140.dll", "vcruntime140_1.dll",
            "concrt140.dll", "vcomp140.dll"]
 RUNTIME_REQS = ["faster-whisper", "ctranslate2", "av", "numpy", "fastapi", "uvicorn", "python-multipart",
-                "pydantic", "pydantic-core", "tokenizers", "openpyxl", "jdatetime", "psutil"]
+                "pydantic", "pydantic-core", "tokenizers", "openpyxl", "jdatetime", "psutil", "certifi"]
+EDITION = "oldcpu"
+OLDCPU_MODEL = "ggml-large-v3-turbo-q8_0.bin"
+OLDCPU_MODEL_SHA256 = "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1"  # Hugging Face ggerganov/whisper.cpp
 CSC = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
 
 # ---------- ویندوز ۷ ----------
@@ -76,7 +86,7 @@ def step(msg: str) -> None:
 
 def runtime_requirements(win7: bool = False) -> list[str]:
     reqs = []
-    for line in (ROOT / ("requirements-win7.txt" if win7 else "requirements.txt")).read_text(encoding="utf-8").splitlines():
+    for line in (ROOT / ("requirements-oldcpu.txt" if win7 else "requirements.txt")).read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if line and not line.startswith("#") and line.split("==")[0].lower() in RUNTIME_REQS:
             reqs.append(line)
@@ -229,13 +239,19 @@ def build_launcher(dest_exe: Path, icon: Path) -> None:
 
 
 def smoke_test(dist: Path, win7: bool = False) -> None:
-    code = ("import sys, voice2excel, faster_whisper, ctranslate2, av, numpy, fastapi, uvicorn, openpyxl, jdatetime;"
-            "from voice2excel import server;"
+    # oldcpu: موتورهای engines_oldcpu؛ numpy باید پایه SSE3 داشته باشد (بدون SSE4.1 به بالا)
+    code = ("import sys, voice2excel, av, numpy, fastapi, uvicorn, openpyxl, jdatetime, pydantic_core, certifi;"
+            "from voice2excel import server, transcriber;"
+            "from voice2excel.config import OLDCPU; assert OLDCPU, 'edition';"
+            "assert transcriber.Transcriber.__name__ == 'OldCpuTranscriber';"
+            "from numpy._core._multiarray_umath import __cpu_baseline__ as b;"
+            "assert not set(b) & {'SSE41','SSE42','POPCNT','AVX','AVX2','X86_V2','X86_V3'}, b;"
+            "from voice2excel.engines_oldcpu import LocalEngine, CloudEngine;"
+            "assert LocalEngine.available(), 'local engine';"
+            "print('ENGINE', LocalEngine()._load_lib().dvw_system_info().decode());"
+            "print('CLOUD', CloudEngine().configured);"
+            "import importlib.util as u; assert not any(u.find_spec(m) for m in ('faster_whisper','ctranslate2','onnxruntime'));"
             "print('OK', sys.version.split()[0], sys.executable)")
-    if win7:  # VAD باید بدون onnxruntime و با همان وزن‌های مدل کار کند
-        code += (";import pydantic_core, tokenizers;from voice2excel.vad_numpy import install_fallback;"
-                 "assert install_fallback();from faster_whisper import vad;"
-                 "assert vad.get_vad_model()(numpy.zeros(16384, 'float32')).max() < 0.5;print('VAD-OK')")
     env = {"V2X_DATA_DIR": str(dist / "data-smoketest"), "V2X_MODELS_DIR": str(dist / "models"),
            "PYTHONIOENCODING": "utf-8", "PYTHONNOUSERSITE": "1", "SystemRoot": r"C:\Windows",
            "PATH": r"C:\Windows\System32;C:\Windows"}
@@ -245,7 +261,7 @@ def smoke_test(dist: Path, win7: bool = False) -> None:
     shutil.rmtree(dist / "data-smoketest", ignore_errors=True)
     for p in list((dist / "app").rglob("__pycache__")):
         shutil.rmtree(p, ignore_errors=True)
-    if out.returncode != 0 or "OK" not in out.stdout or (win7 and "VAD-OK" not in out.stdout):
+    if out.returncode != 0 or "OK" not in out.stdout:
         raise SystemExit("آزمون دود نسخه قابل‌حمل ناموفق بود.")
 
 
@@ -300,22 +316,28 @@ def main() -> int:
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون سریع)")
-    ap.add_argument("--win7", action="store_true", help="(در شاخه windows7-only همیشه فعال است)")
+    ap.add_argument("--name", default="", help="بسته آزمایشی جدا: dist/DataVox-oldcpu-<name>")
+    ap.add_argument("--local-model", type=Path,
+                    default=ROOT.parent / "datavox-android" / "cache" / OLDCPU_MODEL,
+                    help="مدل ggml موتور روی همین رایانه")
+    ap.add_argument("--cloud-cred", type=Path, default=ROOT.parent / "cloudflare.txt",
+                    help="فایل حساب موتور آنلاین (account=... و کلید)")
+    ap.add_argument("--no-cloud", action="store_true", help="بسته بدون موتور آنلاین")
     a = ap.parse_args()
-    win7 = True  # شاخه windows7-only فقط بسته ویندوز ۷ می‌سازد؛ بسته ویندوز ۱۰ و ۱۱ از شاخه main ساخته می‌شود
+    win7 = True  # شاخه oldcpu: همان پایه ویندوز ۷ (PythonVista، VC++ 14.44، پیش‌نیازها)
     from voice2excel import __version__
 
-    model_dir = ROOT / "models" / a.model
-    if not (model_dir / "model.bin").exists():
-        raise SystemExit(f"مدل {a.model} در پوشه models نیست؛ ابتدا download_model.bat را اجرا کنید.")
-    out = DIST / ("DataVox-win7" if win7 else "DataVox")
+    engine_dll = PKG / "oldcpu" / "dvwhisper.dll"
+    if not engine_dll.exists():
+        raise SystemExit("موتور روی همین رایانه ساخته نشده؛ ابتدا scripts/build_engine_oldcpu.py را اجرا کنید.")
+    if not a.local_model.exists() or _sha256(a.local_model) != OLDCPU_MODEL_SHA256:
+        raise SystemExit(f"مدل {OLDCPU_MODEL} پیدا نشد یا چکیده‌اش درست نیست: {a.local_model}")
+    if not a.no_cloud and not a.cloud_cred.exists():
+        raise SystemExit(f"فایل حساب موتور آنلاین پیدا نشد: {a.cloud_cred} (یا --no-cloud)")
+    tag = EDITION + (f"-{a.name}" if a.name else "")
+    out = DIST / f"DataVox-{tag}"
     # اطلاعات کاربری که با همین پوشه کار کرده حفظ می‌شود (ولی هرگز داخل zip نمی‌رود)
-    kept_data = DIST / ("_kept_user_data-win7" if win7 else "_kept_user_data")
-    legacy = DIST / "Voice2Excel"  # نام پیشین برنامه: اطلاعاتش یک بار به پوشه جدید می‌آید
-    if not win7 and not (out / "data").exists() and (legacy / "data").exists():
-        step("انتقال اطلاعات کاربر از پوشه نام قبلی (Voice2Excel)")
-        out.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(legacy / "data"), str(out / "data"))
+    kept_data = DIST / f"_kept_user_data-{tag}"
     if (out / "data").exists():
         step("نگه‌داشتن اطلاعات کاربر (data) در کنار ساخت")
         shutil.rmtree(kept_data, ignore_errors=True)
@@ -337,8 +359,16 @@ def main() -> int:
     (out / "app" / "runtime.json").write_text(json.dumps(
         {"runtime_id": compute_runtime_id(PY_VERSION, runtime_requirements(win7)), "python": PY_VERSION}),
         encoding="utf-8")
-    step(f"مدل گفتار {a.model}")
-    shutil.copytree(model_dir, out / "models" / a.model)
+    step("نسخه oldcpu: موتورها و مدل گفتار")
+    (out / "app" / "edition.json").write_text(json.dumps({"edition": EDITION}), encoding="utf-8")
+    (out / "app" / "engine").mkdir()
+    shutil.copy2(engine_dll, out / "app" / "engine" / "dvwhisper.dll")
+    (out / "models").mkdir()
+    shutil.copy2(a.local_model, out / "models" / OLDCPU_MODEL)
+    if not a.no_cloud:
+        from make_cloud_cred import write_cloud_json
+        write_cloud_json(a.cloud_cred, out / "app" / "cloud.json")
+        print("حساب موتور آنلاین افزوده شد.")
     step("نمونه‌ها")
     make_samples(out / "samples")
     step("آیکون و اجراکننده")
@@ -362,7 +392,7 @@ def main() -> int:
     if len(longest) > 150:
         raise SystemExit("مسیرهای داخلی بسته بیش از حد طولانی‌اند (سقف ۲۶۰ نویسه ویندوز).")
     if not a.no_zip:
-        zp = DIST / f"DataVox-{__version__}{'-win7' if win7 else ''}.zip"
+        zp = DIST / f"DataVox-{__version__}-{tag}.zip"
         step(f"ساخت {zp.name}")
         make_zip(out, zp)
         print(f"حجم zip: {zp.stat().st_size / 1e9:.2f} گیگابایت")

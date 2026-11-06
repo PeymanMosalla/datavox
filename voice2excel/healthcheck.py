@@ -22,7 +22,10 @@ def main() -> int:
         print(("[درست] " if good else "[مشکل] ") + msg)
 
     line(sys.version_info[:2] in ((3, 11), (3, 12), (3, 13)), f"نسخه Python: {sys.version.split()[0]}")
-    for mod in ("faster_whisper", "ctranslate2", "av", "fastapi", "uvicorn", "openpyxl", "jdatetime", "numpy"):
+    from .config import OLDCPU
+
+    engine_mods = () if OLDCPU else ("faster_whisper", "ctranslate2")  # oldcpu: موتورهای engines_oldcpu
+    for mod in (*engine_mods, "av", "fastapi", "uvicorn", "openpyxl", "jdatetime", "numpy"):
         try:
             __import__(mod)
             line(True, f"کتابخانه {mod}")
