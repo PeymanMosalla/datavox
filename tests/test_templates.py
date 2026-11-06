@@ -9,9 +9,9 @@ from voice2excel.excel_mapping import format_date, format_phone
 from voice2excel.pipeline import build_records
 
 
-def _add_approved(db, settings, text, sha, vd="1405/07/28"):
+def _add_approved(db, settings, text, sha, vd="1405/07/28", dest=None):
     batch = db.create_batch("t", vd)
-    aid = db.add_audio(batch, f"{sha}.ogg", None, sha, 1, vd, "user")
+    aid = db.add_audio(batch, f"{sha}.ogg", None, sha, 1, vd, "user", dest or server.load_settings().active_profile)
     _, _, recs = build_records(db, settings, text, vd)
     for r in recs:
         r["review_state"], r["approved_by"] = "approved", "user"
@@ -70,7 +70,7 @@ def test_template_flow_new_file(db, settings, tmp_path):
         ws = openpyxl.load_workbook(io.BytesIO(sample.content))["Sheet1"]
         assert ws["A1"].value == "ردیف" and ws["A1"].fill.fgColor.rgb == "FF138A52" and ws.sheet_view.rightToLeft
 
-        _add_approved(db, settings, "مهندس رجبی شماره 09151234567 آدرس سجادیه 58", "s1")
+        _add_approved(db, settings, "مهندس رجبی شماره 09151234567 آدرس سجادیه 58", "s1", dest=name)
         assert c.post(f"/api/templates/{name}/activate").status_code == 200
         st = c.get("/api/status").json()
         assert st["setup"]["excel_ready"] and st["setup"]["excel_name"] == "گزارش مدیر.xlsx"
@@ -96,8 +96,8 @@ def test_template_flow_new_file(db, settings, tmp_path):
         saved["columns_list"] = saved["columns_list"][:3]
         assert "نام فایل" in c.put(f"/api/templates/{name}", json=saved).json()["warning"]
 
-        assert c.delete(f"/api/templates/{name}").status_code == 400  # قالب فعال
-        assert c.delete(f"/api/templates/{excel_mapping.COMPANY}").status_code == 400
+        assert c.delete(f"/api/templates/{name}").status_code == 400  # فایل ویس‌های خودکار
+        assert c.delete("/api/templates/f_00000000").status_code == 404  # فایلی که در فهرست نیست
         server.save_settings({"active_profile": excel_mapping.COMPANY})  # تنظیمات آزمون‌های دیگر دست نخورد
 
 

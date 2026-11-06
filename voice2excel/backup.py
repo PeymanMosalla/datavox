@@ -224,6 +224,7 @@ def restore_backup(db: Database, name: str) -> dict:
             safety = create_backup(db, "before-restore")
             with db.write_lock:
                 src.backup(db.conn())  # جایگزینی کامل محتوای پایگاه داده فعلی
+                db._migrate()  # پشتیبان نسخه‌های قبل ستون‌های تازه را ندارد
         finally:
             src.close()
         if (Path(tmp) / "settings.json").exists():
