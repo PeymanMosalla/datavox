@@ -7,10 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const APP = process.argv[2] || "http://127.0.0.1:8765/";
+// Chrome اول: Edge بی‌پنجره (صرفه‌جویی انرژی) پس از چند ثانیه صفحه را «پنهان» حساب می‌کند و بارگذاری صدا عقب می‌افتد
 const BROWSERS = [
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
   "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
 ];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // دریافت وضعیت با چند بار تلاش (اتصال لحظه‌ای ممکن است زیر بار پردازش قطع شود)
@@ -19,7 +20,9 @@ async function getJSON(url) { for (let i = 0; i < 5; i++) { try { return await (
 const profile = mkdtempSync(join(tmpdir(), "v2x-ui-"));
 const port = 9300 + Math.floor(Math.random() * 500);
 const exe = BROWSERS.find((p) => existsSync(p)) || BROWSERS[0];
+// صفحه حتی وقتی صفحه‌نمایش ویندوز خاموش یا قفل است «پنهان» حساب نشود (مرورگر بارگذاری صدا را در صفحه پنهان عقب می‌اندازد)
 const browser = spawn(exe, ["--headless=new", "--disable-gpu", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
+  "--disable-features=CalculateNativeWinOcclusion", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
   "--window-size=1400,900", "about:blank"], { stdio: "ignore" });
 
 let ws, id = 0;
@@ -87,32 +90,37 @@ try {
   check("صفحه بارگذاری شد", (await evaluate("document.title")) === "DataVox");
   const overlay = await evaluate(`(() => { const e = document.elementFromPoint(700, 450); return e ? (e.id || e.className || e.tagName) : ""; })()`);
   check("لایه‌ای روی صفحه نیست", !/backdrop/.test(overlay), "عنصر بالایی وسط صفحه: " + overlay);
+  const title = () => evaluate("document.querySelector('#page-title').textContent");
+  const waitFor = async (sel, ms = 15000) => {
+    for (let t = 0; t < ms; t += 300) { if (await evaluate(`!!document.querySelector(${JSON.stringify(sel)})`)) return true; await sleep(300); }
+    return false;
+  };
+  const clickIn = async (sel) => {
+    await evaluate(`document.querySelector(${JSON.stringify(sel)})?.scrollIntoView({block: "center"})`);
+    await sleep(250);
+    return click(sel);
+  };
+  const toastErrors = () => evaluate(`[...document.querySelectorAll("#toasts .toast.err")].map((x) => x.innerText).join(" | ")`);
 
-  // منوی ساده: فقط «کار امروز» و «تنظیمات»؛ بقیه صفحه‌ها از کارت «ابزارها» در تنظیمات
+  // منو: فقط چهار بخش؛ صفحه اول «فایل‌های من»
   const navShown = await evaluate(`[...document.querySelectorAll("#nav a")].filter((a) => a.offsetParent && a.dataset.page).map((a) => a.dataset.page).join(",")`);
-  check("منوی ساده: «کار امروز»، «خروجی اکسل»، «تنظیمات» و «اشتراک و پشتیبانی»", navShown === "today,templates,settings,activate", navShown);
-  check("صفحه پیش‌فرض «کار امروز»", (await evaluate("document.querySelector('#page-title').textContent")) === "کار امروز");
-  await click(`#nav a[data-page="settings"]`);
-  await sleep(1200);
-  const rt = await click(`#page a[href="#/templates"]`);
-  await sleep(900);
-  check("پیوند «خروجی اکسل» در تنظیمات", rt.hit && (await evaluate("document.querySelector('#page-title').textContent")) === "خروجی اکسل");
-  await click(`#nav a[data-page="settings"]`);
-  await sleep(1200);
-  // ادامه آزمون با منوی کامل (همان تنظیم «نمایش همه صفحه‌ها»)
-  await evaluate("localStorage.setItem('v2x.nav', 'full'); document.documentElement.classList.add('full-nav')");
-  for (const [page, title] of [["voices", "ویس‌ها و پردازش"], ["review", "بازبینی اطلاعات"], ["excel", "ثبت در اکسل"], ["dictionary", "واژه‌نامه"], ["settings", "تنظیمات"], ["dashboard", "داشبورد"], ["templates", "خروجی اکسل"], ["today", "کار امروز"]]) {
+  check("منو: «فایل‌های من»، «تاریخچه ثبت‌ها»، «تنظیمات»، «اشتراک و پشتیبانی»", navShown === "files,history,settings,activate", navShown);
+  check("صفحه پیش‌فرض «فایل‌های من»", (await title()) === "فایل‌های من");
+  for (const [page, t] of [["history", "تاریخچه ثبت‌ها"], ["settings", "تنظیمات"], ["files", "فایل‌های من"]]) {
     const r = await click(`#nav a[data-page="${page}"]`);
-    await sleep(900);
-    const t = await evaluate("document.querySelector('#page-title').textContent");
-    check(`منو «${title}»`, r.hit && t === title, `کلیک به ${r.top} خورد؛ عنوان: ${t}`);
+    await sleep(1000);
+    const got = await title();
+    check(`منو «${t}»`, r.hit && got === t, `کلیک به ${r.top} خورد؛ عنوان: ${got}`);
   }
-  await click(`#nav a[data-page="voices"]`);
+  await click(`#nav a[data-page="settings"]`);
+  await sleep(1200);
+  const rd = await click(`#page a[href="#/dictionary"]`);
+  await sleep(1000);
+  check("واژه‌نامه از داخل تنظیمات", rd.hit && (await title()) === "واژه‌نامه" &&
+    (await evaluate(`document.querySelector('#nav a[data-page="settings"]').classList.contains("active")`)));
+  await evaluate(`location.hash = "#/today"`);
   await sleep(900);
-  await evaluate("document.querySelector('#in-files').addEventListener('click', () => window.__fileDialog = true, { once: true })");
-  const r1 = await click("#pick-files");
-  await sleep(300);
-  check("دکمه «انتخاب فایل‌ها»", r1.hit && (await evaluate("!!window.__fileDialog")), "کلیک به " + r1.top);
+  check("پیوند قدیمی «کار امروز» به «فایل‌های من» می‌رود", (await title()) === "فایل‌های من");
 
   const r2 = await click("#btn-exit");
   await sleep(500);
@@ -135,12 +143,9 @@ try {
   check("«فعال‌سازی» فقط پس از وارد کردن مجوز روشن می‌شود", act.goOff === true && goOn);
   await evaluate(`(() => { const t = document.querySelector("#act-text"); t.value = ""; t.dispatchEvent(new Event("input")); })()`);
   if (process.argv.includes("--full")) {
-    // مسیر کامل: ویس نمونه ← پردازش ← بازبینی ← تأیید ← اکسل نمونه ← خروجی
-    await click(`#nav a[data-page="dashboard"]`);
-    await sleep(1200);
-    const fresh = (await getJSON(APP + "api/status")).files.total === 0;
-    if (fresh) check("راهنمای اجرای اول نمایش داده می‌شود", (await evaluate("document.querySelectorAll('.ob-step').length")) === 4);
-    await shot("01-dashboard-onboarding");
+    // مسیر کامل: فایل اکسل نمونه ← تأیید ستون‌ها ← ویس نمونه ← تبدیل ← بررسی ← تأیید ← ثبت ← تاریخچه ← برگرداندن
+    await click(`#nav a[data-page="files"]`);
+    await sleep(1500);
     const t1 = await click("#btn-theme"); await sleep(200);
     const th1 = await evaluate("document.documentElement.dataset.theme || 'auto'");
     await click("#btn-theme"); await sleep(200);
@@ -148,36 +153,60 @@ try {
     await click("#btn-theme"); await sleep(200);
     const th3 = await evaluate("document.documentElement.dataset.theme || 'auto'");
     check("دکمه تم: خودکار ← روشن ← تیره ← خودکار", t1.hit && th1 === "light" && th2 === "dark" && th3 === "auto", `${th1}, ${th2}, ${th3}`);
-    const rs = await click("#d-samples");
-    check("دکمه «امتحان با ویس نمونه»", rs.hit, "کلیک به " + rs.top);
+    const fresh = (await getJSON(APP + "api/dests")).dests.length === 0;
+    const hasSample = await evaluate("!!state.meta?.samples?.excel");
+    if (fresh && hasSample) {
+      check("اجرای اول: صفحه خوش‌آمد با سه گام", (await evaluate("document.querySelectorAll('.welcome .setup-steps li').length")) === 3);
+      await shot("01-welcome");
+      await clickIn("#wl-sample");
+      check("گام ۲: پنجره تأیید ستون‌ها", await waitFor("#modal-backdrop:not([hidden]) .map-select", 8000) &&
+        (await evaluate("document.querySelector('#modal .modal-h').innerText")).includes("گام ۲"));
+      await shot("02-columns");
+      await clickIn('#modal [data-mi="0"]');
+      await waitFor("#fw-next .next-step", 10000);
+      check("گام ۳: میز کار فایل با نوار فایل و «گام بعد»", (await evaluate("location.hash")).includes("first=1") &&
+        await waitFor(".file-bar") && await waitFor(".welcome .setup-steps li.now"), await toastErrors());
+    } else {
+      const first = (await getJSON(APP + "api/dests")).dests[0];
+      check("فایلی در فهرست هست", !!first, fresh ? "فایل اکسل نمونه در این اجرا نیست" : "");
+      if (!first) throw new Error("فایلی برای ادامه آزمون نیست");
+      await evaluate(`location.hash = "#/file?f=${encodeURIComponent(first.name)}"`);
+      await waitFor(".file-bar");
+    }
+    const dest = decodeURIComponent((await evaluate("location.hash")).match(/f=([^&]+)/)[1]);
+    // ویس نمونه
+    if (await evaluate("!!document.querySelector('#fw-samples')")) {
+      const rs = await clickIn("#fw-samples");
+      check("دکمه «امتحان با ویس نمونه»", rs.hit, "کلیک به " + rs.top);
+    } else {
+      await evaluate(`api("/api/samples/import?dest=${encodeURIComponent(dest)}", { method: "POST" }).then(() => startQueue())`);
+    }
     let done = false;
     for (let i = 0; i < 200 && !done; i++) {
       await sleep(2000);
       const st = await getJSON(APP + "api/status");
       done = !st.worker.running && st.files.queued === 0 && st.files.done > 0;
     }
-    check("پردازش ویس‌های نمونه تمام شد", done);
-    // اگر پنجره «نتیجه افزودن فایل‌ها» (مثلاً فایل تکراری) باز است، بسته شود
+    check("تبدیل ویس‌های نمونه تمام شد", done);
     if (await evaluate("!document.querySelector('#modal-backdrop').hidden")) await click("#modal .modal-f .btn");
-    await sleep(500);
-    await click(`#nav a[data-page="review"]`);
     await sleep(1500);
-    const rows = await evaluate("document.querySelectorAll('tr[data-rid]').length");
-    check("جدول بازبینی ردیف دارد", rows > 0, `${rows} ردیف`);
-    const ro = await click("tr[data-rid] td:nth-child(3)");
+    const info = await getJSON(APP + `api/dests/${encodeURIComponent(dest)}`);
+    check("ویس‌ها مال همین فایل‌اند", info.voices >= 1 && info.converting === 0, JSON.stringify({ v: info.voices, r: info.review, ok: info.ready }));
+    check("جدول «ویس‌های این فایل» برای هر ویس یک خط دارد", (await evaluate("document.querySelectorAll('#fw-v tr[data-vid]').length")) === info.voices);
+    check("ردیف‌های نیازمند بررسی به شکل ردیف اکسل", await waitFor("#fw-rv .xr-table td[data-xcell]", 8000));
+    await shot("03-workspace");
+    const ro = await clickIn("#fw-rv [data-xcell]");
     await sleep(1500);
-    check("کلیک روی ردیف، پنجره جزئیات را باز می‌کند", ro.hit && (await evaluate("document.querySelector('#drawer').classList.contains('open')")));
-    check("پخش‌کننده صدا در پنجره جزئیات", await evaluate("!!document.querySelector('#drawer audio')"));
+    check("کلیک روی خانه، پنجره اصلاح را باز می‌کند", ro.hit && (await evaluate("document.querySelector('#drawer').classList.contains('open')")));
+    check("پخش‌کننده صدا در پنجره اصلاح", await evaluate("!!document.querySelector('#drawer audio')"));
     await evaluate(`(() => { const i = document.querySelector('#drawer [data-f="address"]'); i.value = i.value + ' (اصلاح آزمایشی)';
       i.dispatchEvent(new Event('change')); })()`);
     await sleep(1500);
     check("اصلاح دستی فیلد ذخیره شد", (await evaluate("document.querySelector('#drawer [data-f=\"address\"]').value")).includes("اصلاح آزمایشی"));
-    // پخش همان بخشِ شماره از ویس
     const hasSeg = await evaluate("!!document.querySelector('#drawer [data-segk=\"phone\"]')");
     check("دکمه پخش بخش شماره", hasSeg);
     if (hasSeg) {
       await click('#drawer [data-segk="phone"]');
-      // زیر بار پردازش، بارگذاری صدا گاهی بیش از یک ثانیه طول می‌کشد
       let played = false;
       for (let i = 0; i < 8 && !played; i++) {
         await sleep(500);
@@ -185,12 +214,11 @@ try {
       }
       check("پخش بخش شماره از ویس", played, "زمان: " + (await evaluate(`(() => { const a = document.querySelector('#dr-audio');
         return a.currentTime.toFixed(2) + (a.currentTime > 0.2 ? "" : " | ready=" + a.readyState + " net=" + a.networkState + " paused=" + a.paused
-          + " err=" + (a.error && a.error.code) + " stopAt=" + a.dataset.stopAt + " bound=" + a.dataset.segBound); })()`)));
+          + " err=" + (a.error && a.error.code) + " stopAt=" + a.dataset.stopAt + " bound=" + a.dataset.segBound + " src=" + a.src.split("/api/")[1] + " vis=" + document.visibilityState + " focus=" + document.hasFocus()); })()`)));
       await evaluate("document.querySelector('#dr-audio').pause()");
     }
-    check("نمایش گروه‌بندی‌شده شماره", /^0\d{3} \d{3} \d{4}$/.test(await evaluate("document.querySelector('#drawer .phone-view span')?.textContent || ''")),
-      await evaluate("document.querySelector('#drawer .phone-view span')?.textContent || ''"));
-    await shot("02-drawer");
+    check("نمایش گروه‌بندی‌شده شماره", /^0\d{3} \d{3} \d{4}$/.test(await evaluate("document.querySelector('#drawer .phone-view span')?.textContent || ''")));
+    await shot("04-drawer");
     const ru = await click("#dr-undo");
     check("اعلان روی دکمه «بازگشت» قرار نمی‌گیرد", ru.hit, "کلیک به " + ru.top);
     await sleep(1500);
@@ -201,123 +229,64 @@ try {
     await sleep(1500);
     const st2 = await getJSON(APP + "api/status");
     check("دکمه «تأیید برای ثبت»", ra.hit && st2.records.approved >= 1, `آماده ثبت: ${st2.records.approved}`);
-    await click("#dr-close");
-    await sleep(500);
-    // بازبینی سریع با صفحه‌کلید
-    const approvedBefore = (await getJSON(APP + "api/status")).records.approved;
-    const rf = await click("#rv-focus");
-    await sleep(1800);
-    await shot("03-focus");
-    check("دکمه «بازبینی سریع» حالت تمام‌صفحه را باز می‌کند", rf.hit && (await evaluate("!document.querySelector('#focus').hidden")));
-    await evaluate(`(() => { const i = document.querySelector('#focus [data-ff="engineer_name"]'); i.value = i.value + 'پور'; i.dispatchEvent(new Event('change')); })()`);
-    await sleep(1200);
-    await evaluate("document.activeElement && document.activeElement.blur()");
-    await key("Enter", "Enter", 13, 2);  // Ctrl+Enter
-    await sleep(2500);
-    const approvedAfter = (await getJSON(APP + "api/status")).records.approved;
-    check("Ctrl+Enter در بازبینی سریع تأیید می‌کند و به رکورد بعدی می‌رود", approvedAfter === approvedBefore + 1,
-      `آماده ثبت: ${approvedBefore} ← ${approvedAfter}؛ ${await evaluate("document.querySelector('.fm-head')?.innerText.split(String.fromCharCode(10))[0] || ''")}`);
-    await key("Escape", "Escape", 27);
+    if (await evaluate("document.querySelector('#drawer').classList.contains('open')")) await click("#dr-close");
     await sleep(800);
-    check("Esc بازبینی سریع را می‌بندد", await evaluate("document.querySelector('#focus').hidden"));
-    // یادگیری از اصلاح: «… → …پور» در زبانه اصلاحات دیده می‌شود
-    await click(`#nav a[data-page="dictionary"]`);
+    // «گام بعد» فقط یک دکمه اصلی دارد و بررسی سریع را باز می‌کند
+    check("فقط یک دکمه اصلی در میز کار", (await evaluate("document.querySelectorAll('#page .btn.primary').length")) === 1);
+    const approvedBefore = (await getJSON(APP + "api/status")).records.approved;
+    if ((await getJSON(APP + `api/dests/${encodeURIComponent(dest)}`)).review) {
+      const rf = await clickIn("#fw-next-go");
+      await sleep(1800);
+      await shot("05-focus");
+      check("«گام بعد» بررسی سریع را باز می‌کند", rf.hit && (await evaluate("!document.querySelector('#focus').hidden")));
+      await evaluate(`(() => { const i = document.querySelector('#focus [data-ff="engineer_name"]'); i.value = i.value + 'پور'; i.dispatchEvent(new Event('change')); })()`);
+      await sleep(1200);
+      await evaluate("document.activeElement && document.activeElement.blur()");
+      await key("Enter", "Enter", 13, 2);  // Ctrl+Enter
+      await sleep(2500);
+      const approvedAfter = (await getJSON(APP + "api/status")).records.approved;
+      check("Ctrl+Enter در بررسی سریع تأیید می‌کند", approvedAfter === approvedBefore + 1, `آماده ثبت: ${approvedBefore} ← ${approvedAfter}`);
+      await key("Escape", "Escape", 27);
+      await sleep(800);
+      check("Esc بررسی سریع را می‌بندد", await evaluate("document.querySelector('#focus').hidden"));
+    }
+    // ثبت در فایل، با بررسی وضعیت فایل
+    check("وضعیت فایل پیش از ثبت با جمله ساده", await waitFor("#fw-cm .fcheck li.ok", 8000), await evaluate("document.querySelector('#fw-cm')?.innerText.slice(0, 200) || ''"));
+    const rc = await clickIn("#fw-commit-go");
+    let exported = false;
+    for (let i = 0; i < 20 && !exported; i++) { await sleep(1000); exported = (await getJSON(APP + "api/status")).records.exported >= 1; }
+    check("ثبت مستقیم در فایل از میز کار", rc.hit && exported, await toastErrors());
+    check("پس از ثبت، شماره ردیف در جدول ویس‌ها", await waitFor("#fw-v .vt-rows", 8000));
+    await shot("06-after-commit");
+    // تاریخچه ثبت‌ها و برگرداندن
+    await click(`#nav a[data-page="history"]`);
+    check("تاریخچه ثبت‌ها ثبت را نشان می‌دهد", await waitFor(".h-item [data-hundo]", 8000));
+    await shot("07-history");
+    await clickIn(".h-item [data-hundo]");
+    await waitFor("#modal-backdrop:not([hidden]) .modal-f .btn.danger", 5000);
+    await click("#modal .modal-f .btn.danger");
+    let undone = false;
+    for (let i = 0; i < 20 && !undone; i++) { await sleep(700); undone = await evaluate("!!document.querySelector('.h-item.undone')"); }
+    check("«برگرداندن» ثبت را لغو می‌کند", undone && (await getJSON(APP + "api/status")).records.exported === 0, await toastErrors());
+    // یادگیری از اصلاح: «… → …پور» در زبانه اصلاحات
+    await evaluate(`location.hash = "#/dictionary"`);
     await sleep(1200);
     await click('[data-t="__corrections"]');
     await sleep(1200);
-    await shot("04-corrections");
     check("اصلاح انجام‌شده در «اصلاحات یادگرفته‌شده» ثبت شد", (await evaluate("document.querySelectorAll('#dc-table tbody tr').length")) >= 1);
+    // تنظیمات فایل و پیش‌نمایش
+    await evaluate(`location.hash = "#/templates?dest=${encodeURIComponent(dest)}"`);
+    check("تنظیمات فایل با نوار فایل و زبانه‌ها", await waitFor("#dv-bar .file-bar") && await waitFor("#tp-tabs [data-tt='columns'].active"));
+    await clickIn("#tp-show");
+    check("پیش‌نمایش جدول شبیه اکسل", await waitFor(".modal.xwide .xl-letters"));
+    await clickIn("#modal .modal-f .btn.primary");
+    await sleep(400);
     // پشتیبان‌گیری دستی
     await click(`#nav a[data-page="settings"]`);
     for (let i = 0; i < 40 && !(await evaluate("!!document.querySelector('#s-backup-now')")); i++) await sleep(300);
-    await evaluate("document.querySelector('#s-backup-now').scrollIntoView({block:'center'})");
-    await sleep(300);
-    await click("#s-backup-now");
+    await clickIn("#s-backup-now");
     await sleep(2000);
-    await shot("05-settings-backups");
     check("پشتیبان‌گیری الان", (await evaluate("document.querySelectorAll('#s-backups tbody tr').length")) >= 1);
-    const waitFor = async (sel, ms = 15000) => {
-      for (let t = 0; t < ms; t += 300) { if (await evaluate(`!!document.querySelector(${JSON.stringify(sel)})`)) return true; await sleep(300); }
-      return false;
-    };
-    const setInput = (sel, v) => evaluate(`(() => { const e = document.querySelector(${JSON.stringify(sel)}); e.value = ${JSON.stringify(v)}; e.dispatchEvent(new Event("input")); })()`);
-    const clickIn = async (sel) => {
-      await evaluate(`document.querySelector(${JSON.stringify(sel)})?.scrollIntoView({block: "center"})`);
-      await sleep(250);
-      return click(sel);
-    };
-    // «خروجی اکسل»: جمله مقصد، انتخاب «فایل موجود» و ستون‌ها
-    await click(`#nav a[data-page="templates"]`);
-    await sleep(1500);
-    check("جمله «با زدن ثبت در اکسل…» بالای خروجی اکسل", await waitFor("#dv-summary .dest-sentence"));
-    const hasSample = await evaluate("!!state.meta?.samples?.excel");
-    if (hasSample) {
-      if (await evaluate(`!!document.querySelector('[data-choice="append"]')`)) {
-        check("بدون مقصد: دو انتخاب «فایل موجود / فایل تازه» به جای پیام", await evaluate(`!!document.querySelector('[data-choice="new"]')`));
-        await clickIn('[data-choice="append"]');
-        // پنجره انتخاب فایل خودکار باز می‌شود؛ به جایش فایل نمونه
-        check("انتخاب «فایل موجود» پنجره انتخاب فایل را باز می‌کند", await waitFor("#modal-backdrop:not([hidden]) .fs-list, #modal-backdrop:not([hidden]) .modal-f", 6000));
-        await clickIn("#modal .modal-f .btn.ghost");
-        await sleep(400);
-      } else {
-        await clickIn('[data-dest="default"]');
-        await sleep(1200);
-        await clickIn('[data-tt="output"]');
-      }
-      await waitFor("#x-sample", 6000);
-      await clickIn("#x-sample");
-      const colsOk = await waitFor('[data-tt="columns"].active') && await waitFor(".map-select");
-      await shot("06-excel-columns");
-      check("فایل نمونه خوانده شد و زبانه «ستون‌ها» با پیشنهاد باز شد", colsOk,
-        await evaluate(`[document.querySelector("#tp-tab")?.innerText.slice(0, 160), ...[...document.querySelectorAll("#toasts .toast")].map((x) => x.innerText)].join(" | ")`));
-      check("نوار ذخیره «تغییرات ذخیره نشده» را نشان می‌دهد", await evaluate("document.querySelector('#dv-savebar').classList.contains('dirty') && !document.querySelector('#tp-save').disabled"));
-      check("توضیح «؟» کنار مفهوم‌ها", (await evaluate("document.querySelectorAll('.help[data-tip]').length")) >= 2);
-      await clickIn("#tp-save");
-      check("ذخیره فایل موجود؛ کارتش مقصد ثبت فعلی است", await waitFor('[data-dest="default"] .dc-active:not(.warn)'));
-      check("پس از ذخیره نوار ذخیره عادی است", await evaluate("!document.querySelector('#dv-savebar').classList.contains('dirty')"));
-      await clickIn("#tp-show");
-      check("پیش‌نمایش جدول شبیه اکسل", await waitFor(".modal.xwide .xl-letters"));
-      await clickIn("#modal .modal-f .btn.primary");
-      await sleep(400);
-      // مقصد تازه ← فایل جداگانه، و تأیید روشن هنگام تغییر مقصد
-      await clickIn("#dv-new");
-      check("«مقصد تازه» اول فقط می‌پرسد ردیف‌ها کجا ثبت شوند", await waitFor('#modal [data-choice="new"]'));
-      await clickIn('#modal [data-choice="new"]');
-      await waitFor("#m-in");
-      await setInput("#m-in", "گزارش آزمون");
-      await clickIn('#modal [data-mi="0"]');
-      check("فایل جداگانه ساخته شد و کارتش آمد", await waitFor(".tp-col") && (await evaluate("document.querySelectorAll('.dest-card[data-dest]').length")) === 2);
-      await clickIn(".dest-card:not(.on) [data-activate]");
-      check("تغییر مقصد: «تا الان» و «از این پس» نشان داده می‌شود", await waitFor("#modal .dest-switch .ds-box.on"));
-      await clickIn("#modal .modal-f .btn.ghost");
-      await sleep(500);
-      check("انصراف: مقصد ثبت عوض نشد", (await getJSON(APP + "api/status")).setup.template_mode !== "new");
-      const rdel = await clickIn("#tp-del");
-      check("دکمه حذف مقصد", rdel.hit && await waitFor("#modal .modal-f .btn.danger", 5000), "کلیک به " + rdel.top);
-      await clickIn("#modal .modal-f .btn.danger");
-      let left = 0;
-      for (let i = 0; i < 30 && (left = await evaluate("document.querySelectorAll('.dest-card[data-dest]').length")) !== 1; i++) await sleep(300);
-      check("حذف فایل جداگانه", left === 1, `${left} کارت`);
-      // ثبت روی کپی از صفحه «ثبت در اکسل»
-      await click(`#nav a[data-page="review"]`);
-      await sleep(800);
-      await click(`#nav a[data-page="excel"]`);
-      await sleep(1200);
-      check("پیش‌نمایش ثبت و دکمه «ساخت فایل خروجی» نمایش داده شد", await waitFor("#x-export"),
-        await evaluate("(document.querySelector('#x-prev') || {}).innerText?.slice(0, 200) || ''"));
-      await evaluate("document.querySelector('#x-export')?.scrollIntoView({block: 'center'})");
-      await sleep(400);
-      const rx = await click("#x-export");
-      check("کلیک روی «ساخت فایل خروجی»", rx.hit, "کلیک به " + rx.top);
-      check("پنجره تأیید ثبت باز شد", await waitFor("#modal-backdrop:not([hidden]) .modal-f .btn.primary", 5000));
-      await click("#modal .modal-f .btn.primary");
-      let exported = false;
-      for (let i = 0; i < 20 && !exported; i++) { await sleep(1000); exported = (await getJSON(APP + "api/status")).records.exported >= 1; }
-      check("ساخت فایل خروجی اکسل از رابط", rx.hit && exported);
-      await evaluate("document.querySelector('#modal-backdrop').hidden || (document.querySelector('#modal .modal-f .btn.ghost') || {}).click?.()");
-    } else {
-      check("فایل اکسل نمونه (فقط در نسخه قابل‌حمل)", true, "رد شد؛ فایل نمونه در این اجرا نیست");
-    }
   }
   check("بدون خطای جاوااسکریپت", errors.length === 0, errors.join(" | "));
 } catch (e) {

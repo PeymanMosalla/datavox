@@ -301,6 +301,7 @@ def main() -> int:
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون سریع)")
     ap.add_argument("--win7", action="store_true", help="(در شاخه windows7-only همیشه فعال است)")
+    ap.add_argument("--name", default="", help="بسته آزمایشی جدا: dist/DataVox-win7-<name> و DataVox-<نسخه>-win7-<name>.zip")
     a = ap.parse_args()
     win7 = True  # شاخه windows7-only فقط بسته ویندوز ۷ می‌سازد؛ بسته ویندوز ۱۰ و ۱۱ از شاخه main ساخته می‌شود
     from voice2excel import __version__
@@ -308,11 +309,13 @@ def main() -> int:
     model_dir = ROOT / "models" / a.model
     if not (model_dir / "model.bin").exists():
         raise SystemExit(f"مدل {a.model} در پوشه models نیست؛ ابتدا download_model.bat را اجرا کنید.")
-    out = DIST / ("DataVox-win7" if win7 else "DataVox")
+    tag = ("win7" if win7 else "") + (f"-{a.name}" if a.name else "")
+    tag = tag.lstrip("-")
+    out = DIST / (f"DataVox-{tag}" if tag else "DataVox")
     # اطلاعات کاربری که با همین پوشه کار کرده حفظ می‌شود (ولی هرگز داخل zip نمی‌رود)
-    kept_data = DIST / ("_kept_user_data-win7" if win7 else "_kept_user_data")
+    kept_data = DIST / (f"_kept_user_data-{tag}" if tag else "_kept_user_data")
     legacy = DIST / "Voice2Excel"  # نام پیشین برنامه: اطلاعاتش یک بار به پوشه جدید می‌آید
-    if not win7 and not (out / "data").exists() and (legacy / "data").exists():
+    if not tag and not (out / "data").exists() and (legacy / "data").exists():
         step("انتقال اطلاعات کاربر از پوشه نام قبلی (Voice2Excel)")
         out.mkdir(parents=True, exist_ok=True)
         shutil.move(str(legacy / "data"), str(out / "data"))
@@ -362,7 +365,7 @@ def main() -> int:
     if len(longest) > 150:
         raise SystemExit("مسیرهای داخلی بسته بیش از حد طولانی‌اند (سقف ۲۶۰ نویسه ویندوز).")
     if not a.no_zip:
-        zp = DIST / f"DataVox-{__version__}{'-win7' if win7 else ''}.zip"
+        zp = DIST / (f"DataVox-{__version__}-{tag}.zip" if tag else f"DataVox-{__version__}.zip")
         step(f"ساخت {zp.name}")
         make_zip(out, zp)
         print(f"حجم zip: {zp.stat().st_size / 1e9:.2f} گیگابایت")
