@@ -188,17 +188,19 @@ def main() -> int:
     ap.add_argument("--model", default="large-v3-turbo")
     ap.add_argument("--no-zip", action="store_true")
     ap.add_argument("--no-compile", action="store_true", help="کد متنی (فقط برای آزمون سریع)")
+    ap.add_argument("--name", default="", help="بسته آزمایشی جدا: dist/DataVox-<name> و DataVox-<نسخه>-<name>.zip؛ "
+                    "پوشه و اطلاعات برنامه اصلی (dist/DataVox) دست نمی‌خورد")
     a = ap.parse_args()
     from voice2excel import __version__
 
     model_dir = ROOT / "models" / a.model
     if not (model_dir / "model.bin").exists():
         raise SystemExit(f"مدل {a.model} در پوشه models نیست؛ ابتدا download_model.bat را اجرا کنید.")
-    out = DIST / "DataVox"
+    out = DIST / (f"DataVox-{a.name}" if a.name else "DataVox")
     # اطلاعات کاربری که با همین پوشه کار کرده حفظ می‌شود (ولی هرگز داخل zip نمی‌رود)
-    kept_data = DIST / "_kept_user_data"
+    kept_data = DIST / (f"_kept_user_data-{a.name}" if a.name else "_kept_user_data")
     legacy = DIST / "Voice2Excel"  # نام پیشین برنامه: اطلاعاتش یک بار به پوشه جدید می‌آید
-    if not (out / "data").exists() and (legacy / "data").exists():
+    if not a.name and not (out / "data").exists() and (legacy / "data").exists():
         step("انتقال اطلاعات کاربر از پوشه نام قبلی (Voice2Excel)")
         out.mkdir(parents=True, exist_ok=True)
         shutil.move(str(legacy / "data"), str(out / "data"))
@@ -241,7 +243,7 @@ def main() -> int:
     if len(longest) > 150:
         raise SystemExit("مسیرهای داخلی بسته بیش از حد طولانی‌اند (سقف ۲۶۰ نویسه ویندوز).")
     if not a.no_zip:
-        zp = DIST / f"DataVox-{__version__}.zip"
+        zp = DIST / (f"DataVox-{__version__}-{a.name}.zip" if a.name else f"DataVox-{__version__}.zip")
         step(f"ساخت {zp.name}")
         make_zip(out, zp)
         print(f"حجم zip: {zp.stat().st_size / 1e9:.2f} گیگابایت")

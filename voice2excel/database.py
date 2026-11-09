@@ -128,6 +128,7 @@ class Database:
     # ستون‌هایی که پس از نسخه اول اضافه شده‌اند: (جدول، ستون، تعریف)
     _MIGRATIONS = [
         ("record_edits", "undone", "INTEGER NOT NULL DEFAULT 0"),
+        ("audio_files", "dest", "TEXT"),  # فایل اکسلی که ردیف‌های این ویس در آن ثبت می‌شوند (نام قالب)
     ]
 
     def _migrate(self) -> None:
@@ -192,14 +193,19 @@ class Database:
         return self.one("SELECT * FROM audio_files WHERE sha256=?", (sha,))
 
     def add_audio(self, batch_id: int, original_name: str, stored_name: str, sha: str, size: int,
-                  visit_date: str, date_source: str) -> int:
+                  visit_date: str, date_source: str, dest: str | None = None) -> int:
         with self.tx() as c:
             cur = c.execute(
                 """INSERT INTO audio_files(batch_id, original_name, stored_name, sha256, size, visit_date,
-                   date_source, status, created_at, updated_at) VALUES(?,?,?,?,?,?,?, 'queued', ?, ?)""",
-                (batch_id, original_name, stored_name, sha, size, visit_date, date_source, now(), now()),
+                   date_source, status, dest, created_at, updated_at) VALUES(?,?,?,?,?,?,?, 'queued', ?, ?, ?)""",
+                (batch_id, original_name, stored_name, sha, size, visit_date, date_source, dest, now(), now()),
             )
             return cur.lastrowid
+
+    def bind_unassigned(self, dest: str) -> int:
+        """ویس‌هایی که هنوز به فایلی وصل نیستند (پایگاه داده نسخه‌های قبل) به فایل dest وصل می‌شوند."""
+        with self.tx() as c:
+            return c.execute("UPDATE audio_files SET dest=? WHERE dest IS NULL OR dest=''", (dest,)).rowcount
 
     def set_audio(self, audio_id: int, **fields: Any) -> None:
         if not fields:

@@ -158,7 +158,7 @@ def plan_rows(profile: dict, ws, records: list[dict]) -> dict:
 def preview(profile: dict, records: list[dict]) -> dict:
     path = Path(profile["excel_path"])
     if not path.exists():
-        raise ExcelWriteError("فایل اکسل مقصد پیدا نشد.")
+        raise ExcelWriteError("فایل اکسل پیدا نشد.")
     wb = openpyxl.load_workbook(path, keep_vba=path.suffix.lower() == ".xlsm")
     try:
         if profile["sheet"] not in wb.sheetnames:
@@ -176,9 +176,9 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
     """ساخت کپی جدید از فایل مقصد با ردیف‌های اضافه‌شده. فایل اصلی تغییر نمی‌کند."""
     target = Path(profile["excel_path"])
     if not target.exists():
-        raise ExcelWriteError("فایل اکسل مقصد پیدا نشد.")
+        raise ExcelWriteError("فایل اکسل پیدا نشد.")
     if not records:
-        raise ExcelWriteError("هیچ رکورد تأییدشده‌ای برای ثبت وجود ندارد.")
+        raise ExcelWriteError("ردیف تأییدشده‌ای برای ثبت نیست.")
     report = inspect_workbook(target)
     blocking = [r["message"] for r in report["risks"] if r["level"] == "block"]
     if blocking:
@@ -208,7 +208,7 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
     ws = wb[profile["sheet"]]
     mism = _header_mismatches(ws, profile)
     if mism:
-        raise ExcelWriteError("عنوان ستون‌های فایل با قالب نگاشت یکسان نیست؛ نگاشت را دوباره بررسی کنید: "
+        raise ExcelWriteError("عنوان ستون‌های فایل از زمان تأیید عوض شده است؛ ستون‌ها را دوباره تأیید کنید: "
                               + " ؛ ".join(mism))
     sheetnames_before = list(wb.sheetnames)
     plan = plan_rows(profile, ws, records)
@@ -270,7 +270,7 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
         wb.save(tmp)
     except Exception as e:
         tmp.unlink(missing_ok=True)
-        raise ExcelWriteError(f"ذخیره فایل خروجی ناموفق بود ({type(e).__name__}). داده‌های پردازش‌شده حفظ شده‌اند.") from e
+        raise ExcelWriteError(f"ذخیره فایل ناموفق بود ({type(e).__name__}). اطلاعات ویس‌ها حفظ شده‌اند.") from e
     finally:
         wb.close()
     os.replace(tmp, output)
@@ -284,7 +284,7 @@ def write_export(profile: dict, records: list[dict], allow_warnings: bool = True
     if verify["errors"]:
         bad = output.with_name(output.stem + "__نامعتبر" + output.suffix)
         os.replace(output, bad)
-        raise ExcelWriteError("بررسی فایل خروجی ناموفق بود و خروجی کنار گذاشته شد: " + " ؛ ".join(verify["errors"]))
+        raise ExcelWriteError("بررسی فایل پس از نوشتن ناموفق بود و چیزی در فایل اصلی تغییر نکرد: " + " ؛ ".join(verify["errors"]))
     return {
         "output_path": str(output),
         "backup_path": str(backup),
@@ -336,15 +336,15 @@ def replace_original(output_path: str, target_path: str, expected_target_sha: st
     """
     output, target = Path(output_path), Path(target_path)
     if not output.exists():
-        raise ExcelWriteError("فایل خروجی پیدا نشد.")
+        raise ExcelWriteError("کپی این ثبت پیدا نشد.")
     if not target.exists():
         raise ExcelWriteError("فایل اصلی پیدا نشد.")
     lock = lock_status(target)
     if lock["write_blocked"] or lock["owner_file"]:
         raise ExcelWriteError(lock["message"] or "فایل اصلی باز است.")
     if file_sha256(target) != expected_target_sha:
-        raise ExcelWriteError("فایل اصلی پس از ساخت خروجی تغییر کرده است (احتمالاً کسی آن را ویرایش کرده). "
-                              "برای جلوگیری از ازدست‌رفتن آن تغییرات، دوباره خروجی بگیرید.")
+        raise ExcelWriteError("فایل اصلی پس از این ثبت تغییر کرده است (احتمالاً کسی آن را ویرایش کرده). "
+                              "برای اینکه آن تغییرات از بین نرود، ثبت را برگردانید و دوباره ثبت کنید.")
     if backup_path and Path(backup_path).exists() and file_sha256(Path(backup_path)) == expected_target_sha:
         backup = Path(backup_path)
     else:
