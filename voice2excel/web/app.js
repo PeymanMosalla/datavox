@@ -256,7 +256,7 @@ const PAGES = {
   history: { title: "تاریخچه ثبت‌ها", sub: "هر بار که ردیف‌ها در یک فایل اکسل ثبت شدند؛ با امکان باز کردن و برگرداندن", render: renderHistory },
   templates: { title: "تنظیمات فایل", sub: "هر ستون چه اطلاعاتی بگیرد، شکل نوشتن مقادیر و ظاهر", render: renderTemplates, parent: "files" },
   dictionary: { title: "واژه‌نامه", sub: "نام‌های تأییدشده مهندس‌ها، پروژه‌ها و خیابان‌ها", render: renderDictionary, parent: "settings" },
-  settings: { title: "تنظیمات", sub: "مدل گفتار، قواعد اعتبارسنجی و نگهداری", render: renderSettings },
+  settings: { title: "تنظیمات", sub: "ثبت در اکسل، واژه‌نامه، پوشه ورودی، پشتیبان‌گیری و نگهداری", render: renderSettings },
   activate: { title: "اشتراک و پشتیبانی", sub: "وضعیت اشتراک، تماس با فروشنده و وارد کردن مجوز", render: (el) => renderActivation(el) },
 };
 let pageHooks = {};
@@ -327,7 +327,9 @@ function fileCard(d) {
       <div class="fc-names"><b class="fc-title">${fname(destLabel(d))}</b><span class="small muted">${fileSub(d)}</span></div></div>
     <div class="fc-status">${parts.length ? parts.map(([c, t]) => chip(c, t)).join("")
       : `<span class="small muted">${d.written ? `${I.check} همه ردیف‌های ویس‌ها ثبت شده‌اند` : "هنوز ویسی به این فایل اضافه نشده"}</span>`}</div>
-    ${d.auto ? `<div class="fc-auto small">${I.mic} ویس‌های گوشی و پوشه ورودی به این فایل می‌آیند</div>` : ""}</a>`;
+    ${d.auto ? `<div class="fc-auto small">${I.mic} ویس‌های گوشی و پوشه ورودی به این فایل می‌آیند</div>` : ""}
+    ${d.review || d.ready ? `<div class="fc-act">${d.review ? `<span class="btn sm primary">${I.eye} بررسی ${fa(d.review)} ردیف</span>` : ""}${d.ready
+      ? `<span class="btn sm ${d.review ? "" : "primary"}">${I.table} ثبت ${fa(d.ready)} ردیف</span>` : ""}</div>` : ""}</a>`;
 }
 
 async function renderFiles(el) {
@@ -517,6 +519,8 @@ const STAGE = {
   no_rows: ["missing", "ردیفی پیدا نشد"], review: ["review", "نیاز به بررسی"], ready: ["ready", "آماده ثبت"],
   written: ["exported", "ثبت شد"], rejected: ["rejected", "رد شد"],
 };
+/** ردیف‌هایی که کاربر توضیحشان را باز کرده (پس از به‌روز شدن فهرست باز بمانند) */
+const openNotes = new Set();
 const STAGE_TABS = [["all", "همه", null], ["work", "در حال تبدیل", ["queued", "processing"]], ["review", "نیاز به بررسی", ["review"]],
   ["ready", "آماده ثبت", ["ready"]], ["written", "ثبت شد", ["written"]], ["problem", "مشکل‌دار", ["failed", "no_rows"]], ["rejected", "رد شده", ["rejected"]]];
 
@@ -603,6 +607,7 @@ async function renderFile(el) {
     }
     box.innerHTML = `<div class="next-step ${icon === I.alert ? "warn" : ""}"><span class="ns-ico">${icon}</span><div class="ns-text"><span class="small muted">گام بعد</span><b>${text}</b></div>${btn}</div>`;
     bindFix(box);
+    arrange();
     $("#fw-next-go")?.addEventListener("click", async (e) => {
       if (info.review) {
         const { records } = await api(`/api/records?filter=review&dest=${encodeURIComponent(name)}`);
@@ -612,6 +617,21 @@ async function renderFile(el) {
       if (info.converting) return startQueue();
       $("#fw-files").click();
     });
+  }
+
+  /** ترتیب بخش‌ها بر اساس کار فعلی: کاری که الان باید انجام شود بالا، «افزودن ویس» در آن حالت باریک.
+   *  آماده ثبت: خود بخش «ثبت در فایل» جای «گام بعد» می‌نشیند تا فقط یک دکمه اصلی در صفحه باشد. */
+  function arrange() {
+    const fw = $(".fw", el);
+    if (!fw || seq !== routeSeq) return;
+    const commitFirst = info.configured && !info.review && (info.ready > 0 || !!fileState.lastCommit);
+    const order = info.review ? ["fw-next", "fw-review", "fw-add", "fw-commit", "fw-voices"]
+      : commitFirst ? ["fw-next", "fw-commit", "fw-add", "fw-review", "fw-voices"]
+      : ["fw-next", "fw-add", "fw-review", "fw-commit", "fw-voices"];
+    order.forEach((id) => { const s = $("#" + id, fw); if (s) fw.appendChild(s); });
+    $("#fw-next").hidden = info.configured && !info.review && info.ready > 0;
+    $("#fw-add")?.classList.toggle("compact", !!info.review || commitFirst);
+    $("#fw-commit")?.classList.toggle("focus", info.configured && !info.review && info.ready > 0);
   }
 
   function drawAdd() {
@@ -784,7 +804,7 @@ async function renderFile(el) {
       const items = fileState.check?.items || [];
       const ICON = { ok: I.ok, warn: I.alert, block: I.alert };
       html += `${items.length ? `<ul class="fcheck">${items.map((x) => `<li class="${x.level}">${ICON[x.level]}<span>${esc(x.text)}</span></li>`).join("")}</ul>` : ""}
-        <div class="row">${checkBlock() ? fixBtn(checkBlock()) : ""}<button class="btn" id="fw-commit-go" ${checkBlock() ? "disabled" : ""}>${I.table} ثبت ${fa(n)} ردیف در «${esc(destLabel(info))}»</button></div>`;
+        <div class="row">${checkBlock() ? fixBtn(checkBlock(), info.review ? "btn" : "btn primary lg") : ""}<button class="btn ${!info.review && !checkBlock() ? "primary lg" : ""}" id="fw-commit-go" ${checkBlock() ? "disabled" : ""}>${I.table} ثبت ${fa(n)} ردیف در «${esc(destLabel(info))}»</button></div>`;
     }
     box.innerHTML = html;
     $("#fw-commit").hidden = !html;
@@ -973,11 +993,12 @@ function reviewList(box, actionsBox, records, reload, sheet = null) {
     }
     if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li><span class="t-why">${esc(x)}</span></li>`));
     const play = r.audio_available ? `<button class="btn sm ghost" data-twhole title="پخش کل ویس">${I.play} کل ویس</button>` : "";
-    const acts = `<div class="t-rec-act">${play}
-        <button class="btn sm ok" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
+    const notes = problems.length ? `<button class="btn sm ghost t-notes-btn" data-tnotes aria-expanded="${openNotes.has(r.id)}" title="دلیل بررسی و پخش همان بخش ویس">${I.alert} ${fa(problems.length)} نکته</button>` : "";
+    const acts = `<div class="t-rec-act">${notes}${play}
+        <button class="btn sm pos" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
         <button class="btn sm" data-topen="${r.id}">${I.edit} اصلاح</button>
-        <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد: در فایل ثبت نشود">${I.x}</button></div>`;
-    if (sheet?.rows[r.id]) return `<div class="t-rec xr" data-trec="${r.id}">
+        <button class="btn sm ghost rej" data-tact="reject" data-r="${r.id}" title="رد: در فایل ثبت نشود">${I.x} رد</button></div>`;
+    if (sheet?.rows[r.id]) return `<div class="t-rec xr ${openNotes.has(r.id) ? "notes-open" : ""}" data-trec="${r.id}">
       <div class="xr-head"><span class="small muted" title="${esc(r.original_name)}">${I.music} ${esc(r.original_name)}${r.building_count > 1 ? ` · ساختمان ${fa(r.building_index + 1)} از ${fa(r.building_count)}` : ""}</span>${acts}</div>
       ${excelRowHtml(sheet, r)}
       <ul class="t-problems small">${problems.join("")}</ul></div>`;
@@ -987,9 +1008,9 @@ function reviewList(box, actionsBox, records, reload, sheet = null) {
         <div class="small">${esc(v.address || "آدرس پیدا نشد")}${techSummary(v) ? ` <span class="muted">· ${esc(techSummary(v))}</span>` : ""}</div>
         <ul class="t-problems small">${problems.join("")}</ul></div>
       <div class="t-rec-act">${play}
-        <button class="btn sm ok" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
+        <button class="btn sm pos" data-tact="approve" data-r="${r.id}">${I.check} درست است</button>
         <button class="btn sm" data-topen="${r.id}">${I.edit} اصلاح</button>
-        <button class="btn sm icon ghost" data-tact="reject" data-r="${r.id}" title="رد">${I.x}</button></div></div>`;
+        <button class="btn sm ghost rej" data-tact="reject" data-r="${r.id}" title="رد: در فایل ثبت نشود">${I.x} رد</button></div></div>`;
   }).join("")}</div>
   ${records.length > SHOW ? `<div class="card-b small muted">و ${fa(records.length - SHOW)} ردیف دیگر؛ با «بررسی سریع» همه را یکی‌یکی ببینید.</div>` : ""}`;
   reviewState.visible = ids;
@@ -997,6 +1018,11 @@ function reviewList(box, actionsBox, records, reload, sheet = null) {
     const rec = records.find((r) => r.id === +card.dataset.trec);
     $$("[data-tseg]", card).forEach((b) => b.onclick = (e) => { e.stopPropagation(); playRecordSegment(rec, b.dataset.tseg); });
     $$("[data-xcell]", card).forEach((td) => td.onclick = () => openRecord(rec.id));
+    $("[data-tnotes]", card)?.addEventListener("click", (e) => {
+      const open = card.classList.toggle("notes-open");
+      e.currentTarget.setAttribute("aria-expanded", String(open));
+      if (open) openNotes.add(rec.id); else openNotes.delete(rec.id);
+    });
     $$("[data-lt]", card).forEach((b) => b.onclick = () => playRecordSegment(rec, b.dataset.lt.split(",").map(Number)));
     $("[data-twhole]", card)?.addEventListener("click", () => playRecordSegment(rec, [0, 1e6]));
   });
@@ -2347,12 +2373,14 @@ async function renderSettings(el) {
           <a class="btn" href="/api/report/errors.xlsx">${I.down} گزارش خطاها و هشدارها</a>
           <button class="btn" id="s-report">${I.down} گزارش کامل ردیف‌ها (با متن ویس)</button>
           <button class="btn" id="s-open-data">${I.open} باز کردن پوشه داده‌ها</button>
-          <button class="btn danger" id="s-purge">${I.trash} حذف فایل‌های صوتیِ ثبت‌شده</button>
-          <button class="btn danger" id="s-wipe">${I.trash} پاک‌کردن کامل اطلاعات</button>
           <label class="check small"><input type="checkbox" id="s-sound" ${localStorage.getItem("v2x.sound") !== "0" ? "checked" : ""}> صدای پایان پردازش</label>
         </div>
-        <div class="muted small">فایل‌های صوتی برای پخش در بررسی نگه داشته می‌شوند. پس از ثبت در اکسل می‌توانید آن‌ها را پاک کنید؛ متن ویس‌ها و ردیف‌ها باقی می‌مانند.</div>
         <details><summary>رخدادهای اخیر</summary><div id="s-events" class="small" style="margin-top:8px"></div></details>
+      </div></div>
+      <div class="card danger-zone" style="margin-top:18px"><div class="card-h"><h2>${I.alert} کارهای برگشت‌ناپذیر</h2></div><div class="card-b stack">
+        <div class="muted small">این کارها قابل برگرداندن نیستند؛ پیش از آن از «پشتیبان‌گیری» یک پشتیبان بگیرید. فایل‌های صوتی برای پخش در بررسی نگه داشته می‌شوند؛ پس از ثبت در اکسل می‌توانید آن‌ها را پاک کنید و متن ویس‌ها و ردیف‌ها باقی می‌مانند.</div>
+        <div class="row"><button class="btn danger" id="s-purge">${I.trash} حذف فایل‌های صوتیِ ثبت‌شده</button>
+          <button class="btn danger" id="s-wipe">${I.trash} پاک‌کردن کامل اطلاعات</button></div>
       </div></div>`;
     $$("[data-dl]").forEach((b) => b.onclick = async () => {
       if (!(await confirmBox("دریافت مدل", `مدل <b class="ltr">${esc(b.dataset.dl)}</b> از اینترنت (Hugging Face) دریافت می‌شود. این تنها ارتباط اینترنتی برنامه است و هیچ ویس یا اطلاعاتی ارسال نمی‌شود. ادامه می‌دهید؟`, "دریافت"))) return;
