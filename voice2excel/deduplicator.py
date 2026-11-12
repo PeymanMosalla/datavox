@@ -76,11 +76,12 @@ def find_similar(values: dict, candidates: list[dict], source: str) -> list[dict
     return out[:5]
 
 
-def db_candidates(db: Database, exclude_record_id: int | None = None, exclude_audio_id: int | None = None) -> list[dict]:
+def db_candidates(db: Database, exclude_record_id: int | None = None, exclude_audio_id: int | None = None,
+                  exclude_audio_ids: set[int] = frozenset()) -> list[dict]:
     rows = db.list_records("r.review_state != 'rejected'")
     out = []
     for r in rows:
-        if r["id"] == exclude_record_id or r["audio_id"] == exclude_audio_id:
+        if r["id"] == exclude_record_id or r["audio_id"] == exclude_audio_id or r["audio_id"] in exclude_audio_ids:
             continue
         v = r["values"]
         out.append({

@@ -446,7 +446,10 @@ def license_install(body: LicenseIn):
 
 # ---------- فایل‌های صوتی ----------
 def _register_file(src_stream, original_name: str, batch_id: int, visit_date: str, use_filename_date: bool,
-                   dest: str) -> dict:
+                   dest: str, allow_duplicate: bool = False) -> dict:
+    """allow_duplicate: آپلود از رایانه، که کاربر درباره ویس‌های تکراری خودش تصمیم گرفته است (/api/upload/check).
+    بقیه راه‌ها (گوشی، پوشه ورودی، پوشه، نمونه‌ها) کسی برای پرسیدن ندارند: ویسی که همین حالا در همین فایل اکسل
+    هست دوباره اضافه نمی‌شود (فرستادن دوباره در تلگرام دو بار پردازش نشود)؛ در فایل دیگر بودنش مانعی نیست."""
     uploads = DATA_DIR / "uploads"
     ext = Path(original_name).suffix.lower()
     tmp = uploads / f".incoming_{uuid.uuid4().hex}{ext}"
@@ -466,11 +469,11 @@ def _register_file(src_stream, original_name: str, batch_id: int, visit_date: st
         return {"name": original_name, "result": "error",
                 "message": "حجم فایل بیش از یک گیگابایت است." if size > MAX_AUDIO_BYTES else "این فایل صوتی نیست."}
     sha = file_sha256(tmp)
-    existing = db().find_audio_by_hash(sha)
+    existing = None if allow_duplicate else db().find_audio_by_hash(sha, dest)
     if existing:
         tmp.unlink(missing_ok=True)
         return {"name": original_name, "result": "duplicate", "existing_id": existing["id"],
-                "message": f"این فایل قبلاً با نام «{existing['original_name']}» اضافه شده است."}
+                "message": f"این ویس قبلاً با نام «{existing['original_name']}» به همین فایل اضافه شده است."}
     if size == 0:
         tmp.unlink(missing_ok=True)
         return {"name": original_name, "result": "error", "message": "فایل خالی است."}
@@ -501,7 +504,7 @@ def _check_dest(dest: str) -> str:
 
 
 async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: str, use_filename_date: bool,
-                         dest: str = "") -> list[dict]:
+                         dest: str = "", allow_duplicate: bool = False) -> list[dict]:
     """ذخیره فایل‌های آپلودی (رایانه یا گوشی) و افزودن به صف؛ مدل هم از همین حالا آماده می‌شود."""
     vd = _check_visit_date(visit_date or format_jalali(today_jalali()))
     dest = _check_dest(dest)
@@ -513,7 +516,7 @@ async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: s
             results.append({"name": name, "result": "error", "message": "قالب این فایل پشتیبانی نمی‌شود."})
             continue
         try:
-            results.append(_register_file(f.file, name, batch, vd, use_filename_date, dest))
+            results.append(_register_file(f.file, name, batch, vd, use_filename_date, dest, allow_duplicate))
         except Exception as e:
             results.append({"name": name, "result": "error", "message": f"ذخیره فایل ناموفق بود: {e}"})
         finally:
@@ -526,7 +529,58 @@ async def _store_uploads(files: list[UploadFile], batch_name: str, visit_date: s
 @app.post("/api/upload")
 async def upload(files: list[UploadFile] = File(...), visit_date: str = Form(""), use_filename_date: bool = Form(True),
                  dest: str = Form("")):
-    return {"results": await _store_uploads(files, f"آپلود {datetime.now():%H:%M}", visit_date, use_filename_date, dest)}
+    """آپلود از رایانه: کاربر پیش از آن درباره ویس‌های تکراری تصمیم گرفته است (/api/upload/check)."""
+    return {"results": await _store_uploads(files, f"آپلود {datetime.now():%H:%M}", visit_date, use_filename_date, dest,
+                                            allow_duplicate=True)}
+
+
+class UploadCheck(BaseModel):
+    hashes: list[str]
+    dest: str = ""
+
+
+@app.post("/api/upload/check")
+def upload_check(body: UploadCheck):
+    """پیش از آپلود: کدام ویس‌ها (با همین محتوا، sha256) قبلاً پردازش شده‌اند؛ برای پیشنهاد «از همان استفاده شود»."""
+    dest = _check_dest(body.dest)
+    hashes = [h.lower() for h in body.hashes if re.fullmatch(r"[0-9a-fA-F]{64}", h or "")][:2000]
+    best: dict[str, dict] = {}
+    for a in db().audio_by_hashes(hashes):  # جدیدترین اول
+        cur = best.get(a["sha256"])
+        rank = (a["dest"] == dest, a["status"] == "done")
+        if cur is None or rank > cur["_rank"]:
+            best[a["sha256"]] = {**a, "_rank": rank}
+    out = {}
+    for h, a in best.items():
+        prof = excel_mapping.load_profile(a["dest"] or "") or {}
+        path = str(excel_template.target_path(prof)) if prof.get("mode") == "new" else prof.get("excel_path", "")
+        label = prof.get("title") or Path(path).name or (a["dest"] or "")
+        out[h] = {"id": a["id"], "original_name": a["original_name"], "dest": a["dest"],
+                  "dest_label": label, "same_dest": a["dest"] == dest,
+                  "processed": a["status"] == "done", "rows": a["n_rows"], "written": a["n_written"]}
+    return {"matches": out}
+
+
+class ReuseIn(BaseModel):
+    dest: str
+
+
+@app.post("/api/files/{fid}/reuse")
+def reuse_file(fid: int, body: ReuseIn):
+    """«از همان استفاده شود»: ویس پردازش‌شده با متن و ردیف‌هایش به فایل اکسل دیگر هم می‌آید، بدون تبدیل دوباره."""
+    src = _get_file(fid)
+    dest = _check_dest(body.dest)
+    if src["status"] != "done":
+        err(409, "این ویس هنوز پردازش نشده است؛ دوباره اضافه‌اش کنید تا پردازش شود.")
+    if src["dest"] == dest:
+        err(409, "این ویس همین حالا در همین فایل هست.")
+    batch = db().create_batch(f"از نتیجه قبلی {datetime.now():%H:%M}", src["visit_date"] or format_jalali(today_jalali()))
+    new_id = db().copy_audio(fid, dest, batch)
+    s = load_settings()
+    for r in db().q("SELECT id FROM records WHERE audio_id=?", (new_id,)):
+        pipeline.revalidate(db(), s, r["id"])  # تکراری بودن با ردیف‌های همین فایل دوباره سنجیده می‌شود
+    _rows_cache.clear()
+    return {"name": src["original_name"], "result": "reused", "id": new_id, "from_dest": src["dest"]}
 
 
 # ---------- آپلود از گوشی (شبکه محلی) ----------
@@ -725,7 +779,7 @@ def delete_file(fid: int):
         c.execute("DELETE FROM records WHERE audio_id=?", (fid,))
         c.execute("DELETE FROM transcripts WHERE audio_id=?", (fid,))
         c.execute("DELETE FROM audio_files WHERE id=?", (fid,))
-    if f["stored_name"]:
+    if f["stored_name"] and not db().stored_in_use(f["stored_name"]):
         (DATA_DIR / "uploads" / f["stored_name"]).unlink(missing_ok=True)
     return {"ok": True}
 
@@ -2429,9 +2483,10 @@ def purge_audio(body: PurgeIn):
     else:
         err(400, "دامنه نامعتبر است.")
     for r in rows:
-        if r["stored_name"]:
-            (DATA_DIR / "uploads" / r["stored_name"]).unlink(missing_ok=True)
         db().set_audio(r["id"], audio_deleted=1)
+    for r in rows:  # فایل صوتی مشترک با رونوشتی که هنوز صدایش لازم است، می‌ماند
+        if r["stored_name"] and not db().stored_in_use(r["stored_name"]):
+            (DATA_DIR / "uploads" / r["stored_name"]).unlink(missing_ok=True)
     for p in (DATA_DIR / "tmp").glob("*"):
         if p.is_file():
             p.unlink(missing_ok=True)

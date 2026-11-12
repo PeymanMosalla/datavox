@@ -107,6 +107,8 @@ const toastErr = (e) => toast(e.message || String(e), "err");
 
 let modalResolve = null;
 function openModal({ title, body, actions = [], wide = false, onOpen }) {
+  // پنجره قبلی که هنوز پاسخ نگرفته، بسته (انصراف) حساب می‌شود تا منتظرش برای همیشه نماند
+  if (modalResolve) { const r = modalResolve; modalResolve = null; r(undefined); }
   const m = $("#modal");
   m.className = "modal" + (wide ? " wide" : "");
   m.innerHTML = `<div class="modal-h">${title}</div><div class="modal-b">${body}</div>
@@ -266,6 +268,16 @@ let routeSeq = 0;
 // فقط صفحه‌ای که هنوز نمایش داده می‌شود قلاب به‌روزرسانی ثبت می‌کند (جلوگیری از تداخل صفحه قبلی)
 function setHook(seq, fn) { if (seq === routeSeq) pageHooks.onStatus = fn; }
 
+/** مسیر صفحه: [{label, href}]؛ آخرین مورد صفحه فعلی است (بدون پیوند). کمتر از دو مورد = پنهان. */
+function setCrumbs(items, seq = routeSeq) {
+  const nav = $("#crumbs");
+  if (!nav || seq !== routeSeq) return;
+  nav.hidden = items.length < 2;
+  nav.innerHTML = items.map((c, i) => i === items.length - 1
+    ? `<span aria-current="page">${esc(c.label)}</span>`
+    : `<a href="${c.href}">${esc(c.label)}</a><span class="sep" aria-hidden="true">‹</span>`).join("");
+}
+
 function route() {
   const name = (location.hash.replace(/^#\//, "").split("?")[0]) || "files";
   const p = PAGES[name] || PAGES.files;
@@ -279,6 +291,8 @@ function route() {
   pageHooks = {};
   reviewState.reload = reviewState.updateRow = null;  // قلاب‌های صفحه بررسیِ قبلی به DOM حذف‌شده اشاره دارند
   routeSeq++;
+  // صفحه‌های زیرمجموعه (واژه‌نامه ← تنظیمات)؛ مسیر صفحه‌های هر فایل را خود آن صفحه پس از خواندن نام فایل می‌سازد
+  setCrumbs(p.parent && state.page !== "templates" ? [{ label: PAGES[p.parent].title, href: `#/${p.parent}` }, { label: p.title }] : []);
   closeDrawer();
   $("#page").innerHTML = '<div class="row"><span class="spinner"></span></div>';
   p.render($("#page")).catch(toastErr);
@@ -537,6 +551,7 @@ async function renderFile(el) {
   Object.assign(fileState, { name, info });
   $("#page-title").textContent = destLabel(info);
   $("#tb-page").textContent = destLabel(info);
+  setCrumbs([{ label: PAGES.files.title, href: "#/files" }, { label: destLabel(info) }], seq);
   api("/api/model/warmup", { method: "POST" }).catch(() => {});
   const firstRun = new URLSearchParams(location.hash.split("?")[1] || "").get("first") === "1" && !info.voices;
   el.innerHTML = `<div id="fw-head" class="fw-head"></div><div class="fw">
@@ -664,9 +679,26 @@ async function renderFile(el) {
   async function add(list) {
     const files = audioOnly(list);
     if (!files.length) return;
-    $("#fw-progress").innerHTML = `<div class="progress"><div class="progress-bar" id="fw-up-bar"></div></div><div class="muted small">در حال افزودن ${fa(files.length)} ویس...</div>`;
+    // یک دسته در هر لحظه: دسته بعدی پس از پایان بررسی و آپلود دسته قبلی شروع می‌شود
+    const prev = uploadQueue;
+    let done;
+    uploadQueue = new Promise((r) => { done = r; });
+    await prev;
+    try { await addOne(files); } finally { done(); }
+  }
+  async function addOne(files) {
+    $("#fw-progress").innerHTML = `<div class="muted small"><span class="spinner"></span> بررسی ${fa(files.length)} ویس...</div>`;
+    const plan = await planUploads(files, name);
+    if (!plan) { drawProgress(); return; }  // کاربر پنجره پرسش را بست
+    $("#fw-progress").innerHTML = `<div class="progress"><div class="progress-bar" id="fw-up-bar"></div></div><div class="muted small">در حال افزودن ${fa(plan.upload.length + plan.reuse.length)} ویس...</div>`;
     try {
-      const results = await uploadAudio(files, $("#fw-date").value.trim(), true, (p) => { const b = $("#fw-up-bar"); if (b) b.style.width = p + "%"; }, name);
+      const results = plan.upload.length
+        ? await uploadAudio(plan.upload, $("#fw-date").value.trim(), true, (p) => { const b = $("#fw-up-bar"); if (b) b.style.width = p + "%"; }, name) : [];
+      for (const r of plan.reuse) {
+        try { results.push(await api(`/api/files/${r.id}/reuse`, { method: "POST", body: { dest: name } })); }
+        catch (e) { results.push({ name: r.name, result: "error", message: e.message }); }
+      }
+      plan.skipped.forEach((x) => results.push({ name: x.name, result: "skipped" }));
       reportUpload(results);
       if (results.some((r) => r.result === "added")) await startQueue();
     } catch (e) { toastErr(e); }
@@ -1077,6 +1109,71 @@ async function droppedFiles(e) {
   return out;
 }
 
+/** صف افزودن ویس: دسته بعدی پس از پایان بررسی و آپلود دسته قبلی (دو پنجره پرسش هم‌زمان باز نشود) */
+let uploadQueue = Promise.resolve();
+
+/** اثر انگشت محتوای هر فایل (همان sha256 سرور)؛ null اگر مرورگر پشتیبانی نکند. فایل خیلی بزرگ بررسی نمی‌شود. */
+async function fileHashes(files) {
+  if (!window.crypto?.subtle) return null;
+  try {
+    return await Promise.all(files.map(async (f, i) => f.size > 200e6 ? `big-${i}` : [...new Uint8Array(
+      await crypto.subtle.digest("SHA-256", await f.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join("")));
+  } catch { return null; }
+}
+
+/** پیش از آپلود از رایانه:
+ *  ۱) ویس‌های تکراری همین انتخاب (محتوای یکسان): «فقط یکی استفاده شود؟» بله ← یکی، خیر ← همه.
+ *  ۲) ویسی که قبلاً پردازش شده: «از همان نتیجه در این فایل استفاده شود؟» بله ← متن و ردیف‌ها بدون تبدیل دوباره
+ *     (اگر همین حالا در همین فایل باشد، دوباره اضافه نمی‌شود)، خیر ← روال همیشگی: تبدیل و بررسی دوباره.
+ *  خروجی null یعنی کاربر پنجره را بست (انصراف). */
+async function planUploads(files, dest) {
+  const hashes = await fileHashes(files);
+  if (!hashes) return { upload: files, reuse: [], skipped: [] };
+  let items = files.map((f, i) => ({ f, h: hashes[i] }));
+  const groups = new Map();
+  items.forEach((x) => groups.set(x.h, [...(groups.get(x.h) || []), x]));
+  const dupGroups = [...groups.values()].filter((g) => g.length > 1);
+  if (dupGroups.length) {
+    const ans = await openModal({
+      title: "ویس تکراری در همین انتخاب",
+      body: `<div class="stack"><div>محتوای این ویس‌ها دقیقاً یکی است:</div>
+        <ul class="reasons">${dupGroups.map((g) => `<li>${g.map((x) => `«${esc(x.f.name)}»`).join(" و ")}</li>`).join("")}</ul>
+        <b>فقط یکی از هر کدام استفاده شود؟</b></div>`,
+      actions: [{ label: "بله، فقط یکی", cls: "primary", value: "one" }, { label: "خیر، همه اضافه شوند", value: "all" }],
+    });
+    if (!ans) return null;
+    if (ans === "one") { const seen = new Set(); items = items.filter((x) => !seen.has(x.h) && seen.add(x.h)); }
+  }
+  let matches = {};
+  try { matches = (await api("/api/upload/check", { method: "POST", body: { hashes: [...new Set(items.map((x) => x.h))], dest } })).matches || {}; }
+  catch { matches = {}; }
+  const prev = items.filter((x) => matches[x.h]?.processed);
+  const reuse = [], skipped = [];
+  if (prev.length) {
+    const where = (m) => m.same_dest ? "همین فایل" : `فایل «${esc(m.dest_label)}»`;
+    const ans = await openModal({
+      title: "این ویس‌ها قبلاً پردازش و بررسی شده‌اند",
+      body: `<div class="stack"><ul class="reasons">${prev.map((x) => { const m = matches[x.h];
+          return `<li>«${esc(x.f.name)}» — در ${where(m)}${m.rows ? `، ${fa(m.rows)} ردیف${m.written ? ` (${fa(m.written)} ردیف ثبت‌شده در اکسل)` : ""}` : ""}</li>`; }).join("")}</ul>
+        <b>از همان نتیجه در این فایل استفاده شود؟</b>
+        <span class="muted small">«بله»: متن و ردیف‌های قبلی بدون تبدیل دوباره به این فایل می‌آیند؛ ویسی که همین حالا در همین فایل هست دوباره اضافه نمی‌شود.
+        «خیر»: ویس مثل همیشه دوباره به متن تبدیل و بررسی می‌شود.</span></div>`,
+      actions: [{ label: "بله، از همان استفاده شود", cls: "primary", value: "reuse" }, { label: "خیر، دوباره پردازش شود", value: "again" }],
+    });
+    if (!ans) return null;
+    if (ans === "reuse") {
+      const taken = new Set();
+      for (const x of prev) {
+        const m = matches[x.h];
+        if (m.same_dest) skipped.push({ name: x.f.name });
+        else if (!taken.has(m.id)) { taken.add(m.id); reuse.push({ id: m.id, name: x.f.name }); }
+      }
+      items = items.filter((x) => !prev.includes(x));
+    }
+  }
+  return { upload: items.map((x) => x.f), reuse, skipped };
+}
+
 /** ارسال ویس‌ها در بسته‌های ۸تایی؛ onProgress(درصد). خروجی: نتیجه هر فایل. */
 async function uploadAudio(files, visitDate, useFilenameDate, onProgress = () => {}, dest = "") {
   const results = [];
@@ -1118,9 +1215,13 @@ function modelChip(stateName, available) {
 
 function reportUpload(results) {
   const added = results.filter((r) => r.result === "added").length;
+  const reused = results.filter((r) => r.result === "reused").length;
+  const skipped = results.filter((r) => r.result === "skipped").length;
   const dup = results.filter((r) => r.result === "duplicate");
   const errs = results.filter((r) => r.result === "error");
   if (added) toast(`${fa(added)} فایل به صف اضافه شد.`, "ok");
+  if (reused) toast(`${fa(reused)} ویس با همان نتیجه قبلی به این فایل آمد (بدون تبدیل دوباره).`, "ok");
+  if (skipped) toast(`${fa(skipped)} ویس همین حالا در همین فایل بود و دوباره اضافه نشد.`, "info");
   if (dup.length || errs.length) {
     openModal({
       title: "نتیجه افزودن فایل‌ها",
@@ -1666,6 +1767,7 @@ async function renderTemplates(el) {
   state.tplMeta = meta;
   $("#page-title").textContent = `تنظیمات «${destLabel(dest)}»`;
   $("#tb-page").textContent = destLabel(dest);
+  setCrumbs([{ label: PAGES.files.title, href: "#/files" }, { label: destLabel(dest), href: fileHref(tplState.name) }, { label: "تنظیمات فایل" }]);
   el.innerHTML = `<div id="dv-bar" class="fw-head"></div><div class="card" id="dv-editor" style="margin-top:18px"><div class="card-b"><span class="spinner"></span></div></div>`;
   fileBar($("#dv-bar"), dest, () => renderTemplates(el), "settings");
 

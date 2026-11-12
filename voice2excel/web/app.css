@@ -6,15 +6,15 @@
 }
 
 :root {
-  --bg: #f3f6f9;
+  --bg: #f8fafc;
   --surface: #ffffff;
   --surface-2: #f7f9fb;
   --surface-3: #edf1f5;
   --text: #10233d;
   --text-2: #44546d;
-  --muted: #74829a;
-  --border: #e1e7ee;
-  --border-strong: #cbd4df;
+  --muted: #5f6e86;
+  --border: #d8e0ea;
+  --border-strong: #9fb2c8;
   --primary: #08805a;
   --primary-2: #066a4b;
   --primary-soft: #e0f3ea;
@@ -29,6 +29,21 @@
   --info: #0f7891;
   --info-soft: #e1f3f7;
   --gray-soft: #edf0f4;
+  /* دکمه‌ها: هر کار رنگ خودش را دارد تا در نگاه اول پیدا باشد */
+  --btn-bg: #eaf0f7;
+  --btn-border: #8ea3bd;
+  --btn-text: #0f2440;
+  --play-bg: #e3f3fa;
+  --play-text: #0b5f78;
+  --play-border: #6db8d3;
+  --pos-border: #08805a;
+  --rej-border: #e2a1a9;
+  /* «وارد کردن مجوز»: رنگ‌های گرادیان زنده (کم‌رنگ تا متن خوانا بماند) */
+  --lic-g1: #dff3ea;
+  --lic-g2: #ddeefb;
+  --lic-g3: #ece4fb;
+  --lic-g4: #fdf0d8;
+  --lic-panel: rgba(255, 255, 255, .7);
   --shadow: 0 1px 2px rgba(20, 30, 60, .05), 0 4px 16px rgba(20, 30, 60, .06);
   --shadow-lg: 0 10px 40px rgba(20, 30, 60, .18);
   --radius: 14px;
@@ -46,15 +61,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0a1424;
-    --surface: #0f1b2e;
-    --surface-2: #13223a;
-    --surface-3: #192b46;
-    --text: #e6edf5;
-    --text-2: #b3c0d3;
-    --muted: #8796ae;
-    --border: #23344f;
-    --border-strong: #30456a;
+    --bg: #16233a;
+    --surface: #1d2d47;
+    --surface-2: #233654;
+    --surface-3: #2b4163;
+    --text: #eef3fa;
+    --text-2: #c3d0e2;
+    --muted: #9fb0c8;
+    --border: #344d72;
+    --border-strong: #4d6b96;
     --primary: #34d399;
     --primary-2: #5fdfae;
     --primary-soft: #11392f;
@@ -68,7 +83,20 @@
     --err-soft: #3a1820;
     --info: #4cc3dd;
     --info-soft: #11303a;
-    --gray-soft: #1c2a40;
+    --btn-bg: #2d4468;
+  --btn-border: #6587b8;
+  --btn-text: #ffffff;
+  --play-bg: #163f52;
+  --play-text: #7fd8f0;
+  --play-border: #3a8fae;
+  --pos-border: #34d399;
+  --rej-border: #b8505d;
+  --lic-g1: #143d33;
+  --lic-g2: #173a57;
+  --lic-g3: #2d2b58;
+  --lic-g4: #3b3018;
+  --lic-panel: rgba(18, 30, 50, .55);
+  --gray-soft: #1c2a40;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
     --c-name: #8aa1ff;
     --c-phone: #4cc3dd;
@@ -81,15 +109,15 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0a1424;
-  --surface: #0f1b2e;
-  --surface-2: #13223a;
-  --surface-3: #192b46;
-  --text: #e6edf5;
-  --text-2: #b3c0d3;
-  --muted: #8796ae;
-  --border: #23344f;
-  --border-strong: #30456a;
+  --bg: #16233a;
+  --surface: #1d2d47;
+  --surface-2: #233654;
+  --surface-3: #2b4163;
+  --text: #eef3fa;
+  --text-2: #c3d0e2;
+  --muted: #9fb0c8;
+  --border: #344d72;
+  --border-strong: #4d6b96;
   --primary: #34d399;
   --primary-2: #5fdfae;
   --primary-soft: #11392f;
@@ -103,6 +131,19 @@
   --err-soft: #3a1820;
   --info: #4cc3dd;
   --info-soft: #11303a;
+  --btn-bg: #2d4468;
+  --btn-border: #6587b8;
+  --btn-text: #ffffff;
+  --play-bg: #163f52;
+  --play-text: #7fd8f0;
+  --play-border: #3a8fae;
+  --pos-border: #34d399;
+  --rej-border: #b8505d;
+  --lic-g1: #143d33;
+  --lic-g2: #173a57;
+  --lic-g3: #2d2b58;
+  --lic-g4: #3b3018;
+  --lic-panel: rgba(18, 30, 50, .55);
   --gray-soft: #1c2a40;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
   --c-name: #8aa1ff;
@@ -158,7 +199,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   font-weight: 500; transition: background .15s, color .15s;
 }
 .nav a:hover { background: var(--surface-3); color: var(--text); }
-.nav a.active { background: var(--primary-soft); color: var(--primary-2); font-weight: 700; }
+.nav a.active { background: var(--primary); color: var(--on-primary); font-weight: 700; }
+.nav a.active svg { color: var(--on-primary); }
+.nav a.active .badge { background: var(--on-primary); color: var(--primary); }
 .nav a span { flex: 1; }
 .badge {
   min-width: 22px; height: 22px; border-radius: 11px; padding: 0 7px; display: inline-grid; place-items: center;
@@ -183,6 +226,13 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .topbar h1 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.2px; }
 .page-sub { color: var(--muted); font-size: 13.5px; }
+/* مسیر صفحه: یک خط کوچک بالای عنوان */
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; line-height: 1.6; color: var(--muted); margin-bottom: 2px; }
+.crumbs a { color: var(--text-2); text-decoration: none; border-radius: 4px; padding: 0 2px; }
+.crumbs a:hover { color: var(--primary-2); text-decoration: underline; }
+.crumbs a:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.crumbs [aria-current] { color: var(--muted); max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs .sep { color: var(--muted); opacity: .7; }
 .topbar-progress { width: 340px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; box-shadow: var(--shadow); }
 .tp-label { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; margin-bottom: 6px; color: var(--text-2); }
 .tp-label span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -206,24 +256,28 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 38px; padding: 0 16px;
-  border-radius: 10px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
-  font-weight: 600; cursor: pointer; white-space: nowrap; transition: all .15s;
+  border-radius: 10px; border: 1px solid var(--btn-border); background: var(--btn-bg); color: var(--btn-text);
+  font-weight: 700; cursor: pointer; white-space: nowrap; transition: all .15s;
 }
-.btn:hover { background: var(--surface-3); }
+.btn:hover { background: var(--btn-bg); filter: brightness(.95); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn svg { width: 18px; height: 18px; }
-.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); box-shadow: 0 2px 8px rgba(8, 128, 90, .28); }
-.btn.primary:hover { background: var(--primary-2); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); box-shadow: 0 3px 10px rgba(8, 128, 90, .35); }
+.btn.primary:hover { background: var(--primary-2); filter: none; }
 /* سطح ۱: کار اصلی هر صفحه/پنجره (گام بعد، تأیید برای ثبت، تأیید در پنجره‌های پرسش) — همان سبز اصلی با متن خوانا در هر دو تم */
 .btn.ok { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
-.btn.ok:hover { background: var(--primary-2); }
+.btn.ok:hover { background: var(--primary-2); filter: none; }
 /* سطح ۲: کار مثبت روزمره («درست است» در فهرست ردیف‌ها) — سبز کم‌رنگ تا با دکمه اصلی رقابت نکند */
-.btn.pos { background: var(--primary-soft); border-color: var(--primary); border-color: color-mix(in srgb, var(--primary) 40%, transparent); color: var(--primary-2); }
+.btn.pos { background: var(--primary-soft); border: 1.5px solid var(--pos-border); color: var(--primary-2); }
 .btn.pos:hover { background: var(--surface-3); background: color-mix(in srgb, var(--primary) 22%, var(--surface)); }
-.btn.danger { color: var(--err); border-color: var(--err); border-color: color-mix(in srgb, var(--err) 40%, var(--border)); }
 .btn.danger:hover { background: var(--err-soft); }
-.btn.ghost { border-color: transparent; background: transparent; }
-.btn.ghost:hover { background: var(--surface-3); }
+.btn.ghost { border-color: var(--border-strong); background: transparent; }  /* قاب ملایم: دکمه بودنش پیدا باشد */
+.btn.ghost:hover { background: var(--surface-3); filter: none; }
+/* شنیدن و پخش: آبی */
+[data-twhole], [data-tseg], [data-play], [data-lt], [data-seg], [data-segk], [data-fseg], [data-fsegk], #fm-play, .btn.play {
+  background: var(--play-bg); color: var(--play-text); border-color: var(--play-border); }
+/* رد و حذف: قرمز */
+.btn.rej, .btn.danger, [data-vdel] { color: var(--err); background: var(--err-soft); border-color: var(--rej-border); }
 .btn.sm { height: 34px; padding: 0 12px; font-size: 13px; border-radius: 8px; }
 .btn.icon { width: 34px; padding: 0; }
 .btn.sm.icon { width: 34px; }
@@ -542,7 +596,7 @@ body.x-drawer-open .toasts { left: calc(min(640px, 96vw) + 20px); }
 #fw-add.compact .dz-ico, #fw-add.compact .dropzone .muted.small, #fw-add.compact #fw-samples { display: none; }
 #fw-commit.focus { border: 2px solid var(--primary); }
 .fc-act { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-[data-vdel] { color: var(--err); margin-inline-start: 10px; }
+[data-vdel] { margin-inline-start: 10px; }
 [data-vdel]:hover { background: var(--err-soft); }
 .danger-zone { border-color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--border)); }
 .danger-zone .card-h h2, .danger-zone .card-h h2 svg { color: var(--err); }
@@ -558,10 +612,9 @@ body.x-drawer-open .toasts { left: calc(min(640px, 96vw) + 20px); }
 /* ردیف به شکل اکسل: خانه‌های زرد جای مشکل را نشان می‌دهند؛ توضیح با دکمه «N نکته» باز می‌شود */
 .t-rec.xr .t-problems { display: none; }
 .t-rec.xr.notes-open .t-problems { display: block; }
-.t-notes-btn { color: var(--warn-text); }
+.t-notes-btn { color: var(--warn-text); background: var(--warn-soft); border-color: var(--warn); }
 .t-notes-btn[aria-expanded="true"] { background: var(--warn-soft); }
-.btn.rej { color: var(--text-2); }
-.btn.rej:hover { color: var(--err); background: var(--err-soft); }
+.btn.rej:hover, .btn.danger:hover { filter: brightness(.95); }
 .t-problems li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 3px 0; }
 .t-why { flex: 1 1 260px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .t-problems .btn.sm { height: 30px; padding: 0 10px; }
@@ -744,6 +797,22 @@ html.in-app .drawer, html.in-app .drawer-backdrop, html.in-app .modal-backdrop {
 .act-drop.over { border-color: var(--primary); background: var(--primary-soft); }
 .act-drop.has { border-style: solid; border-color: var(--primary); background: var(--primary-soft); }
 .act-import > summary.card-h { list-style: none; cursor: pointer; }
+/* «وارد کردن مجوز»: زمینه گرادیان زنده، آرام و بی‌پایان (هر دور ۳۰ ثانیه) */
+.card.act-import {
+  background: linear-gradient(120deg, var(--lic-g1), var(--lic-g2), var(--lic-g3), var(--lic-g4), var(--lic-g1));
+  background-size: 400% 400%;
+  animation: lic-flow 30s ease-in-out infinite;
+}
+.card.act-import .card-h { border-bottom-color: transparent; }
+.card.act-import .act-drop, .card.act-import .act-paste textarea { background: var(--lic-panel); }
+.card.act-import .act-drop.over, .card.act-import .act-drop.has { background: var(--primary-soft); }
+@keyframes lic-flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+/* کسی که در ویندوز حرکت را کم کرده (دسترس‌پذیری): زمینه ثابت می‌ماند */
+@media (prefers-reduced-motion: reduce) { .card.act-import { animation: none; } }
 .act-import > summary.card-h::-webkit-details-marker { display: none; }
 .act-import > summary.card-h::after { content: "▾"; color: var(--muted); }
 .act-import:not([open]) > summary.card-h { border-bottom: 0; }
@@ -861,7 +930,7 @@ html.in-app .drawer, html.in-app .drawer-backdrop, html.in-app .modal-backdrop {
 .xr-table td.st-missing { background: var(--surface-2); }
 .xr-table td.ltr-cell { direction: ltr; text-align: right; unicode-bidi: isolate; }
 .xr-rn { width: 30px; min-width: 30px !important; text-align: center; color: var(--muted); background: var(--surface-3) !important; cursor: default !important; }
-.xr-play { position: absolute; inset-inline-start: 2px; bottom: 2px; width: 28px; height: 28px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--primary); cursor: pointer; display: grid; place-items: center; }
+.xr-play { position: absolute; inset-inline-start: 2px; bottom: 2px; width: 28px; height: 28px; padding: 0; border: 1px solid var(--play-border); border-radius: 6px; background: var(--play-bg); color: var(--play-text); cursor: pointer; display: grid; place-items: center; }
 .xr-play svg { width: 14px; height: 14px; }
 /* تیک و گزینه‌ها: با موس رایانه‌های قدیمی راحت زده شوند */
 input[type=checkbox], input[type=radio] { width: 18px; height: 18px; accent-color: var(--primary); }

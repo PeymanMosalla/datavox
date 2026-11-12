@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS audio_files(
     batch_id INTEGER REFERENCES batches(id),
     original_name TEXT NOT NULL,
     stored_name TEXT,
-    sha256 TEXT UNIQUE,
+    sha256 TEXT,
     size INTEGER,
     duration REAL,
     visit_date TEXT,
@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS audio_files(
     created_at TEXT, updated_at TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_audio_status ON audio_files(status);
+CREATE INDEX IF NOT EXISTS ix_audio_sha ON audio_files(sha256);
 CREATE TABLE IF NOT EXISTS transcripts(
     audio_id INTEGER PRIMARY KEY REFERENCES audio_files(id) ON DELETE CASCADE,
     raw_text TEXT, normalized_text TEXT, processed_text TEXT,
@@ -138,6 +139,40 @@ class Database:
             cols = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
             if column not in cols:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+        self._drop_unique_sha()
+
+    _AUDIO_COLUMNS = ("id", "batch_id", "original_name", "stored_name", "sha256", "size", "duration", "visit_date",
+                      "date_source", "status", "error", "attempts", "model", "processing_seconds", "peak_rss_mb",
+                      "audio_deleted", "created_at", "updated_at", "dest")
+
+    def _drop_unique_sha(self) -> None:
+        """نسخه‌های پیش از ۲.۷.۱: sha256 یکتا بود (هر ویس فقط یک بار در کل برنامه). حالا یک ویس می‌تواند در چند
+        فایل اکسل باشد؛ جدول با همان داده و بدون آن قید دوباره ساخته می‌شود."""
+        c = self.conn()
+        unique = False
+        for idx in c.execute("PRAGMA index_list(audio_files)").fetchall():
+            if idx[2] and [r[2] for r in c.execute(f"PRAGMA index_info('{idx[1]}')")] == ["sha256"]:
+                unique = True
+        if not unique:
+            return
+        have = [r[1] for r in c.execute("PRAGMA table_info(audio_files)")]
+        cols = [x for x in self._AUDIO_COLUMNS if x in have]
+        ddl = SCHEMA.split("CREATE TABLE IF NOT EXISTS audio_files(")[1].split(");")[0]
+        c.execute("PRAGMA foreign_keys=OFF")
+        try:
+            c.execute("BEGIN IMMEDIATE")
+            c.execute(f"CREATE TABLE audio_files_v2({ddl}, dest TEXT)" if "dest" not in ddl else f"CREATE TABLE audio_files_v2({ddl})")
+            c.execute(f"INSERT INTO audio_files_v2({','.join(cols)}) SELECT {','.join(cols)} FROM audio_files")
+            c.execute("DROP TABLE audio_files")
+            c.execute("ALTER TABLE audio_files_v2 RENAME TO audio_files")
+            c.execute("CREATE INDEX IF NOT EXISTS ix_audio_status ON audio_files(status)")
+            c.execute("CREATE INDEX IF NOT EXISTS ix_audio_sha ON audio_files(sha256)")
+            c.execute("COMMIT")
+        except Exception:
+            c.execute("ROLLBACK")
+            raise
+        finally:
+            c.execute("PRAGMA foreign_keys=ON")
 
     def conn(self) -> sqlite3.Connection:
         c = getattr(self._local, "conn", None)
@@ -189,8 +224,53 @@ class Database:
                             (name, visit_date, now()))
             return cur.lastrowid
 
-    def find_audio_by_hash(self, sha: str) -> dict | None:
-        return self.one("SELECT * FROM audio_files WHERE sha256=?", (sha,))
+    def find_audio_by_hash(self, sha: str, dest: str | None = None) -> dict | None:
+        """ویسی با همین محتوا؛ با dest فقط در همان فایل اکسل."""
+        if dest is None:
+            return self.one("SELECT * FROM audio_files WHERE sha256=? ORDER BY id DESC", (sha,))
+        return self.one("SELECT * FROM audio_files WHERE sha256=? AND dest=? ORDER BY id DESC", (sha, dest))
+
+    def audio_by_hashes(self, hashes: list[str]) -> list[dict]:
+        if not hashes:
+            return []
+        marks = ",".join("?" * len(hashes))
+        return self.q(f"""SELECT a.*, (SELECT COUNT(*) FROM records r WHERE r.audio_id=a.id) n_rows,
+                          (SELECT COUNT(*) FROM records r WHERE r.audio_id=a.id AND r.exported_at IS NOT NULL) n_written
+                          FROM audio_files a WHERE a.sha256 IN ({marks}) ORDER BY a.id DESC""", tuple(hashes))
+
+    def stored_in_use(self, stored_name: str, exclude_ids: tuple[int, ...] = ()) -> bool:
+        """آیا ویس دیگری (رونوشت همان ویس در فایل دیگر) هنوز از همین فایل صوتی استفاده می‌کند؟"""
+        skip = f" AND id NOT IN ({','.join('?' * len(exclude_ids))})" if exclude_ids else ""
+        return bool(self.one(f"SELECT 1 x FROM audio_files WHERE stored_name=? AND audio_deleted=0{skip} LIMIT 1",
+                             (stored_name, *exclude_ids)))
+
+    def copy_audio(self, src_id: int, dest: str, batch_id: int) -> int:
+        """رونوشت ویس پردازش‌شده برای فایل اکسل دیگر: همان متن و ردیف‌ها، بی‌آنکه دوباره به متن تبدیل شود.
+        ردیفی که در فایل مبدأ تأیید یا ثبت شده بود، اینجا هم تأییدشده است (همان بررسی کاربر)؛ ثبت در اکسل نه."""
+        with self.tx() as c:
+            a = c.execute("SELECT * FROM audio_files WHERE id=?", (src_id,)).fetchone()
+            cur = c.execute(
+                """INSERT INTO audio_files(batch_id, original_name, stored_name, sha256, size, duration, visit_date,
+                   date_source, status, error, model, processing_seconds, audio_deleted, dest, created_at, updated_at)
+                   VALUES(?,?,?,?,?,?,?,?, 'done', ?, ?, 0, ?, ?, ?, ?)""",
+                (batch_id, a["original_name"], a["stored_name"], a["sha256"], a["size"], a["duration"], a["visit_date"],
+                 a["date_source"], a["error"], a["model"], a["audio_deleted"], dest, now(), now()))
+            new_id = cur.lastrowid
+            c.execute("""INSERT INTO transcripts(audio_id, raw_text, normalized_text, processed_text, segments_json, words_json,
+                         clauses_json, language, language_prob, avg_logprob, model, created_at)
+                         SELECT ?, raw_text, normalized_text, processed_text, segments_json, words_json, clauses_json,
+                         language, language_prob, avg_logprob, model, ? FROM transcripts WHERE audio_id=?""",
+                      (new_id, now(), src_id))
+            for r in c.execute("SELECT * FROM records WHERE audio_id=? ORDER BY building_index, id", (src_id,)).fetchall():
+                approved = r["review_state"] == "approved" or r["exported_at"]
+                state = "approved" if approved else ("rejected" if r["review_state"] == "rejected" else "pending")
+                c.execute("""INSERT INTO records(audio_id, building_index, building_count, extracted_json, values_json,
+                             validation_json, status, review_state, approved_by, duplicate_decision, manually_edited,
+                             created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                          (new_id, r["building_index"], r["building_count"], r["extracted_json"], r["values_json"],
+                           r["validation_json"], r["status"], state, "copy" if approved else r["approved_by"],
+                           r["duplicate_decision"], r["manually_edited"], now(), now()))
+            return new_id
 
     def add_audio(self, batch_id: int, original_name: str, stored_name: str, sha: str, size: int,
                   visit_date: str, date_source: str, dest: str | None = None) -> int:
