@@ -39,10 +39,11 @@
   --pos-border: #08805a;
   --rej-border: #e2a1a9;
   /* «وارد کردن مجوز»: رنگ‌های گرادیان زنده (کم‌رنگ تا متن خوانا بماند) */
-  --lic-g1: #dff3ea;
-  --lic-g2: #ddeefb;
-  --lic-g3: #ece4fb;
-  --lic-g4: #fdf0d8;
+  --lic-g1: #d9f4e4;
+  --lic-g2: #d3f1f1;
+  --lic-g3: #dbe8fc;
+  --lic-g4: #e9e1fc;
+  --lic-g5: #fbe2f0;
   --lic-panel: rgba(255, 255, 255, .7);
   --shadow: 0 1px 2px rgba(20, 30, 60, .05), 0 4px 16px rgba(20, 30, 60, .06);
   --shadow-lg: 0 10px 40px rgba(20, 30, 60, .18);
@@ -91,10 +92,11 @@
   --play-border: #3a8fae;
   --pos-border: #34d399;
   --rej-border: #b8505d;
-  --lic-g1: #143d33;
-  --lic-g2: #173a57;
-  --lic-g3: #2d2b58;
-  --lic-g4: #3b3018;
+  --lic-g1: #12402f;
+  --lic-g2: #0f3d45;
+  --lic-g3: #173a5f;
+  --lic-g4: #30295f;
+  --lic-g5: #4a2343;
   --lic-panel: rgba(18, 30, 50, .55);
   --gray-soft: #1c2a40;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
@@ -139,10 +141,11 @@
   --play-border: #3a8fae;
   --pos-border: #34d399;
   --rej-border: #b8505d;
-  --lic-g1: #143d33;
-  --lic-g2: #173a57;
-  --lic-g3: #2d2b58;
-  --lic-g4: #3b3018;
+  --lic-g1: #12402f;
+  --lic-g2: #0f3d45;
+  --lic-g3: #173a5f;
+  --lic-g4: #30295f;
+  --lic-g5: #4a2343;
   --lic-panel: rgba(18, 30, 50, .55);
   --gray-soft: #1c2a40;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 16px rgba(0, 0, 0, .25);
@@ -799,7 +802,7 @@ html.in-app .drawer, html.in-app .drawer-backdrop, html.in-app .modal-backdrop {
 .act-import > summary.card-h { list-style: none; cursor: pointer; }
 /* «وارد کردن مجوز»: زمینه گرادیان زنده، آرام و بی‌پایان (هر دور ۳۰ ثانیه) */
 .card.act-import {
-  background: linear-gradient(120deg, var(--lic-g1), var(--lic-g2), var(--lic-g3), var(--lic-g4), var(--lic-g1));
+  background: linear-gradient(120deg, var(--lic-g1), var(--lic-g2), var(--lic-g3), var(--lic-g4), var(--lic-g5), var(--lic-g1));
   background-size: 400% 400%;
   animation: lic-flow 30s ease-in-out infinite;
 }
