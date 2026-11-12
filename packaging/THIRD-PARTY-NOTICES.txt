@@ -25,6 +25,13 @@ Application
 - psutil — BSD 3-Clause License
 - jdatetime — Python Software Foundation License
 
+Data
+----
+- Common Iranian surnames: farbodbj/iranian-surname-frequencies — Apache License 2.0
+  https://github.com/farbodbj/iranian-surname-frequencies
+- Common Iranian given names: nabidam/persian-names — MIT License
+  https://github.com/nabidam/persian-names
+
 Font
 ----
 - Vazirmatn — (c) Saber Rastikerdar — SIL Open Font License 1.1

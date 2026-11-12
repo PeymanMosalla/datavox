@@ -31,9 +31,10 @@ def test_end_to_end(db, settings, wav_factory, tmp_path, monkeypatch):
         r = c.post("/api/upload", files=files, data={"visit_date": "1405/07/28", "use_filename_date": "true"}).json()
         assert [x["result"] for x in r["results"]] == ["added", "added"]
         assert r["results"][0]["visit_date"] == "1405/07/28" and r["results"][0]["date_source"] == "filename"
-        # فایل تکراری پذیرفته نمی‌شود
-        r2 = c.post("/api/upload", files=[("files", (a.name, a.read_bytes(), "audio/wav"))], data={"visit_date": "1405/07/28"}).json()
-        assert r2["results"][0]["result"] == "duplicate"
+        # ویس تکراری دیگر رد نمی‌شود؛ پیش از آپلود، رابط کاربری با /api/upload/check می‌پرسد (tests/test_duplicates.py)
+        from voice2excel.deduplicator import file_sha256
+        m = c.post("/api/upload/check", json={"hashes": [file_sha256(a)]}).json()["matches"]
+        assert m[file_sha256(a)]["same_dest"] and not m[file_sha256(a)]["processed"]
 
         assert c.post("/api/queue/start").status_code == 200
         s = wait_idle(c)

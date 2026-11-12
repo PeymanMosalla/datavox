@@ -7,6 +7,13 @@
 - ستون آدرس فایل‌های اکسل شرکت (فقط نام خیابان‌ها؛ هیچ نام شخص، شماره یا آدرس کاملی وارد نمی‌شود).
 - مختصات خیابان‌ها (--osm-geo، از همان Overpass با «out tags center;»): برای بررسی اینکه خیابان‌های یک آدرس
   روی نقشه کنار هم‌اند (address_check.py).
+- محله‌ها، میدان‌ها و چهارراه‌ها (--osm-places)؛ از Overpass:
+    [out:csv(name,place,highway,junction;false;"\t")];area(3605725142)->.a;(
+      node(area.a)["place"~"neighbourhood|suburb|quarter|square"]["name"];way(area.a)["place"~"neighbourhood|suburb|quarter|square"]["name"];
+      relation(area.a)["place"~"neighbourhood|suburb|quarter"]["name"];way(area.a)["highway"="pedestrian"]["name"];
+      node(area.a)["junction"]["name"];way(area.a)["junction"="roundabout"]["name"];);out tags;
+- --keep-once: نام‌هایی که در نقشه فقط یک بار آمده‌اند هم (فقط اگر نام شخص نباشند؛ وگرنه «مهندس کریمی» با کوچه «کریمی»
+  اشتباه می‌شد). املای قبلی هر خیابان همیشه حفظ می‌شود تا ساخت دوباره املاها را جابه‌جا نکند.
 - آموخته‌های استفاده واقعی (--learned): پایگاه داده برنامه (voice2excel.db) یا خروجی واژه‌نامه. فقط خیابان‌ها
   با شکل‌های دیگرشان و اصلاحات تأییدشده آدرس برداشته می‌شود؛ نام اشخاص، پروژه‌ها و هر رشته عددی ۴ رقمی به بالا نه.
 
@@ -32,6 +39,8 @@ from voice2excel import geo, knowledge  # noqa: E402
 from voice2excel.lexicon import _common_keys  # noqa: E402
 from voice2excel.normalizer import normalize_text, sound_key, to_ascii_digits  # noqa: E402
 
+# واژه‌های عمومی که در نقشه به‌جای نام می‌آیند («ناحیه ۳»، «پلیس») و نام خیابان نیستند
+PLACE_STOP = {"ناحیه", "منطقه", "پلیس", "محله", "کوی", "شهرک", "پارک", "پایانه", "ایستگاه", "پاسگاه"}  # «کلانتری» نه: «بلوار کلانتری» خیابان واقعی مشهد است
 EXCEL_WEIGHT = 3  # املای فایل شرکت بر املای نقشه مقدم است
 MIN_CORRECTION_COUNT = 2  # اصلاحی که کاربر دست‌کم دو بار تأیید کرده (نه یک اشتباه تایپی)
 _LONG_NUMBER = re.compile(r"\d{4,}")
@@ -97,7 +106,8 @@ def learned(path: Path, password: str = "") -> tuple[list[tuple[str, list[str]]]
 
 
 def build(osm: Path | None, excels: list[Path], min_osm: int,
-          learned_streets: list[tuple[str, list[str]]] = ()) -> list[list]:
+          learned_streets: list[tuple[str, list[str]]] = (), places: Path | None = None,
+          keep_once: bool = False, person_keys: frozenset[str] = frozenset()) -> list[list]:
     h = knowledge.Harvest()
     from_excel: set[str] = set()
     for canonical, aliases in learned_streets:  # تأییدشده در استفاده واقعی؛ هم‌وزن فایل شرکت
@@ -114,13 +124,21 @@ def build(osm: Path | None, excels: list[Path], min_osm: int,
         for name in osm_names(osm):
             for st in knowledge.streets_from_address(name):
                 h.add("street", st.canonical, st.aliases)
-    common = _common_keys()
+    place_keys: set[str] = set()
+    if places:  # محله، میدان، چهارراه: یک بار آمدن در نقشه کافی است (هر کدام یک گره است)
+        for name in osm_names(places):
+            for st in knowledge.streets_from_address(name):
+                h.add("street", st.canonical, st.aliases)
+                place_keys.add(sound_key(st.canonical))
+    common = _common_keys() | {sound_key(w) for w in PLACE_STOP}
     out = []
     for key, g in h.groups["street"].items():
         if len(key) < 3 or key in common:
             continue
         if key not in from_excel and g.count < min_osm:
-            continue  # نامی که در نقشه فقط یک بار آمده، معمولاً کوچه یا مکان جزئی است
+            # نامی که در نقشه فقط یک بار آمده (کوچه یا مکان جزئی) یا محله/میدان: فقط اگر نام شخص نباشد
+            if not ((keep_once or key in place_keys) and key not in person_keys):
+                continue
         out.append([g.canonical, sorted(g.names() - {g.canonical}), g.count])
     out.sort(key=lambda s: -s[2])
     return out
@@ -153,6 +171,8 @@ def main() -> int:
     ap.add_argument("--password", default="", help="گذرواژه خروجی واژه‌نامه رمزدار (وگرنه پرسیده می‌شود)")
     ap.add_argument("--fresh", action="store_true", help="بدون داده فایل فعلی (پیش‌فرض: داده فعلی حفظ و افزوده می‌شود)")
     ap.add_argument("--city", default="مشهد")
+    ap.add_argument("--osm-places", type=Path, help="محله‌ها، میدان‌ها و چهارراه‌ها از Overpass (بالا)")
+    ap.add_argument("--keep-once", action="store_true", help="نام‌های یک‌باره نقشه هم (اگر نام شخص نباشند)")
     ap.add_argument("--out", type=Path, default=ROOT / "voice2excel" / "assets" / "geo.dat")
     a = ap.parse_args()
     l_streets, counts, points = [], {}, []
@@ -170,8 +190,17 @@ def main() -> int:
                          key=lambda c: -c[3])
     if a.osm_geo and a.osm_geo.exists():
         points = osm_points(a.osm_geo)
-    streets = build(a.osm, a.excel, a.min_osm, l_streets)
     surnames, first = (read_list(a.names / f) for f in ("surnames.txt", "firstnames.txt"))
+    from voice2excel.normalizer import match_key
+    person_keys = frozenset({sound_key(n) for n in surnames + first} | {match_key(n) for n in surnames + first})
+    streets = build(a.osm, a.excel, a.min_osm, l_streets, a.osm_places, a.keep_once, person_keys)
+    if a.out.exists() and not a.fresh:  # املای قبلی هر خیابان حفظ می‌شود («سید رضی» با ساخت دوباره «سیدرضی» نشود)
+        prev_canon = {sound_key(s[0]): s[0] for s in geo.decode(a.out.read_bytes()).get("s", [])}
+        for s in streets:
+            old = prev_canon.get(sound_key(s[0]))
+            if old and old != s[0]:
+                s[1] = sorted((set(s[1]) | {s[0]}) - {old})
+                s[0] = old
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_bytes(geo.encode({"v": 4, "city": a.city, "s": streets, "n": surnames, "f": first, "c": corrections,
                                   "p": points}))
