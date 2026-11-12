@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -340,8 +341,15 @@ def main() -> int:
     kept_data = DIST / f"_kept_user_data-{tag}"
     if (out / "data").exists():
         step("نگه‌داشتن اطلاعات کاربر (data) در کنار ساخت")
-        shutil.rmtree(kept_data, ignore_errors=True)
-        shutil.move(str(out / "data"), str(kept_data))
+        # فقط جابه‌جایی؛ هرگز کپی و پاک‌کردن (اگر پرونده‌ای قفل باشد، shutil.move نیمی از اطلاعات را پاک می‌کرد)
+        if kept_data.exists():
+            raise SystemExit(f"ناموفق: {kept_data} از ساخت ناتمام قبلی مانده و شاید تنها نسخه اطلاعات باشد؛ "
+                             f"اول آن را بررسی و به {out / 'data'} برگردانید.")
+        try:
+            os.rename(out / "data", kept_data)
+        except OSError as e:
+            raise SystemExit(f"ناموفق: پوشه اطلاعات کاربر جابه‌جا نشد ({e}). برنامه یا پرونده‌ای از آن باز است؛ "
+                             "آن را ببندید و دوباره بسازید. چیزی پاک نشد.")
     step(f"پاک‌سازی {out}")
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
@@ -397,7 +405,7 @@ def main() -> int:
         make_zip(out, zp)
         print(f"حجم zip: {zp.stat().st_size / 1e9:.2f} گیگابایت")
     if kept_data.exists():
-        shutil.move(str(kept_data), str(out / "data"))
+        os.rename(kept_data, out / "data")
         print("اطلاعات کاربر به پوشه برنامه برگردانده شد.")
     print("\nانجام شد:", out)
     return 0
