@@ -798,7 +798,7 @@ html.in-app .drawer, html.in-app .drawer-backdrop, html.in-app .modal-backdrop {
 .act-import > summary.card-h { list-style: none; cursor: pointer; }
 /* «وارد کردن مجوز»: زمینه گرادیان زنده، آرام و بی‌پایان (هر دور ۳۰ ثانیه) */
 .card.act-import {
-  background: linear-gradient(120deg, var(--lic-g1), var(--lic-g2), var(--lic-g3), var(--lic-g4), var(--lic-g5), var(--lic-g1));
+  background: linear-gradient(120deg, var(--lic-g1), var(--lic-g2), var(--lic-g3), var(--lic-g4), var(--lic-g5));
   background-size: 400% 400%;
   animation: lic-flow 30s ease-in-out infinite;
 }
