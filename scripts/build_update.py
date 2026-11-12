@@ -51,7 +51,7 @@ def main() -> int:
     ap.add_argument("--win7", action="store_true", help="(در شاخه windows7-only همیشه فعال است)")
     a = ap.parse_args()
     a.win7 = True  # شاخه windows7-only فقط به‌روزرسانی بسته ویندوز ۷ می‌سازد
-    out = ROOT / "dist" / f"DataVox-update-{a.version}{'-win7' if a.win7 else ''}.zip"
+    out = ROOT / "dist" / f"DataVox-update-{a.version}-oldcpu.zip"  # شاخه oldcpu: فقط به‌روزرسانی بسته oldcpu
     # راهنماها کنار exe با نام‌های Guide.html و Recording-Guide.html قرار دارند (منبع: صفحه‌های داخل برنامه)
     web = ROOT / "voice2excel" / "web"
     extras = []
