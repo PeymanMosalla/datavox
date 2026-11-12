@@ -44,7 +44,7 @@ def _common_keys() -> frozenset[str]:
     words = (x.NAME_STOP | x._FILLER | set(x.TECH_WORDS) | set(x.STREET_WORDS) | set(x.TITLES) | set(x.ADDRESS_CUES)
              | set(x.NAME_CUES) | set(x.CITIES) | set(x.BUILDING_TYPES) | set(NUMBER_WORDS) | x._ORDINALS
              | _LEAD_WORDS | _AFTER_STREET | _TECH_BEFORE_NUMBER | _UNIT_AFTER_NUMBER
-             | {"سمت", "راست", "چپ", "صفر", "سفر", "سد", "صف"})
+             | {"سمت", "راست", "چپ", "صفر", "سفر", "سد", "صف", "صرف", "سرف"})
     return frozenset(sound_key(w) for w in words)
 
 

@@ -44,7 +44,12 @@ def record_meta(rec: ExtractedRecord) -> dict:
 
 
 def find_duplicates(db: Database, values: dict, record_id: int | None = None, audio_id: int | None = None) -> list[dict]:
-    dups = find_similar(values, db_candidates(db, exclude_record_id=record_id, exclude_audio_id=audio_id), "db")
+    # ردیف‌های همین ویس در فایل‌های اکسل دیگر (رونوشت یا آپلود دوباره همان ویس) تکراری این ردیف حساب نمی‌شوند
+    same_voice = {audio_id} if audio_id else set()
+    if audio_id:
+        same_voice |= {r["id"] for r in db.q("""SELECT b.id FROM audio_files a JOIN audio_files b ON b.sha256=a.sha256
+                                               WHERE a.id=? AND a.sha256 IS NOT NULL AND a.sha256!=''""", (audio_id,))}
+    dups = find_similar(values, db_candidates(db, exclude_record_id=record_id, exclude_audio_ids=same_voice), "db")
     dups += find_similar(values, excel_candidates(), "excel")
     dups.sort(key=lambda d: 0 if d["level"] == "strong" else 1)
     return dups[:6]

@@ -128,3 +128,22 @@ def test_real_words_not_turned_into_numbers():
     assert "هفته" in fix_asr_text("دو هفته دیگه زنگ بزنین")
     assert "دوم" in fix_asr_text("قطعه دوم سه سقف")
     assert fix_asr_text("برای سفر رفته بودن") == "برای سفر رفته بودن"
+
+
+def test_sarf_is_zero_not_part_of_name():
+    # ویس مشتری: «صفر» آغاز شماره به‌صورت «صرف» شنیده شد و به انتهای نام چسبید
+    for text, name, phone in [
+        ("مهندس احمدی صرف نهصد و پانزده دویست و سی و چهار پنجاه و شش هفتاد و هشت آدرس سروش بیست و نه", "مهندس احمدی", "09152345678"),
+        ("مهندس احمدی، صرف 915-234-56-78، آدرس سروش 29", "مهندس احمدی", "09152345678"),
+        ("مهندس کاظمی سرف ۹۱۲ ۵۵۵ ۴۴ ۳۳ آدرس بلوار جانباز", "مهندس کاظمی", "09125554433"),
+        ("مهندس نصیری شماره صرف نهصد و پانزده صد و یازده بیست و دو سی و سه", "مهندس نصیری", "09151112233"),
+    ]:
+        v, _ = one(text)
+        assert v["engineer_name"] == name, text
+        assert v["phone"] == phone, text
+
+
+def test_sarf_as_real_word_unchanged():
+    from voice2excel.asr_fixes import fix_asr_text
+    assert fix_asr_text("صرف نظر از اینکه سازه فلزه") == "صرف نظر از اینکه سازه فلزه"
+    assert "صرف" in fix_asr_text("بودجه صرف شده برای سقف")
