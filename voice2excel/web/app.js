@@ -426,7 +426,7 @@ async function addExistingFile(name = "", start = "", firstRun = false, given = 
   catch (e) { toastErr(e); return null; }
   const block = (res.report.risks || []).filter((r) => r.level === "block");
   if (block.length || !res.profile) {
-    await openModal({ title: "این فایل قابل استفاده نیست", body: `<ul class="reasons invalid">${(block.length ? block.map((r) => r.message) : ["در این فایل سرستونی پیدا نشد."]).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`,
+    await openModal({ title: "این فایل قابل استفاده نیست", body: `<ul class="reasons invalid">${(block.length ? block.map((r) => r.message) : ["در این فایل سرستونی پیدا نشد."]).map((x) => `<li>${numText(x)}</li>`).join("")}</ul>`,
       actions: [{ label: "متوجه شدم", cls: "primary" }] });
     return null;
   }
@@ -941,7 +941,7 @@ async function whyNoRows(id) {
   await openModal({ title: "از این ویس ردیفی ساخته نشد", wide: true, body: `<div class="stack">
       <div>برنامه در متن این ویس <b>نام، شماره تماس یا آدرسی</b> پیدا نکرد که بشود از آن یک ردیف ساخت. معمولاً یعنی ویس دربارهٔ بازدید نبوده، خیلی کوتاه یا بی‌صدا بوده، یا صدای زمینه زیاد بوده است.</div>
       ${w.error ? `<div class="alert info">${I.info}<div class="alert-body">${esc(w.error)}</div></div>` : ""}
-      <div><div class="section-title">${I.wave} متنی که از ویس شنیده شد</div><div class="transcript">${w.text ? esc(w.text) : '<span class="muted">متنی شنیده نشد (ویس بی‌صدا یا خیلی کوتاه است).</span>'}</div></div>
+      <div><div class="section-title">${I.wave} متنی که از ویس شنیده شد</div><div class="transcript">${w.text ? numText(w.text) : '<span class="muted">متنی شنیده نشد (ویس بی‌صدا یا خیلی کوتاه است).</span>'}</div></div>
       ${w.audio ? `<audio controls preload="metadata" src="/api/files/${id}/audio" style="width:100%"></audio>` : ""}
       <div class="small muted">اگر ویس اطلاعات بازدید دارد، دوباره و واضح‌تر ضبط شود. <a href="/static/recording-guide.html" target="_blank">راهنمای ضبط ویس</a></div></div>`,
     actions: [{ label: "بستن", cls: "primary" }] });
@@ -1018,14 +1018,14 @@ function reviewList(box, actionsBox, records, reload, sheet = null) {
     const item = (k, why) => {
       const seg = SEG_OF[k] || k, t = r.audio_available && fieldTime(r, seg), words = lowWords(r, k);
       return `<li>${t ? `<button class="btn sm ghost" data-tseg="${seg}" title="پخش همین بخش از ویس">${I.play} بشنوید ${segTime(t)}</button>` : ""}
-        <span class="t-why"><b>${esc(LABEL[k] || k)}:</b> ${esc(why)}</span>${words.length ? `<span class="t-words">${words.join(" ")}</span>` : ""}</li>`;
+        <span class="t-why"><b>${esc(LABEL[k] || k)}:</b> ${numText(why)}</span>${words.length ? `<span class="t-words">${words.join(" ")}</span>` : ""}</li>`;
     };
     const bad = Object.entries(vf).filter(([, f]) => f.status !== "valid");
     const problems = bad.map(([k, f]) => item(k, (f.reasons || [])[0] || FIELD_STATUS[f.status]));
     for (const k of ["engineer_name", "phone", "address", "tech"]) {
       if (lowWords(r, k).length && !bad.some(([b]) => b === k)) problems.push(item(k, "بخشی با اطمینان کم شنیده شد."));
     }
-    if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li><span class="t-why">${esc(x)}</span></li>`));
+    if (!problems.length) problems.push(...(r.validation.reasons || []).slice(0, 2).map((x) => `<li><span class="t-why">${numText(x)}</span></li>`));
     const play = r.audio_available ? `<button class="btn sm ghost" data-twhole title="پخش کل ویس">${I.play} کل ویس</button>` : "";
     const notes = problems.length ? `<button class="btn sm ghost t-notes-btn" data-tnotes aria-expanded="${openNotes.has(r.id)}" title="دلیل بررسی و پخش همان بخش ویس">${I.alert} ${fa(problems.length)} نکته</button>` : "";
     const acts = `<div class="t-rec-act">${notes}${play}
@@ -1304,11 +1304,11 @@ function highlightTranscript(text, clauses, block, multi) {
   for (const c of clauses || []) {
     const i = text.indexOf(c.text, pos);
     if (i < 0) continue;
-    html += esc(text.slice(pos, i));
-    html += `<span class="seg seg-${esc(c.category)} ${multi && c.block !== block ? "other-block" : ""}" title="${esc(SEG_LABEL[c.category] || "")}">${esc(c.text)}</span>`;
+    html += numText(text.slice(pos, i));
+    html += `<span class="seg seg-${esc(c.category)} ${multi && c.block !== block ? "other-block" : ""}" title="${esc(SEG_LABEL[c.category] || "")}">${numText(c.text)}</span>`;
     pos = i + c.text.length;
   }
-  return html + esc(text.slice(pos));
+  return html + numText(text.slice(pos));
 }
 
 // ---------- ابزارهای مشترک بررسی: پخش تکه، نمایش شماره، بازگشت ----------
@@ -1358,6 +1358,23 @@ function fmtPhone(p) {
   if (/^0\d{10}$/.test(d)) return `${d.slice(0, 3)} ${d.slice(3, 7)} ${d.slice(7)}`;
   return d;
 }
+/** رقم‌های فاصله‌دار پشت‌سرهم، همان‌طور که شماره گفته می‌شود («0 915 110 21 31»)، در متن راست‌به‌چپ وارونه و
+ *  تکه‌تکه دیده می‌شوند (مرورگر هر گروه را جدا از راست می‌چیند). numText متن را امن (esc) می‌کند و هر رشته این‌چنینی را
+ *  یک تکه چپ‌به‌راست می‌کند؛ اگر شماره تلفن باشد، به همان شکل همیشگی برنامه (0915 110 2131). خود داده تغییر نمی‌کند. */
+const NUM_RUN = /[0-9\u06F0-\u06F9\u0660-\u0669]+(?:[ \u00A0\u200C]+[0-9\u06F0-\u06F9\u0660-\u0669]+)+/g;
+const latinDigits = (s) => s.replace(/[\u06F0-\u06F9]/g, (c) => c.charCodeAt(0) - 0x06F0).replace(/[\u0660-\u0669]/g, (c) => c.charCodeAt(0) - 0x0660);
+function numRun(m) {
+  const d = latinDigits(m.replace(/[^0-9\u06F0-\u06F9\u0660-\u0669]/g, ""));
+  let out = m;
+  if (/^09\d{9}$/.test(d) || /^0\d{10}$/.test(d)) {
+    out = fmtPhone(d);
+    if (/[\u06F0-\u06F9]/.test(m)) out = out.replace(/\d/g, (c) => String.fromCharCode(0x06F0 + +c));
+  }
+  return `<span class="num-run" dir="ltr">${out}</span>`;
+}
+function numText(s) {
+  return esc(String(s ?? "")).replace(NUM_RUN, numRun);
+}
 function phoneView(value) {
   const lines = String(value || "").split("\n").filter((x) => x.trim());
   return lines.length ? `<div class="phone-view">${lines.map((l) => `<span class="ltr">${esc(fmtPhone(l))}</span>`).join("")}</div>` : "";
@@ -1369,7 +1386,7 @@ function lowWords(r, k) {
   return keys.flatMap((x) => (r.low_confidence?.[x] || []).map((w, i) => [w, r.low_times?.[x]?.[i]]))
     .filter(([w, t]) => !seen.has(w + t) && seen.add(w + t))
     .map(([w, t]) => r.audio_available && t
-      ? `<button class="lc-word" data-lt="${t.join(",")}" title="پخش همین واژه از ویس">${I.play}«${esc(w)}» <span class="seg-time" dir="ltr">${fmtClock(t[0])}</span></button>` : `«${esc(w)}»`);
+      ? `<button class="lc-word" data-lt="${t.join(",")}" title="پخش همین واژه از ویس">${I.play}«${numText(w)}» <span class="seg-time" dir="ltr">${fmtClock(t[0])}</span></button>` : `«${numText(w)}»`);
 }
 function lowConfView(r, k) {
   const w = lowWords(r, k);
@@ -1422,20 +1439,27 @@ async function openRecord(id) {
     const input = multi
       ? `<textarea class="input ${ltr ? "ltr" : ""}" rows="${Math.min(4, Math.max(1, Math.ceil(val.length / 48), val.split("\n").length))}" data-f="${k}" ${locked ? "disabled" : ""} placeholder="گفته نشده">${esc(val)}</textarea>`
       : `<input class="input ${ltr ? "ltr" : ""}" value="${esc(val)}" data-f="${k}" ${locked ? "disabled" : ""} placeholder="گفته نشده" ${ltr ? 'style="text-align:right"' : ""}>`;
-    const ev = r.evidence[k] && r.evidence[k] !== val ? `<div class="evidence">از متن: «${esc(r.evidence[k])}»</div>` : "";
+    const ev = r.evidence[k] && r.evidence[k] !== val ? `<div class="evidence">از متن: «${numText(r.evidence[k])}»</div>` : "";
     const seg = r.audio_available && r.times?.[k] ? `<button class="btn sm ghost" data-seg="${k}" title="پخش همین بخش از ویس">${I.play} ${segTime(r.times[k])}</button>` : "";
     return `<div class="frow"><label>${esc(labels[k] || k)}</label><div class="fval">
       <div class="row">${input}${seg}${fc && fc.status !== "valid" ? chip(fc.status, FIELD_STATUS[fc.status]) : ""}
         ${DICT_FIELDS.has(k) && val && !locked ? `<button class="btn sm icon ghost" data-dict="${k}" title="افزودن به واژه‌نامه">${I.book}</button>` : ""}</div>
       ${k === "phone" ? phoneView(val) : ""}${lowConfView(r, k)}
-      ${fc && fc.reasons?.length ? `<ul class="reasons ${fc.status}">${fc.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${fc && fc.reasons?.length ? `<ul class="reasons ${fc.status}">${fc.reasons.map((x) => `<li>${numText(x)}</li>`).join("")}</ul>` : ""}
       ${fc && fc.suggestions?.length && !locked ? `<div class="suggest"><span class="muted">پیشنهادها:</span>${fc.suggestions.map((sg) => `<button data-accept="${k}" data-val="${esc(sg)}">${esc(sg)}</button>`).join("")}</div>` : ""}
       ${ev}</div></div>`;
   };
   const words = t.words || [];
-  const rawHtml = words.length
-    ? words.map((w) => `<span ${w.prob < 0.5 ? `class="lowword" title="احتمال تشخیص: ${fa(Math.round(w.prob * 100))}٪"` : ""}>${esc(w.word)}</span>`).join(" ")
-    : esc(t.raw_text || "");
+  const wordSpan = (w) => `<span ${w.prob < 0.5 ? `class="lowword" title="احتمال تشخیص: ${fa(Math.round(w.prob * 100))}٪"` : ""}>${esc(w.word)}</span>`;
+  const isNumWord = (w) => !!w && /^\s*[0-9\u06F0-\u06F9\u0660-\u0669]+\s*$/.test(w.word);
+  const rawParts = [];
+  for (let i = 0; i < words.length;) {
+    let j = i;
+    while (isNumWord(words[j])) j++;
+    if (j - i >= 2) { rawParts.push(`<span class="num-run" dir="ltr">${words.slice(i, j).map(wordSpan).join(" ")}</span>`); i = j; }
+    else rawParts.push(wordSpan(words[i++]));
+  }
+  const rawHtml = words.length ? rawParts.join(" ") : numText(t.raw_text || "");
   const ACTION_LABEL = { edit: "اصلاح", accept: "پذیرش پیشنهاد", approve: "تأیید", reject: "رد", reopen: "بازگشایی", duplicate: "تصمیم تکرار", dictionary: "واژه‌نامه" };
   // همان ویس (مثلاً پس از ذخیره یک اصلاح): پخش‌کننده قبلی با همان جای پخش نگه داشته می‌شود
   const oldAudio = $("#dr-audio", d);
@@ -1455,7 +1479,7 @@ async function openRecord(id) {
         <div class="seg-buttons">${SEG_KEYS.filter(([k]) => fieldTime(r, k)).map(([k, l]) => `<button class="btn sm" data-segk="${k}">${I.play} ${l} ${segTime(fieldTime(r, k))}</button>`).join("")}</div>`
         : '<div class="muted small">فایل صوتی پاک شده است.</div>'}
       ${(r.validation.reasons || []).length ? `<div class="alert ${r.status === "ready" ? "ok" : r.status === "invalid" ? "err" : "warn"}">${r.status === "ready" ? I.ok : I.alert}<div class="alert-body"><b>${REC_STATUS[r.status] || ""}</b>
-        <ul class="reasons">${r.validation.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div></div>` : ""}
+        <ul class="reasons">${r.validation.reasons.map((x) => `<li>${numText(x)}</li>`).join("")}</ul></div></div>` : ""}
       <div><div class="section-title">${I.wave} متن ویس</div>
         <div class="transcript">${t.processed_text ? highlightTranscript(t.processed_text, t.clauses, r.building_index, r.building_count > 1) : '<span class="muted">متنی موجود نیست.</span>'}</div>
         <details class="tech-details"><summary class="small">جزئیات فنی متن</summary>
@@ -1540,7 +1564,7 @@ async function openRecord(id) {
     } catch (e) { toastErr(e); }
   };
   $("#dr-approve")?.addEventListener("click", async () => {
-    if (r.status !== "ready" && !(await confirmBox("تأیید ردیف دارای هشدار", `این ردیف هنوز هشدار دارد:<ul class="reasons review">${(r.validation.reasons || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>آیا اطلاعات را با ویس بررسی کرده‌اید و تأیید می‌کنید؟`, "بله، تأیید می‌کنم", "ok"))) return;
+    if (r.status !== "ready" && !(await confirmBox("تأیید ردیف دارای هشدار", `این ردیف هنوز هشدار دارد:<ul class="reasons review">${(r.validation.reasons || []).map((x) => `<li>${numText(x)}</li>`).join("")}</ul>آیا اطلاعات را با ویس بررسی کرده‌اید و تأیید می‌کنید؟`, "بله، تأیید می‌کنم", "ok"))) return;
     act("approve");
   });
   $("#dr-reject")?.addEventListener("click", () => act("reject"));
@@ -1605,7 +1629,7 @@ async function renderFocus(autoplay = false) {
         ? `<textarea class="input big ${ltr ? "ltr" : ""}" rows="${Math.max(1, val.split("\n").length)}" data-ff="${k}" data-orig="${esc(val)}" ${locked ? "disabled" : ""} placeholder="گفته نشده">${esc(val)}</textarea>`
         : `<input class="input big" value="${esc(val)}" data-ff="${k}" data-orig="${esc(val)}" ${locked ? "disabled" : ""} placeholder="گفته نشده">`}
       ${k === "phone" ? phoneView(val) : ""}${lowConfView(r, k)}
-      ${fc && fc.status !== "valid" && fc.reasons?.length ? `<ul class="reasons ${fc.status}">${fc.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${fc && fc.status !== "valid" && fc.reasons?.length ? `<ul class="reasons ${fc.status}">${fc.reasons.map((x) => `<li>${numText(x)}</li>`).join("")}</ul>` : ""}
       ${fc && fc.suggestions?.length && !locked ? `<div class="suggest"><span class="muted">پیشنهاد:</span>${fc.suggestions.map((sg) => `<button data-faccept="${k}" data-val="${esc(sg)}">${esc(sg)}</button>`).join("")}</div>` : ""}
     </div>`;
   };
@@ -1626,7 +1650,7 @@ async function renderFocus(autoplay = false) {
             <button class="btn sm ghost" id="fm-whole">${I.wave} کل ویس <span class="kbd">Ctrl+Space</span></button></div>`
           : '<div class="muted small">فایل صوتی پاک شده است.</div>'}
         <div class="transcript">${t.processed_text ? highlightTranscript(t.processed_text, t.clauses, r.building_index, r.building_count > 1) : '<span class="muted">متنی موجود نیست.</span>'}</div>
-        ${(r.validation.reasons || []).length && r.status !== "ready" ? `<ul class="reasons review small">${r.validation.reasons.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+        ${(r.validation.reasons || []).length && r.status !== "ready" ? `<ul class="reasons review small">${r.validation.reasons.map((x) => `<li>${numText(x)}</li>`).join("")}</ul>` : ""}
         <div class="fm-tech">${FOCUS_TECH.map(([k, l]) => `<div class="field"><label>${l}</label><input class="input" value="${esc(v[k] || "")}" data-ff="${k}" data-orig="${esc(v[k] || "")}" ${locked ? "disabled" : ""} placeholder="—"></div>`).join("")}
           <div class="field fm-wide"><label>توضیحات</label><textarea class="input" rows="2" data-ff="notes" data-orig="${esc(v.notes || "")}" ${locked ? "disabled" : ""} placeholder="—">${esc(v.notes || "")}</textarea></div></div>
       </div>
