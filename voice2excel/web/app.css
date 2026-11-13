@@ -424,6 +424,8 @@ textarea.cell-input { resize: none; line-height: 1.5; min-height: 34px; }
 .section-title { font-size: 13px; font-weight: 800; color: var(--muted); text-transform: none; margin: 0 0 8px; display: flex; gap: 8px; align-items: center; }
 audio { width: 100%; height: 40px; }
 .transcript { background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; line-height: 2.1; font-size: 14.5px; }
+/* شماره گفته‌شده در متن (numText): یک تکه چپ‌به‌راست، جدا از متن فارسی اطراف و بدون شکستن در دو خط */
+.num-run { direction: ltr; unicode-bidi: isolate; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .seg { border-radius: 5px; padding: 1px 4px; margin: 0 1px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .seg-name { background: var(--gray-soft); background: color-mix(in srgb, var(--c-name) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-name); }
 .seg-phone, .seg-phone_cue { background: var(--gray-soft); background: color-mix(in srgb, var(--c-phone) 14%, transparent); box-shadow: inset 0 -2px 0 var(--c-phone); }
