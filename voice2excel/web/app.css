@@ -228,14 +228,24 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .main { flex: 1; min-width: 0; padding: 26px 32px 60px; }
 .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .topbar h1 { margin: 0; font-size: 23px; font-weight: 800; letter-spacing: -.2px; }
-.page-sub { color: var(--muted); font-size: 13.5px; }
-/* مسیر صفحه: یک خط کوچک بالای عنوان */
-.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; line-height: 1.6; color: var(--muted); margin-bottom: 2px; }
-.crumbs a { color: var(--text-2); text-decoration: none; border-radius: 4px; padding: 0 2px; }
-.crumbs a:hover { color: var(--primary-2); text-decoration: underline; }
-.crumbs a:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
-.crumbs [aria-current] { color: var(--muted); max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.crumbs .sep { color: var(--muted); opacity: .7; }
+/* مسیر صفحه: نوار بالای عنوان؛ مسیر در راست (از چپ به راست: گام اول در چپ)، «بازگشت» در چپ */
+.crumb-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.crumb-bar[hidden] { display: none; }
+.crumbs { direction: ltr; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; min-width: 0;
+  padding: 4px 6px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 10px;
+  font-size: 13.5px; line-height: 1.5; box-shadow: var(--shadow); }
+.crumbs > * { unicode-bidi: isolate; }
+.crumbs a { color: var(--primary-2); font-weight: 700; text-decoration: none; border-radius: 7px; padding: 3px 9px; }
+.crumbs a:hover { background: var(--primary-soft); text-decoration: underline; }
+.crumbs a:focus-visible, .crumb-back:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.crumbs [aria-current] { color: var(--text); font-weight: 700; padding: 3px 9px; background: var(--surface-2); border-radius: 7px;
+  max-width: 40ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crumbs .sep { display: inline-flex; color: var(--muted); }
+.crumbs .sep svg, .crumb-back svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.crumb-back { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 6px 14px 6px 12px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text-2); font-size: 13.5px; font-weight: 600;
+  text-decoration: none; direction: ltr; transition: background .15s, border-color .15s, color .15s; }
+.crumb-back:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary-2); }
 .topbar-progress { width: 340px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; box-shadow: var(--shadow); }
 .tp-label { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; margin-bottom: 6px; color: var(--text-2); }
 .tp-label span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
