@@ -267,14 +267,18 @@ let routeSeq = 0;
 // فقط صفحه‌ای که هنوز نمایش داده می‌شود قلاب به‌روزرسانی ثبت می‌کند (جلوگیری از تداخل صفحه قبلی)
 function setHook(seq, fn) { if (seq === routeSeq) pageHooks.onStatus = fn; }
 
-/** مسیر صفحه: [{label, href}]؛ آخرین مورد صفحه فعلی است (بدون پیوند). کمتر از دو مورد = پنهان. */
+/** مسیر صفحه: [{label, href}]؛ آخرین مورد صفحه فعلی است (بدون پیوند). کمتر از دو مورد = پنهان.
+ *  مسیر از چپ به راست چیده می‌شود (گام اول در چپ) و «بازگشت» در سمت چپ همان نوار به گام قبلی می‌رود. */
+const CRUMB_SEP = '<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
 function setCrumbs(items, seq = routeSeq) {
-  const nav = $("#crumbs");
+  const nav = $("#crumbs"), bar = $("#crumb-bar"), back = $("#crumb-back");
   if (!nav || seq !== routeSeq) return;
-  nav.hidden = items.length < 2;
+  bar.hidden = items.length < 2;
   nav.innerHTML = items.map((c, i) => i === items.length - 1
     ? `<span aria-current="page">${esc(c.label)}</span>`
-    : `<a href="${c.href}">${esc(c.label)}</a><span class="sep" aria-hidden="true">‹</span>`).join("");
+    : `<a href="${c.href}">${esc(c.label)}</a><span class="sep" aria-hidden="true">${CRUMB_SEP}</span>`).join("");
+  const prev = items[items.length - 2];
+  if (prev) { back.href = prev.href; back.title = `بازگشت به «${prev.label}»`; }
 }
 
 function route() {
@@ -286,7 +290,6 @@ function route() {
   renderBanners();
   $("#page-title").textContent = p.title;
   $("#tb-page").textContent = p.title;
-  $("#page-sub").textContent = p.sub;
   pageHooks = {};
   reviewState.reload = reviewState.updateRow = null;  // قلاب‌های صفحه بررسیِ قبلی به DOM حذف‌شده اشاره دارند
   routeSeq++;
