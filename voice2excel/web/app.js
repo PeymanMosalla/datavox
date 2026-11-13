@@ -242,11 +242,12 @@ function renderBanners() {
   const L = state.lic;
   if (L && state.page !== "activate") {
     const T = L.trial;
-    if (L.mode === "trial") out.push(`<div class="alert info">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است؛ هرکدام زودتر تمام شود.</div><a class="btn sm" href="#/activate">فعال‌سازی</a></div>`);
+    const lb = state.page === "files" ? " live-bg" : "";
+    if (L.mode === "trial") out.push(`<div class="alert info${lb}">${I.info}<div class="alert-body"><b>نسخه آزمایشی</b>${fa(T.days_left)} روز و ${fa(T.voices_left)} ویس مانده است؛ هرکدام زودتر تمام شود.</div><a class="btn sm" href="#/activate">فعال‌سازی</a></div>`);
     else if (L.mode === "expired") out.push(L.lapsed
-      ? `<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">تمدید اشتراک</a></div>`
-      : `<div class="alert warn">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>برای پردازش ویس تازه، برنامه را فعال کنید. ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">فعال‌سازی</a></div>`);
-    else if (L.mode === "licensed" && L.days_left != null && L.days_left <= 15) out.push(`<div class="alert warn">${I.alert}<div class="alert-body"><b>اشتراک شما ${L.days_left <= 0 ? "امروز" : `تا ${fa(L.days_left)} روز دیگر`} تمام می‌شود</b>برای ادامه کار بدون وقفه، اشتراک را تمدید کنید.</div><a class="btn sm" href="#/activate">تمدید اشتراک</a></div>`);
+      ? `<div class="alert warn${lb}">${I.alert}<div class="alert-body"><b>اشتراک شما تمام شده است</b>برای پردازش ویس تازه، اشتراک را تمدید کنید. ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">تمدید اشتراک</a></div>`
+      : `<div class="alert warn${lb}">${I.alert}<div class="alert-body"><b>دوره آزمایشی تمام شد</b>برای پردازش ویس تازه، برنامه را فعال کنید. ردیف‌های قبلی، ثبت در اکسل و پشتیبان در دسترس‌اند.</div><a class="btn sm primary" href="#/activate">فعال‌سازی</a></div>`);
+    else if (L.mode === "licensed" && L.days_left != null && L.days_left <= 15) out.push(`<div class="alert warn${lb}">${I.alert}<div class="alert-body"><b>اشتراک شما ${L.days_left <= 0 ? "امروز" : `تا ${fa(L.days_left)} روز دیگر`} تمام می‌شود</b>برای ادامه کار بدون وقفه، اشتراک را تمدید کنید.</div><a class="btn sm" href="#/activate">تمدید اشتراک</a></div>`);
   }
   $("#banners").innerHTML = out.join("");
 }
@@ -369,7 +370,7 @@ function setupSteps(done) {
 
 /** اجرای اول (هنوز هیچ فایلی در فهرست نیست): فقط یک سؤال — ردیف‌ها به کدام فایل اکسل بروند؟ */
 function renderWelcome(el) {
-  el.innerHTML = `<div class="card welcome"><div class="card-b stack">
+  el.innerHTML = `<div class="card welcome live-bg"><div class="card-b stack">
       <div><h2 style="margin:0 0 4px">به DataVox خوش آمدید</h2>
         <div class="muted">در سه گام آماده کار می‌شوید. ویس‌های بازدید به متن تبدیل و به‌صورت ردیف به فایل اکسل شما اضافه می‌شوند.</div></div>
       ${setupSteps(0)}
@@ -558,7 +559,7 @@ async function renderFile(el) {
     <div id="fw-next"></div>
     <section class="card" id="fw-add"></section>
     <section class="card" id="fw-review"><div class="card-h"><h2>${I.eye} ردیف‌هایی که نیاز به بررسی دارند</h2><div class="row" id="fw-rv-actions"></div></div><div id="fw-rv"></div></section>
-    <section class="card" id="fw-commit"><div class="card-h"><h2>${I.table} ثبت در فایل</h2></div><div class="card-b" id="fw-cm"></div></section>
+    <section class="card brief" id="fw-commit"><div class="card-h"><h2>${I.table} ثبت در فایل</h2></div><div class="card-b" id="fw-cm"></div></section>
     <section class="card" id="fw-voices"><div class="card-h"><h2>${I.music} ویس‌های این فایل</h2><div class="tabs sm" id="fw-v-tabs"></div></div><div id="fw-v"></div></section></div>`;
   drawHead();
   drawNext();
@@ -647,6 +648,7 @@ async function renderFile(el) {
     $("#fw-next").hidden = info.configured && !info.review && info.ready > 0;
     $("#fw-add")?.classList.toggle("compact", !!info.review || commitFirst);
     $("#fw-commit")?.classList.toggle("focus", info.configured && !info.review && info.ready > 0);
+    $("#fw-commit")?.classList.toggle("live-bg", info.configured && !info.review && info.ready > 0 && !info.converting);
   }
 
   function drawAdd() {
@@ -2826,7 +2828,7 @@ async function renderActivation(el) {
             <textarea class="input" id="act-msg" rows="5" readonly></textarea></details>
         </div></div>
 
-        <${licensed ? "details" : "div"} class="card act-import"><${licensed ? "summary" : "div"} class="card-h"><h2>${licensed ? "" : `<span class="n">۲</span> `}${licensed ? "وارد کردن مجوز تازه" : "وارد کردن مجوز"}</h2></${licensed ? "summary" : "div"}>
+        <${licensed ? "details" : "div"} class="card act-import live-bg"><${licensed ? "summary" : "div"} class="card-h"><h2>${licensed ? "" : `<span class="n">۲</span> `}${licensed ? "وارد کردن مجوز تازه" : "وارد کردن مجوز"}</h2></${licensed ? "summary" : "div"}>
           <div class="card-b stack">
             <div class="act-drop" id="act-drop">
               ${I.upload}
