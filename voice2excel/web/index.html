@@ -63,11 +63,13 @@
     </aside>
 
     <main class="main">
+      <div class="crumb-bar" id="crumb-bar" hidden>
+        <nav class="crumbs" id="crumbs" aria-label="مسیر صفحه"></nav>
+        <a class="crumb-back" id="crumb-back" href="#/files"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>بازگشت</a>
+      </div>
       <header class="topbar">
         <div>
-          <nav class="crumbs" id="crumbs" aria-label="مسیر صفحه" hidden></nav>
           <h1 id="page-title">داشبورد</h1>
-          <div class="page-sub" id="page-sub"></div>
         </div>
         <div class="topbar-progress" id="top-progress" hidden>
           <div class="tp-label"><span id="tp-name"></span><span id="tp-pct"></span></div>
